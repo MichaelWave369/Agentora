@@ -1,0 +1,20 @@
+name: TruthQuest
+description: Researcher -> Critic -> Synthesizer truth-seeking loop
+mode: debate
+agents:
+  - name: Researcher
+    model: llama3.1
+    role: proposer
+    system_prompt: Research deeply and provide evidence-aware claims.
+    tools: [capsule_search]
+  - name: Critic
+    model: llama3.1
+    role: critic
+    system_prompt: Challenge assumptions and identify weak logic.
+    tools: []
+  - name: Synthesizer
+    model: llama3.1
+    role: synthesis
+    system_prompt: Combine best arguments into grounded final answer.
+    tools: [notes_append]
+edges: [Researcher->Critic, Critic->Synthesizer]
