@@ -14,18 +14,17 @@ except Exception:
             return False
     class _NoopStreamlit:
         def cache_resource(self, fn=None, **_kwargs):
-            def _decorator(func):
-                return func
+            def _decorator(func): return func
             return _decorator(fn) if fn else _decorator
-        def title(self, *_args, **_kwargs): return None
-        def caption(self, *_args, **_kwargs): return None
-        def warning(self, *_args, **_kwargs): return None
-        def error(self, *_args, **_kwargs): return None
-        def info(self, *_args, **_kwargs): return None
-        def success(self, *_args, **_kwargs): return None
-        def json(self, *_args, **_kwargs): return None
+        def title(self,*_a,**_k): return None
+        def caption(self,*_a,**_k): return None
+        def warning(self,*_a,**_k): return None
+        def error(self,*_a,**_k): return None
+        def info(self,*_a,**_k): return None
+        def success(self,*_a,**_k): return None
+        def json(self,*_a,**_k): return None
         def tabs(self, labels): return [_NoopContext() for _ in labels]
-        def expander(self, *_args, **_kwargs): return _NoopContext()
+        def expander(self,*_a,**_k): return _NoopContext()
         def stop(self): raise RuntimeError('streamlit stop called')
     st = _NoopStreamlit()
 
@@ -70,22 +69,19 @@ def _embedded_get(path: str) -> dict:
 def api_get(path: str) -> dict:
     global ACTIVE_MODE
     mode = os.getenv('AGENTORA_STREAMLIT_MODE', 'auto').lower()
-
     if mode == 'http':
         ACTIVE_MODE = 'http'
-        response = http_get(path)
-        response.raise_for_status()
-        return response.json()
-
+        r = http_get(path)
+        r.raise_for_status()
+        return r.json()
     if mode == 'embedded':
         ACTIVE_MODE = 'embedded'
         return _embedded_get(path)
-
     try:
-        response = http_get(path)
-        response.raise_for_status()
+        r = http_get(path)
+        r.raise_for_status()
         ACTIVE_MODE = 'http'
-        return response.json()
+        return r.json()
     except Exception:
         ACTIVE_MODE = 'embedded'
         return _embedded_get(path)
@@ -100,21 +96,21 @@ def panel(title: str, path: str):
 
 
 def render_dashboard() -> None:
-    st.title('Agentora — Soul & Arena')
-    st.info(f'API Mode: {ACTIVE_MODE.upper()}')
-    st.caption('Studio • Band • Arena | local-first + embedded fallback')
-
-    tabs = st.tabs(['Studio', 'Band', 'Arena', 'Core'])
+    st.title('Agentora v0.3 — Together')
+    st.info(f'API Mode: {ACTIVE_MODE.upper()} | Local-first party edition')
+    tabs = st.tabs(['Studio', 'Band', 'Arena', 'Gathering', 'Core'])
     with tabs[0]:
-        panel('Health', '/api/health')
         panel('Personas', '/api/studio/personas')
     with tabs[1]:
         panel('Marketplace', '/api/marketplace/templates')
     with tabs[2]:
         panel('Leaderboard', '/api/arena/leaderboard')
     with tabs[3]:
+        panel('LAN Discover', '/api/gathering/discover')
+        panel('Gathering Templates', '/api/gathering/templates')
+    with tabs[4]:
+        panel('Health', '/api/health')
         panel('Runs', '/api/runs')
-        panel('Analytics', '/api/analytics/overview')
 
 
 if __name__ == '__main__':

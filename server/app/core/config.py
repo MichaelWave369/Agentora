@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     piper_path: str = Field(default='', alias='PIPER_PATH')
     piper_voice_model_path: str = Field(default='', alias='PIPER_VOICE_MODEL_PATH')
 
+    agentora_lan_discovery_enabled: bool = Field(default=True, alias='AGENTORA_LAN_DISCOVERY_ENABLED')
+    agentora_gathering_encryption_key: str = Field(default='', alias='AGENTORA_GATHERING_ENCRYPTION_KEY')
+    coevo_url: str = Field(default='', alias='COEVO_URL')
+    coevo_api_key: str = Field(default='', alias='COEVO_API_KEY')
+
     @property
     def allowed_hosts(self) -> list[str]:
         return [h.strip() for h in self.agentora_allowed_hosts.split(',') if h.strip()]

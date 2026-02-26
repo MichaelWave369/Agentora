@@ -21,7 +21,7 @@ class Team(SQLModel, table=True):
     description: str = ''
     mode: str = 'sequential'
     yaml_text: str = ''
-    version: str = '0.2.0'
+    version: str = '0.3.0'
     marketplace_id: str = ''
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -211,4 +211,25 @@ class ArenaVote(SQLModel, table=True):
     match_id: int
     agent_id: int
     score: int
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class GatheringSession(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    room_code: str
+    host_name: str
+    mode: str = 'studio'
+    status: str = 'open'
+    invite_code: str = ''
+    participants_json: str = '[]'
+    waveform_json: str = '[]'
+    memories_json: str = '[]'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class GatheringEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: int
+    event_type: str
+    payload_json: str = '{}'
     created_at: datetime = Field(default_factory=datetime.utcnow)
