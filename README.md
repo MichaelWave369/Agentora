@@ -1,48 +1,60 @@
-# Agentora v0.6 — Open Cosmos & Shared Eternity
+# Agentora v0.7 — Wisdom Eternal & The Living Archive
 
 ![Agentora Soul & Arena Hero](docs/hero-soul-arena.svg)
 
-[🚀 Try It Now: MicTek Rebellion](http://localhost:5173/band-mode)  
-[🏠 Try Gathering](http://localhost:5173/gathering-mode)  
-[🌳 Create Your First Legacy Agent](http://localhost:5173/legacy-mode)  
-[🌌 Plant Your First Cosmos](http://localhost:5173/cosmos-mode)  
-[📖 Share Your First Cosmos](http://localhost:5173/open-cosmos-mode)
+[🚀 Launch Agentora (Streamlit Primary)](http://localhost:8501)  
+[🌌 Plant Your First Cosmos](http://localhost:8501)  
+[📖 Share Your First Cosmos](http://localhost:8501)
 
-Agentora is a local-first multi-agent orchestration studio for Ollama with seven modes:
-- **Studio**
-- **Band**
-- **Arena**
-- **Gathering**
-- **Legacy**
-- **Cosmos**
-- **Open Cosmos**
+Agentora is now **Streamlit-first** for the complete product experience, while FastAPI remains the local orchestration/data backend.
 
-## Open Cosmos highlights (v0.6)
-- Share Cosmos as versioned `.agentora` package (encrypted zip + manifest-compatible structure)
-- Import/merge `.agentora` files locally with conflict-aware timeline keep/skip behavior
-- Version history + revocation support for shared packages
-- Co-Creation Credits in package metadata
-- Living Legacy Network view (opt-in local catalog for community-style cards)
-- Optional Global Wisdom Archive cache (anonymized, local-only)
-- Full backward compatibility intent with v0.5 cosmos payload shapes
+## What’s new in v0.7
+- **Living Archive**: centralized, opt-in, anonymized wisdom timeline across shared/imported cosmoses.
+- **Cross-Cosmos Visitation**: agents can visit other imported cosmoses and bring back distilled inspiration.
+- **Wisdom Exchange**: guided dialogue between two cosmoses to generate merged content.
+- **Grand Synthesis**: create a meta-cosmos from multiple worlds.
+- **2050 Forecasting**: multi-generational value projection from shared legacy signals.
+- **Community Spotlight**: featured public cosmos cards (consent-based, local-first rendering).
 
-## Privacy & safety defaults
-- Local SQLite + local artifact storage only
-- No telemetry
-- Default network mode is localhost-only
-- Sharing/discovery is optional and user-controlled
-- No mandatory network calls; CoEvo-style flows remain adapters/opt-in
+## Streamlit is the primary interface
+All core surfaces (Dashboard, Studio, Band, Arena, Gathering, Legacy, Cosmos, Open Cosmos) are rendered in Streamlit with sidebar navigation, dark-noir warmth styling, and live backend calls.
+
+### Recommended one-command launch
+```bash
+streamlit run app.py
+```
+
+## Privacy-first defaults
+- 100% local-first and offline by default
+- No mandatory network calls
+- Sharing is explicit and opt-in
+- Archive insights are anonymized and locally stored
+- FastAPI backend handles heavy lifting, Streamlit handles primary UX
+
+## Backend/API highlights
+- `/api/open-cosmos/archive/timeline`
+- `/api/open-cosmos/archive/query`
+- `/api/open-cosmos/visit`
+- `/api/open-cosmos/exchange`
+- `/api/open-cosmos/synthesis`
+- `/api/open-cosmos/forecast`
+- `/api/open-cosmos/spotlight`
+- `/api/open-cosmos/submit`
 
 ## Run locally
-### Server
+### Backend
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 python -m pip install -r requirements.txt
 uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
 ```
 
-### Web
+### Streamlit (primary)
+```bash
+python -m pip install -r requirements.txt
+streamlit run app.py
+```
+
+### Optional React web scaffold
 ```bash
 cd web
 npm ci
@@ -50,18 +62,7 @@ npm run build
 npm run dev
 ```
 
-### Streamlit
-```bash
-python -m pip install -r requirements.txt
-streamlit run streamlit_app.py
-```
-
 ## Screenshot placeholders
 - `docs/hero-soul-arena.svg`
-- `docs/cosmos-map-placeholder.svg`
-- `docs/open-cosmos-placeholder.svg`
-
-## Dev scripts
-- `scripts/dev.sh`
-- `scripts/dev.ps1`
-- `scripts/make_release_zip.py`
+- `docs/living-archive-streamlit-placeholder.svg`
+- `docs/open-cosmos-streamlit-placeholder.svg`

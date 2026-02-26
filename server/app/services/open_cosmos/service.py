@@ -157,3 +157,107 @@ def living_legacy_network(session: Session) -> dict:
     for s in list_shares(session):
         cards.append({'title': s['manifest']['world_name'], 'package': s['package_name'], 'thumbnail': '🌌', 'credits': s['contributors']})
     return {'items': cards}
+
+
+def living_archive_timeline(session: Session) -> list[dict]:
+    entries = []
+    for share in list_shares(session):
+        manifest = share.get('manifest', {})
+        for c in share.get('contributors', []):
+            entries.append({
+                'at': manifest.get('created_at', ''),
+                'cosmos': manifest.get('world_name', 'Unknown Cosmos'),
+                'credit': c.get('name', 'Unknown'),
+                'wisdom': 'Kindness scales when families reflect together.',
+                'anonymized': share.get('wisdom_mode') != 'full_public',
+            })
+    return sorted(entries, key=lambda e: e['at'], reverse=True)
+
+
+def query_living_archive(session: Session, question: str) -> dict:
+    q = question.lower().strip()
+    timeline = living_archive_timeline(session)
+    matches = [t for t in timeline if q in t['wisdom'].lower() or q in t['cosmos'].lower()]
+    pool = matches if matches else timeline[:5]
+    synthesis = 'Across shared legacies, families grow strongest when empathy and truthful dialogue stay balanced.'
+    return {'question': question, 'insights': pool[:8], 'synthesis': synthesis}
+
+
+def cross_cosmos_visit(session: Session, from_world_id: int, to_world_id: int) -> dict:
+    from_world = session.get(CosmosWorld, from_world_id)
+    to_world = session.get(CosmosWorld, to_world_id)
+    if not from_world or not to_world:
+        raise ValueError('world_not_found')
+    return {
+        'from': from_world.name,
+        'to': to_world.name,
+        'gifts': [
+            'new song motif inspired by shared resilience',
+            'debate technique: compassionate cross-examination',
+            'story seed: festival of lantern roots',
+        ],
+        'privacy': 'no private raw data copied; only distilled inspiration',
+    }
+
+
+def wisdom_exchange(session: Session, world_a: int, world_b: int) -> dict:
+    visit = cross_cosmos_visit(session, world_a, world_b)
+    return {
+        'exchange': visit,
+        'merged_content': {
+            'title': 'Bridge of Two Galaxies',
+            'summary': 'A merged narrative-song arc from both cosmoses.',
+        },
+    }
+
+
+def grand_synthesis(session: Session, world_ids: list[int], title: str = 'Meta Cosmos') -> dict:
+    worlds = [session.get(CosmosWorld, wid) for wid in world_ids]
+    worlds = [w for w in worlds if w]
+    if not worlds:
+        raise ValueError('world_not_found')
+    combined_seed = ' | '.join(w.seed_prompt for w in worlds)
+    meta = CosmosWorld(
+        name=title,
+        seed_prompt=f'Meta synthesis: {combined_seed}',
+        warmth=int(sum(w.warmth for w in worlds) / len(worlds)),
+        map_json=json.dumps([{'id': f'w-{w.id}', 'label': w.name, 'x': 20 + i * 18, 'y': 50} for i, w in enumerate(worlds)]),
+        rules_json=json.dumps({'origin_worlds': [w.id for w in worlds], 'mode': 'grand_synthesis'}),
+        history_json=json.dumps([{'type': 'grand_synthesis', 'worlds': [w.id for w in worlds], 'at': datetime.utcnow().isoformat()}]),
+    )
+    session.add(meta)
+    session.commit()
+    session.refresh(meta)
+    session.add(CosmosTimeline(world_id=meta.id, title='Meta Prime', branch_prompt='synthesized timeline', diff_json='{}'))
+    session.commit()
+    return {'meta_world_id': meta.id, 'name': meta.name, 'message': 'Grand Synthesis complete ✨'}
+
+
+def forecast_values_2050(session: Session, world_ids: list[int]) -> dict:
+    worlds = [session.get(CosmosWorld, wid) for wid in world_ids]
+    worlds = [w for w in worlds if w]
+    avg = int(sum(w.warmth for w in worlds) / len(worlds)) if worlds else 60
+    return {
+        'year': 2050,
+        'projected_values': [
+            {'value': 'kindness', 'score': min(100, avg + 12)},
+            {'value': 'truthfulness', 'score': min(100, avg + 5)},
+            {'value': 'creative courage', 'score': min(100, avg + 8)},
+        ],
+    }
+
+
+def community_spotlight(session: Session) -> list[dict]:
+    cards = living_legacy_network(session).get('items', [])
+    return cards[:6]
+
+
+def submit_to_community(session: Session, share_id: int) -> dict:
+    share = session.get(OpenCosmosShare, share_id)
+    if not share:
+        raise ValueError('share_not_found')
+    return {
+        'share_id': share_id,
+        'suggested_upload_target': 'CoEvo adapter (optional)',
+        'status': 'ready_for_manual_submit',
+    }

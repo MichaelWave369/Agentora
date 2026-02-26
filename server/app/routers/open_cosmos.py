@@ -6,11 +6,20 @@ from sqlmodel import Session
 from app.db import engine
 from app.services.open_cosmos.service import (
     global_wisdom_archive,
+    community_spotlight,
+    cross_cosmos_visit,
+    forecast_values_2050,
+    global_wisdom_archive,
+    grand_synthesis,
     import_package,
     list_shares,
+    living_archive_timeline,
     living_legacy_network,
+    query_living_archive,
     revoke_share,
     share_cosmos,
+    submit_to_community,
+    wisdom_exchange,
 )
 
 router = APIRouter(prefix='/api/open-cosmos', tags=['open-cosmos'])
@@ -30,6 +39,33 @@ class ImportReq(BaseModel):
 
 class WisdomReq(BaseModel):
     enabled: bool = False
+
+
+class ArchiveQueryReq(BaseModel):
+    question: str
+
+
+class VisitReq(BaseModel):
+    from_world_id: int
+    to_world_id: int
+
+
+class ExchangeReq(BaseModel):
+    world_a: int
+    world_b: int
+
+
+class SynthesisReq(BaseModel):
+    world_ids: list[int]
+    title: str = 'Meta Cosmos'
+
+
+class ForecastReq(BaseModel):
+    world_ids: list[int]
+
+
+class SubmitReq(BaseModel):
+    share_id: int
 
 
 @router.post('/share')
@@ -82,3 +118,63 @@ def wisdom(req: WisdomReq):
 def network():
     with Session(engine) as session:
         return living_legacy_network(session)
+
+
+@router.get('/archive/timeline')
+def archive_timeline():
+    with Session(engine) as session:
+        return {'items': living_archive_timeline(session)}
+
+
+@router.post('/archive/query')
+def archive_query(req: ArchiveQueryReq):
+    with Session(engine) as session:
+        return query_living_archive(session, req.question)
+
+
+@router.post('/visit')
+def visit(req: VisitReq):
+    with Session(engine) as session:
+        try:
+            return cross_cosmos_visit(session, req.from_world_id, req.to_world_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail='world_not_found')
+
+
+@router.post('/exchange')
+def exchange(req: ExchangeReq):
+    with Session(engine) as session:
+        try:
+            return wisdom_exchange(session, req.world_a, req.world_b)
+        except ValueError:
+            raise HTTPException(status_code=404, detail='world_not_found')
+
+
+@router.post('/synthesis')
+def synthesis(req: SynthesisReq):
+    with Session(engine) as session:
+        try:
+            return grand_synthesis(session, req.world_ids, req.title)
+        except ValueError:
+            raise HTTPException(status_code=404, detail='world_not_found')
+
+
+@router.post('/forecast')
+def forecast(req: ForecastReq):
+    with Session(engine) as session:
+        return forecast_values_2050(session, req.world_ids)
+
+
+@router.get('/spotlight')
+def spotlight():
+    with Session(engine) as session:
+        return {'items': community_spotlight(session)}
+
+
+@router.post('/submit')
+def submit(req: SubmitReq):
+    with Session(engine) as session:
+        try:
+            return submit_to_community(session, req.share_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail='share_not_found')
