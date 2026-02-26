@@ -40,3 +40,10 @@ Built-in templates are available under `teams/` and `agents/marketplace/`. Insta
 - Ollama not running: start Ollama (`ollama serve`) and check `OLLAMA_URL`.
 - No local model: `ollama pull llama3.1`.
 - To bypass Ollama for tests/dev checks: set `AGENTORA_USE_MOCK_OLLAMA=true`.
+
+
+## Streamlit Cloud
+- `streamlit_app.py` now tries HTTP API first, then automatically falls back to embedded backend mode if the API is unreachable.
+- Set `AGENTORA_STREAMLIT_MODE=embedded` to force no-network embedded mode.
+- Optionally set `AGENTORA_API_URL` to point Streamlit at a separately deployed backend.
+- Local usage works either with FastAPI running on `AGENTORA_PORT` (default 8088) or standalone via embedded mode.
