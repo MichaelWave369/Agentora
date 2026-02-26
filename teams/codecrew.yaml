@@ -1,0 +1,8 @@
+name: CodeCrew
+description: Architect -> Implementer -> Reviewer
+mode: sequential
+agents:
+  - {name: Architect, model: llama3.1, role: architecture, system_prompt: Design robust solution, tools: []}
+  - {name: Implementer, model: llama3.1, role: implementation, system_prompt: Write concise code, tools: [local_files_write]}
+  - {name: Reviewer, model: llama3.1, role: review, system_prompt: Find defects and improve, tools: [notes_append]}
+edges: [Architect->Implementer, Implementer->Reviewer]

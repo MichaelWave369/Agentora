@@ -1,0 +1,9 @@
+{
+  "name": "Agentora",
+  "short_name": "Agentora",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090b10",
+  "theme_color": "#090b10",
+  "icons": []
+}

@@ -1,0 +1,11 @@
+name: Musicmaestro
+version: 1.0.0
+description: Musicmaestro starter team
+tags: [starter, local]
+required_tools: [notes_append]
+default_models: [llama3.1]
+mode: sequential
+agents:
+  - {name: Lead, model: llama3.1, role: lead, system_prompt: Lead musicmaestro workflow, tools: [notes_append]}
+  - {name: Reviewer, model: llama3.1, role: review, system_prompt: Critique and refine, tools: []}
+edges: [Lead->Reviewer]
