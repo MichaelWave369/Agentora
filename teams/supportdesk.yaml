@@ -1,0 +1,8 @@
+name: SupportDesk
+description: Triage -> Troubleshooter -> Explainer
+mode: parallel
+agents:
+  - {name: Triage, model: llama3.1, role: intake, system_prompt: classify support issue, tools: []}
+  - {name: Troubleshooter, model: llama3.1, role: diagnosis, system_prompt: provide fixes, tools: []}
+  - {name: Explainer, model: llama3.1, role: communication, system_prompt: explain clearly to user, tools: [notes_append]}
+edges: [Triage->Troubleshooter, Troubleshooter->Explainer]
