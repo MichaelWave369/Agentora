@@ -1,0 +1,1 @@
+export default function TemplateGallery({templates}:{templates:any[]}){return <div className='grid'>{templates.map((t,i)=><div className='card' key={i}><h4>{t.name}</h4><p>{t.description}</p><small>{t.mode}</small></div>)}</div>}
