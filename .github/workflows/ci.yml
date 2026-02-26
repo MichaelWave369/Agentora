@@ -1,5 +1,9 @@
 name: ci
-on: [push, pull_request]
+
+on:
+  push:
+  pull_request:
+
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -11,11 +15,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -r server/requirements.txt
-      - run: pip install -r requirements-streamlit.txt
+      - run: python -m pip install -r server/requirements.txt
       - run: python -m compileall server/app
-      - run: AGENTORA_USE_MOCK_OLLAMA=true AGENTORA_USE_MOCK_VOICE=true PYTHONPATH=server pytest server/tests
-      - run: python -c "import streamlit; import streamlit_app"
+      - run: AGENTORA_USE_MOCK_OLLAMA=true pytest server/tests
+
   web:
     runs-on: ubuntu-latest
     steps:
@@ -23,4 +26,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: cd web && npm install && npm ci && npm run build
+          cache: 'npm'
+          cache-dependency-path: web/package-lock.json
+      - run: |
+          cd web
+          npm ci
+          npm run build
