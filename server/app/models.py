@@ -256,3 +256,25 @@ class CosmosTimeline(SQLModel, table=True):
     diff_json: str = '{}'
     status: str = 'active'
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class OpenCosmosShare(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    world_id: int
+    package_name: str
+    visibility: str = 'private'
+    wisdom_mode: str = 'anonymized'
+    manifest_json: str = '{}'
+    contributors_json: str = '[]'
+    revoked: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class OpenCosmosMerge(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    world_id: int
+    source_package: str
+    decisions_json: str = '{}'
+    conflicts_json: str = '[]'
+    status: str = 'merged'
+    created_at: datetime = Field(default_factory=datetime.utcnow)

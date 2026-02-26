@@ -96,9 +96,9 @@ def panel(title: str, path: str):
 
 
 def render_dashboard() -> None:
-    st.title('Agentora v0.5 — Cosmos & Eternal')
+    st.title('Agentora v0.6 — Open Cosmos & Shared Eternity')
     st.info(f'API Mode: {ACTIVE_MODE.upper()} | Local-first party edition')
-    tabs = st.tabs(['Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Core'])
+    tabs = st.tabs(['Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'Core'])
     with tabs[0]:
         panel('Personas', '/api/studio/personas')
     with tabs[1]:
@@ -115,6 +115,9 @@ def render_dashboard() -> None:
         panel('Cosmos Worlds', '/api/cosmos/worlds')
         panel('Eternal Archive', '/api/cosmos/archive')
     with tabs[6]:
+        panel('Open Shares', '/api/open-cosmos/shares')
+        panel('Living Legacy Network', '/api/open-cosmos/network')
+    with tabs[7]:
         panel('Health', '/api/health')
         panel('Runs', '/api/runs')
 

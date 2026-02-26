@@ -29,3 +29,8 @@ body[data-theme='noir'] .cosmos-card{background:linear-gradient(160deg,#10172a,#
 .timeline-pill.active{border-color:#22d3ee;box-shadow:0 0 10px #22d3ee55}
 .timeline-pill.collapsed,.timeline-pill.pruned{opacity:.55}
 .microcopy{font-style:italic;color:#93c5fd}
+
+body[data-theme='noir'] .open-cosmos-card{background:linear-gradient(160deg,#111827,#0b1327);border-color:#0ea5e9}
+.open-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.network-card{background:#0f172a;border:1px solid #334155;border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:4px;box-shadow:0 0 14px #38bdf855}
+.version-item{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-bottom:1px dashed #374151}

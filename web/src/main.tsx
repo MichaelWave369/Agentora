@@ -16,6 +16,7 @@ import ArenaMode from './pages/ArenaMode'
 import GatheringMode from './pages/GatheringMode'
 import LegacyMode from './pages/LegacyMode'
 import CosmosMode from './pages/CosmosMode'
+import OpenCosmosMode from './pages/OpenCosmosMode'
 import './styles.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -30,6 +31,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path='/gathering-mode' element={<GatheringMode/>}/>
           <Route path='/legacy-mode' element={<LegacyMode/>}/>
           <Route path='/cosmos-mode' element={<CosmosMode/>}/>
+          <Route path='/open-cosmos-mode' element={<OpenCosmosMode/>}/>
           <Route path='/agents' element={<Agents/>}/>
           <Route path='/teams' element={<Teams/>}/>
           <Route path='/marketplace' element={<Marketplace/>}/>
