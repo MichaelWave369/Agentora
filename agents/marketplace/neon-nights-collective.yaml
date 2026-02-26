@@ -1,0 +1,11 @@
+name: Neon Nights Collective
+version: 1.0.0
+description: Synthwave cyber-noir band crew
+tags: [band, synthwave]
+required_tools: [notes_append]
+default_models: [llama3.1]
+mode: sequential
+agents:
+  - {name: BeatSmith, model: llama3.1, role: drums, system_prompt: craft retro beats, tools: []}
+  - {name: MixMaster, model: llama3.1, role: mix, system_prompt: blend everything, tools: [notes_append]}
+edges: [BeatSmith->MixMaster]
