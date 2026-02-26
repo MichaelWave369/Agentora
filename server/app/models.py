@@ -278,3 +278,22 @@ class OpenCosmosMerge(SQLModel, table=True):
     conflicts_json: str = '[]'
     status: str = 'merged'
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class GardenBed(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    cosmos_world_id: int
+    plant_name: str
+    season: str = 'Spring'
+    growth: int = 0
+    gardener_role: str = 'Waterer'
+    memories_json: str = '[]'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class GardenHarvest(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    garden_bed_id: int
+    harvest_type: str = 'wisdom'
+    payload_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)

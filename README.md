@@ -1,4 +1,4 @@
-# Agentora v0.7 — Wisdom Eternal & The Living Archive
+# Agentora v0.8 — The Eternal Garden
 
 ![Agentora Soul & Arena Hero](docs/hero-soul-arena.svg)
 
@@ -8,7 +8,10 @@
 
 Agentora is now **Streamlit-first** for the complete product experience, while FastAPI remains the local orchestration/data backend.
 
-## What’s new in v0.7
+## What’s new in v0.8
+- **The Eternal Garden** tab: living garden map with growth bars, seasons, tending, and harvest cycles.
+- Agent gardener roles: Waterer, Pruner, Pollinator, Harvester.
+- Community garden view for shared blooming beds and seasonal evolution.
 - Fixed embedded Streamlit + FastAPI + SQLite initialization for Streamlit Cloud and local runs (`./agentora.db` fallback).
 - **Living Archive**: centralized, opt-in, anonymized wisdom timeline across shared/imported cosmoses.
 - **Cross-Cosmos Visitation**: agents can visit other imported cosmoses and bring back distilled inspiration.
@@ -18,7 +21,7 @@ Agentora is now **Streamlit-first** for the complete product experience, while F
 - **Community Spotlight**: featured public cosmos cards (consent-based, local-first rendering).
 
 ## Streamlit is the primary interface
-All core surfaces (Dashboard, Studio, Band, Arena, Gathering, Legacy, Cosmos, Open Cosmos) are rendered in Streamlit with sidebar navigation, dark-noir warmth styling, and live backend calls.
+All core surfaces (Dashboard, Studio, Band, Arena, Gathering, Legacy, Cosmos, Open Cosmos, The Eternal Garden) are rendered in Streamlit with sidebar navigation, dark-noir warmth styling, and live backend calls.
 
 ### Recommended one-command launch
 ```bash

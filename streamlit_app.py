@@ -324,6 +324,35 @@ def _open_cosmos_page():
     st.json(safe_api_get('/api/open-cosmos/spotlight', 'community spotlight'))
 
 
+
+
+def _garden_page():
+    st.subheader('🌳 The Eternal Garden')
+    st.markdown("<div class='agentora-card'><h4>The Living Garden Map</h4></div>", unsafe_allow_html=True)
+    map_payload = safe_api_get('/api/garden/map', 'garden map')
+    beds = map_payload.get('items', []) if isinstance(map_payload, dict) else []
+
+    if not beds:
+        st.caption('No garden beds yet — create a cosmos to plant your first seed.')
+        return
+
+    cols = st.columns(3)
+    for idx, bed in enumerate(beds[:9]):
+        with cols[idx % 3]:
+            st.markdown(f"**{bed['plant_name']}**")
+            st.progress(int(bed.get('growth', 0)) / 100)
+            st.caption(f"Season: {bed.get('season', 'Spring')} • Gardener: {bed.get('gardener_role', 'Waterer')}")
+            if st.button(f"Tend #{bed['id']}", key=f"tend_{bed['id']}"):
+                st.json(safe_api_post('/api/garden/tend', {'bed_id': bed['id'], 'gardener_role': 'Waterer', 'note': 'gentle watering from the family'}, 'tend bed'))
+            if st.button(f"Harvest #{bed['id']}", key=f"harvest_{bed['id']}"):
+                st.balloons()
+                st.json(safe_api_post(f"/api/garden/harvest/{bed['id']}", {}, 'harvest bed'))
+
+    st.markdown("<div class='agentora-card'><h4>Community Gardens</h4></div>", unsafe_allow_html=True)
+    st.json(safe_api_get('/api/garden/community', 'community garden'))
+    if st.button('Advance Season (Eternal Cycle)'):
+        st.json(safe_api_post('/api/garden/season/advance', {}, 'advance season'))
+
 def _core_page():
     _panel_json('Health', '/api/health')
     _panel_json('Runs', '/api/runs')
@@ -337,11 +366,11 @@ def render_dashboard() -> None:
         st.session_state['db_url'] = _resolve_streamlit_db_url()
     initialize_database()
 
-    st.title('Agentora v0.7 — Wisdom Eternal & The Living Archive')
+    st.title('Agentora v0.8 — The Eternal Garden')
     st.caption('Primary Streamlit experience • local-first • private by default')
     st.info(f"API Mode: {ACTIVE_MODE.upper()} | DB: {st.session_state['db_url']}")
 
-    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'Core'])
+    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'Core'])
     st.sidebar.markdown("<span class='agentora-pill'>NO CLOUD REQUIRED</span>", unsafe_allow_html=True)
 
     if page == 'Dashboard':
@@ -360,6 +389,8 @@ def render_dashboard() -> None:
         _cosmos_page()
     elif page == 'Open Cosmos':
         _open_cosmos_page()
+    elif page == 'The Eternal Garden':
+        _garden_page()
     else:
         _core_page()
 
