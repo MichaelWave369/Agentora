@@ -1,0 +1,11 @@
+name: MicTek Rebellion
+version: 1.0.0
+description: Hip-hop electronic rebellion crew
+tags: [band, hiphop]
+required_tools: [notes_append]
+default_models: [llama3.1]
+mode: sequential
+agents:
+  - {name: BassEnforcer, model: llama3.1, role: bass, system_prompt: hard bass drops, tools: []}
+  - {name: RapBattleMC, model: llama3.1, role: vocals, system_prompt: sharp punchlines, tools: [notes_append]}
+edges: [BassEnforcer->RapBattleMC]

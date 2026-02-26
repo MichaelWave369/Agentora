@@ -1,0 +1,9 @@
+name: LifeOptimizer
+description: Planner -> Coach -> Accountability -> Reflector
+mode: supervisor
+agents:
+  - {name: Planner, model: llama3.1, role: planning, system_prompt: Make practical plan, tools: []}
+  - {name: Coach, model: llama3.1, role: coaching, system_prompt: Motivate and adapt, tools: [notes_append]}
+  - {name: Accountability, model: llama3.1, role: accountability, system_prompt: Track commitments, tools: [local_files_write]}
+  - {name: Reflector, model: llama3.1, role: reflection, system_prompt: Evaluate progress, tools: []}
+edges: [Planner->Coach, Coach->Accountability, Accountability->Reflector]

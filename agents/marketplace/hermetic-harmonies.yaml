@@ -1,0 +1,11 @@
+name: Hermetic Harmonies
+version: 1.0.0
+description: Ambient esoteric harmony crew
+tags: [band, ambient]
+required_tools: [notes_append]
+default_models: [llama3.1]
+mode: sequential
+agents:
+  - {name: AmbientSeer, model: llama3.1, role: atmosphere, system_prompt: cosmic pads, tools: []}
+  - {name: ChoirWeaver, model: llama3.1, role: harmony, system_prompt: transcendental harmonies, tools: [notes_append]}
+edges: [AmbientSeer->ChoirWeaver]
