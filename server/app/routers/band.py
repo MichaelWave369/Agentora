@@ -64,3 +64,19 @@ def publish_coevo(track_id: int, payload: dict):
     if not payload.get('coevo_url'):
         return {'ok': False, 'message': 'Not configured'}
     return {'ok': True, 'published': False, 'message': 'adapter stub'}
+
+
+@router.get('/track/{track_id}/export-project.zip')
+def export_track(track_id: int, session: Session = Depends(get_session)):
+    import zipfile
+    row = session.get(BandTrackJob, track_id)
+    out = Path('server/data/band') / f'export_{track_id}.zip'
+    stems = json.loads(row.stems_json)
+    with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.write(row.master_path, 'master.wav')
+        for k,v in stems.items():
+            zf.write(v, f'stems/{k}.wav')
+        zf.writestr('lyrics_timestamps.json', row.lyrics_json)
+        zf.writestr('midi.note_events.json', json.dumps({'notes':[{'t':0,'n':'C4'}]}))
+        zf.writestr('cover_art_prompt.txt', 'Band in cyber coliseum under neon purple sky')
+    return FileResponse(str(out), media_type='application/zip', filename='band-full-project.zip')

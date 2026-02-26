@@ -17,3 +17,15 @@ def tts(payload: dict):
     if not meta.get('ok'):
         return meta
     return Response(content=wav, media_type='audio/wav')
+
+
+@router.get('/status')
+def status():
+    from app.core.config import settings
+    configured = bool(settings.piper_path and settings.piper_voice_model_path)
+    return {
+        'voice_enabled': settings.voice_enabled,
+        'piper_configured': configured,
+        'whisper_configured': bool(settings.whisper_cpp_path),
+        'install_command': 'brew install piper && piper --model <voice.onnx> --output_file demo.wav --text "hello"'
+    }

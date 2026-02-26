@@ -1,5 +1,10 @@
 # Agentora v0.2 — Soul & Arena Edition
 
+![Agentora Soul & Arena Hero](docs/hero-soul-arena.svg)
+
+[🚀 Try It Now: MicTek Rebellion](http://localhost:5173/band-mode)
+
+
 Agentora is a local-first multi-agent orchestration studio for Ollama with three creative modes:
 - **Studio**: voice/song generation with personas, stems, waveform, and Sing flow
 - **Band**: iterative music crews (beat/melody/bass/vocals/mix) with track exports

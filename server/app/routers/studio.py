@@ -89,3 +89,19 @@ def turn_verdict_into_anthem(payload: dict, session: Session = Depends(get_sessi
 @router.post('/narrate-highlights')
 def narrate_highlights(payload: dict, session: Session = Depends(get_session)):
     return {'ok': True, 'narration': f"Tonight in the Arena: {payload.get('summary','highlights')}"}
+
+
+@router.get('/song/{song_job_id}/export-project.zip')
+def export_project(song_job_id: int, session: Session = Depends(get_session)):
+    import zipfile
+    job = session.get(SongJob, song_job_id)
+    out = Path('server/data/studio') / f'export_{song_job_id}.zip'
+    stems = json.loads(job.stems_json)
+    with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.write(job.master_path, 'master.wav')
+        for k,v in stems.items():
+            zf.write(v, f'stems/{k}.wav')
+        zf.writestr('lyrics_timestamps.json', job.lyrics_json)
+        zf.writestr('midi.note_events.json', json.dumps({'notes':[{'t':0,'n':'A4'}]}))
+        zf.writestr('cover_art_prompt.txt', 'Cyber-noir singer on neon stage, cyan and purple lights')
+    return FileResponse(str(out), media_type='application/zip', filename='studio-full-project.zip')
