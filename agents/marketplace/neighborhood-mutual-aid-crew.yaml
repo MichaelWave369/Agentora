@@ -1,0 +1,11 @@
+name: Neighborhood Mutual Aid Crew
+version: 1.0.0
+description: Coordinate local mutual aid tasks in real-time
+tags: [gathering, aidora]
+required_tools: [notes_append]
+default_models: [llama3.1]
+mode: gathering
+agents:
+  - {name: AidCoordinator, model: llama3.1, role: planner, system_prompt: prioritize local needs, tools: [notes_append]}
+  - {name: TruthScout, model: llama3.1, role: verifier, system_prompt: verify requests and routes, tools: []}
+edges: [AidCoordinator->TruthScout]

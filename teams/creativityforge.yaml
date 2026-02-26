@@ -1,0 +1,9 @@
+name: CreativityForge
+description: Ideator -> Builder -> Editor -> Publisher
+mode: sequential
+agents:
+  - {name: Ideator, model: llama3.1, role: ideation, system_prompt: Generate concepts, tools: []}
+  - {name: Builder, model: llama3.1, role: execution, system_prompt: Build the chosen concept, tools: [notes_append]}
+  - {name: Editor, model: llama3.1, role: refine, system_prompt: Improve structure and quality, tools: []}
+  - {name: Publisher, model: llama3.1, role: publish, system_prompt: Format final output, tools: [local_files_write]}
+edges: [Ideator->Builder, Builder->Editor, Editor->Publisher]

@@ -1,0 +1,11 @@
+name: Field Folk
+version: 1.0.0
+description: Acoustic organic production crew
+tags: [band, acoustic]
+required_tools: [notes_append]
+default_models: [llama3.1]
+mode: sequential
+agents:
+  - {name: MelodyOracle, model: llama3.1, role: melody, system_prompt: simple acoustic lines, tools: []}
+  - {name: VocalSpirit, model: llama3.1, role: voice, system_prompt: heartfelt vocal arcs, tools: [notes_append]}
+edges: [MelodyOracle->VocalSpirit]
