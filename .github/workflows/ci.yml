@@ -17,7 +17,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install -r server/requirements.txt
       - run: python -m compileall server/app
-      - run: AGENTORA_USE_MOCK_OLLAMA=true pytest server/tests
+      - run: AGENTORA_USE_MOCK_OLLAMA=true PYTHONPATH=server pytest -q server/tests
 
   web:
     runs-on: ubuntu-latest
@@ -30,5 +30,6 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: |
           cd web
+          npm install
           npm ci
           npm run build

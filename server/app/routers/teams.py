@@ -17,7 +17,7 @@ def templates():
 
 @router.get('')
 def list_teams(session: Session = Depends(get_session)):
-    return list(session.exec(select(Team)))
+    return [t.model_dump() for t in session.exec(select(Team))]
 
 
 @router.post('')
@@ -31,7 +31,8 @@ def create_team(payload: TeamIn, session: Session = Depends(get_session)):
     for idx, aid in enumerate(agent_ids):
         session.add(TeamAgent(team_id=team.id, agent_id=aid, position=idx))
     session.commit()
-    return team
+    session.refresh(team)
+    return team.model_dump()
 
 
 @router.post('/import-yaml')

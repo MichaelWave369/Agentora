@@ -26,7 +26,7 @@ class ToolRegistry:
     def list(self) -> list[dict]:
         return [{'name': t.name, 'schema': t.schema, 'permission': t.permission} for t in self._tools.values()]
 
-    def call(self, name: str, allowed: list[str], **kwargs):
+    def call(self, name: str, allowed: list, **kwargs):
         if name not in self._tools:
             return {'ok': False, 'error': 'unknown tool'}
         if name not in allowed:

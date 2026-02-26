@@ -11,7 +11,7 @@ router = APIRouter(prefix='/api/agents', tags=['agents'])
 
 @router.get('')
 def list_agents(session: Session = Depends(get_session)):
-    return list(session.exec(select(Agent)))
+    return [a.model_dump() for a in session.exec(select(Agent))]
 
 
 @router.post('')
@@ -20,4 +20,4 @@ def create_agent(payload: AgentIn, session: Session = Depends(get_session)):
     session.add(obj)
     session.commit()
     session.refresh(obj)
-    return obj
+    return obj.model_dump()
