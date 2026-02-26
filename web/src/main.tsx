@@ -14,6 +14,7 @@ import StudioMode from './pages/StudioMode'
 import BandMode from './pages/BandMode'
 import ArenaMode from './pages/ArenaMode'
 import GatheringMode from './pages/GatheringMode'
+import LegacyMode from './pages/LegacyMode'
 import './styles.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -26,6 +27,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path='/band-mode' element={<BandMode/>}/>
           <Route path='/arena-mode' element={<ArenaMode/>}/>
           <Route path='/gathering-mode' element={<GatheringMode/>}/>
+          <Route path='/legacy-mode' element={<LegacyMode/>}/>
           <Route path='/agents' element={<Agents/>}/>
           <Route path='/teams' element={<Teams/>}/>
           <Route path='/marketplace' element={<Marketplace/>}/>

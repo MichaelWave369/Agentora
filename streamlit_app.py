@@ -96,9 +96,9 @@ def panel(title: str, path: str):
 
 
 def render_dashboard() -> None:
-    st.title('Agentora v0.3 — Together')
+    st.title('Agentora v0.4 — Legacy & Evolution')
     st.info(f'API Mode: {ACTIVE_MODE.upper()} | Local-first party edition')
-    tabs = st.tabs(['Studio', 'Band', 'Arena', 'Gathering', 'Core'])
+    tabs = st.tabs(['Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Core'])
     with tabs[0]:
         panel('Personas', '/api/studio/personas')
     with tabs[1]:
@@ -109,6 +109,9 @@ def render_dashboard() -> None:
         panel('LAN Discover', '/api/gathering/discover')
         panel('Gathering Templates', '/api/gathering/templates')
     with tabs[4]:
+        panel('Legacy Souls', '/api/legacy/souls')
+        panel('Legacy Tree', '/api/legacy/tree')
+    with tabs[5]:
         panel('Health', '/api/health')
         panel('Runs', '/api/runs')
 

@@ -1,15 +1,17 @@
-# Agentora v0.3 — Together (Family & Community Edition)
+# Agentora v0.4 — Legacy & Evolution
 
 ![Agentora Soul & Arena Hero](docs/hero-soul-arena.svg)
 
 [🚀 Try It Now: MicTek Rebellion](http://localhost:5173/band-mode)  
-[🏠 Try Gathering](http://localhost:5173/gathering-mode)
+[🏠 Try Gathering](http://localhost:5173/gathering-mode)  
+[🌳 Create Your First Legacy Agent](http://localhost:5173/legacy-mode)
 
-Agentora is a local-first multi-agent orchestration studio for Ollama with four modes:
+Agentora is a local-first multi-agent orchestration studio for Ollama with five modes:
 - **Studio**: voice/song generation with personas, stems, waveform, and Sing flow
 - **Band**: iterative music crews (beat/melody/bass/vocals/mix) with track exports
 - **Arena**: truth-seeking debate matches/tournaments with scoring and reports
 - **Gathering**: family/friends LAN sessions with room codes, shared crews, and memory vault
+- **Legacy**: persistent agent souls, family trees, evolution points, heirloom exports
 
 ## Privacy & safety defaults
 - Local SQLite + local artifact storage only
@@ -17,6 +19,14 @@ Agentora is a local-first multi-agent orchestration studio for Ollama with four 
 - Default network mode is localhost-only
 - Mock modes (`AGENTORA_USE_MOCK_OLLAMA`, `AGENTORA_USE_MOCK_VOICE`) for offline tests
 - No cloud accounts required
+
+## Legacy highlights
+- Persistent Soul Files for every agent (`server/data/legacy/souls/*.soul.json`)
+- Evolution points and trait growth (humor/truth/creativity/empathy)
+- Agent family trees with child/fork creation and trait inheritance
+- Daily reflection + nurture mechanics
+- Heirloom export (`/api/legacy/heirloom/{agent_id}.zip`) for pass-it-on archives
+- Gathering synergy via `family-night-reflection` endpoint
 
 ## Streamlit Cloud
 - Root `requirements.txt` includes server dependencies for embedded mode.
@@ -58,6 +68,10 @@ streamlit run streamlit_app.py
 - Piper and Whisper.cpp are optional hooks via env vars; mock mode works without binaries.
 - Heavy musicgen models are intentionally not bundled in default install; a plugin hook approach is used.
 - ffmpeg is optional (WAV-first workflow still works without it).
+
+## Screenshot placeholders
+- `docs/hero-soul-arena.svg` (current hero)
+- Add your own `docs/legacy-tree-placeholder.svg` if you want a custom Legacy tree hero shot.
 
 ## Dev scripts
 - `scripts/dev.sh`
