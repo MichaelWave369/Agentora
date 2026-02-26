@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
 export default function Nav(){
-  const items=['/','/agents','/teams','/studio','/runs','/settings']
-  return <nav>{items.map(i=><Link key={i} to={i}>{i==='/'?'dashboard':i.slice(1)}</Link>)}</nav>
+  const items=[['/','dashboard'],['/agents','agents'],['/teams','teams'],['/marketplace','marketplace'],['/studio','studio'],['/runs','runs'],['/analytics','analytics'],['/settings','settings']]
+  return <nav>{items.map(i=><Link key={i[0]} to={i[0]}>{i[1]}</Link>)}</nav>
 }

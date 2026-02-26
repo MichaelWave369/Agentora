@@ -1,71 +1,42 @@
-# Agentora v0.1
+# Agentora
 
-Agentora is a **local-first multi-agent orchestration studio for Ollama**. It helps you build teams of agents that debate, critique, synthesize, and execute with a visual workflow and YAML templates.
+Agentora is a **local-first multi-agent orchestration studio for Ollama**. It runs privately on your machine, stores state in local SQLite, and defaults to localhost-only outbound networking.
 
-## Privacy Promise
-- No telemetry
-- Default network mode is `localhost_only`
-- Intended outbound target is local Ollama (`http://localhost:11434`)
-- SQLite-only local persistence
+## What it includes
+- FastAPI backend with orchestration modes, template/marketplace APIs, multimodal attachments, analytics, snapshots, LAN scaffolding, and tool registry.
+- React web app for run studio, marketplace, analytics, team/agent pages.
+- Streamlit quick dashboard (`streamlit_app.py`) for lightweight operations.
 
-## Quickstart (macOS/Linux)
+## Safety defaults
+- `AGENTORA_NETWORK_MODE=localhost_only` by default.
+- No telemetry.
+- Local persistence only.
+
+## Quickstart (Server)
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r server/requirements.txt
-PYTHONPATH=server uvicorn app.main:app --reload
+python -m pip install -r server/requirements.txt
+uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
 ```
-In another terminal:
+
+## Quickstart (Web)
 ```bash
 cd web
 npm ci
+npm run build
 npm run dev
 ```
 
-## Quickstart (Windows PowerShell)
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r server/requirements.txt
-$env:PYTHONPATH='server'
-uvicorn app.main:app --reload
-```
-Then:
-```powershell
-cd web
-npm ci
-npm run dev
+## Mock mode (tests without Ollama)
+```bash
+AGENTORA_USE_MOCK_OLLAMA=true pytest server/tests
 ```
 
-## Mock Mode
-Set `AGENTORA_USE_MOCK_OLLAMA=true` to run deterministic orchestration and tests without Ollama.
-
-## Built-in Templates
-- TruthQuest (debate)
-- CreativityForge (sequential)
-- LifeOptimizer (supervisor)
-- CodeCrew (sequential)
-- SupportDesk (parallel)
+## Templates and marketplace
+Built-in templates are available under `teams/` and `agents/marketplace/`. Install/update/export via marketplace/template API endpoints.
 
 ## Troubleshooting
-- Ollama not running: start `ollama serve`
-- No models: run `ollama pull llama3.1`
-- CI/tests: enable mock mode (`AGENTORA_USE_MOCK_OLLAMA=true`)
-
-## Commands
-```bash
-AGENTORA_USE_MOCK_OLLAMA=true PYTHONPATH=server pytest server/tests
-python -m compileall server/app
-cd web && npm ci && npm run build
-python scripts/make_release_zip.py
-```
-
-## Add a Tool
-1. Implement function in `server/app/services/tools/builtins.py`
-2. Register in `server/app/services/tools/registry.py`
-3. Add to agent tools allowlist.
-
-## Add a Template
-1. Add a YAML file under `/teams`
-2. Ensure `name`, `description`, `mode`, `agents`, `edges` are set
-3. It appears via `/api/teams/templates`
+- Ollama not running: start Ollama (`ollama serve`) and check `OLLAMA_URL`.
+- No local model: `ollama pull llama3.1`.
+- To bypass Ollama for tests/dev checks: set `AGENTORA_USE_MOCK_OLLAMA=true`.

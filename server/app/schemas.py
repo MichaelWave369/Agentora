@@ -24,4 +24,5 @@ class RunIn(BaseModel):
     max_turns: int = 6
     max_seconds: int = 60
     token_budget: int = 3000
+    consensus_threshold: int = 1
     reflection: bool = False

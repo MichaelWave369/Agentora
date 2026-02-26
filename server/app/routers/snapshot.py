@@ -18,5 +18,5 @@ def snapshot(run_id: int, session: Session = Depends(get_session)):
     msgs = list(session.exec(select(Message).where(Message.run_id == run_id).order_by(Message.id.desc()).limit(10)))
     tcount = len(list(session.exec(select(ToolCall).where(ToolCall.run_id == run_id))))
     lines = [f"{m.role}: {m.content}" for m in reversed(msgs)]
-    png = render_snapshot(team.name if team else 'Unknown', run.mode, run.status, lines, tcount)
+    png = render_snapshot(team.name if team else 'Unknown', run.mode, run.status, lines, tcount, team.version if team else 'n/a', team.marketplace_id if team else 'n/a')
     return Response(content=png, media_type='image/png')

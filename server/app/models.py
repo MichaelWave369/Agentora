@@ -21,6 +21,8 @@ class Team(SQLModel, table=True):
     description: str = ''
     mode: str = 'sequential'
     yaml_text: str = ''
+    version: str = '0.1.0'
+    marketplace_id: str = ''
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -42,7 +44,9 @@ class Run(SQLModel, table=True):
     max_turns: int = 8
     max_seconds: int = 90
     token_budget: int = 4000
+    consensus_threshold: int = 1
     result_summary: str = ''
+    paused_reason: str = ''
 
 
 class Message(SQLModel, table=True):
@@ -70,6 +74,7 @@ class ToolCall(SQLModel, table=True):
     tool_name: str
     args_json: str = '{}'
     result_json: str = '{}'
+    approved: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -80,3 +85,71 @@ class Artifact(SQLModel, table=True):
     path: str
     meta_json: str = '{}'
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InstalledTemplate(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    version: str
+    description: str = ''
+    tags_json: str = '[]'
+    yaml_path: str
+    source: str = 'marketplace'
+    installed_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Attachment(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int
+    filename: str
+    mime: str
+    sha256: str
+    path: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    meta_json: str = '{}'
+
+
+class AttachmentExtract(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    attachment_id: int
+    text: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ModelCapability(SQLModel, table=True):
+    model_name: str = Field(primary_key=True)
+    can_vision: bool = False
+    can_tools: bool = True
+    notes: str = ''
+
+
+class RunMetric(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int
+    agent_id: int = 0
+    tokens_in: int = 0
+    tokens_out: int = 0
+    seconds: float = 0
+    tool_calls: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TemplateUsage(SQLModel, table=True):
+    template_id: int
+    runs_count: int = 0
+    last_used_at: datetime = Field(default_factory=datetime.utcnow)
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+
+class IntegrationSetting(SQLModel, table=True):
+    name: str = Field(primary_key=True)
+    enabled: bool = False
+    config_json: str = '{}'
+
+
+class VoiceSetting(SQLModel, table=True):
+    id: Optional[int] = Field(default=1, primary_key=True)
+    voice_enabled: bool = False
+    whisper_cpp_path: str = ''
+    piper_path: str = ''
+    piper_voice_model_path: str = ''

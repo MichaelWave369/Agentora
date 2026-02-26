@@ -3,8 +3,9 @@ import json
 from datetime import datetime
 from sqlmodel import Session, select
 
-from app.models import Team, TeamAgent, Agent, Run, Message
+from app.models import TeamAgent, Agent, Run, Message, RunMetric, TemplateUsage, Attachment, ModelCapability
 from app.services.ollama_client import OllamaClient
+from app.services.multimodal.service import model_can_vision
 from .state import RunState
 
 
@@ -14,69 +15,62 @@ class OrchestrationEngine:
 
     async def execute(self, session: Session, run: Run, prompt: str, reflection: bool = False) -> RunState:
         links = list(session.exec(select(TeamAgent).where(TeamAgent.team_id == run.team_id).order_by(TeamAgent.position)))
-        agents = [session.get(Agent, link.agent_id) for link in links]
+        agents = [session.get(Agent, link.agent_id) for link in links if session.get(Agent, link.agent_id)]
+        attachments = list(session.exec(select(Attachment).where(Attachment.run_id == run.id)))
         state = RunState(run_id=run.id, prompt=prompt, mode=run.mode, max_turns=run.max_turns, max_seconds=run.max_seconds, token_budget=run.token_budget, reflection=reflection)
         state.add('user', prompt)
-        await self._dispatch(state, agents)
-        run.status = 'completed'
+        await self._dispatch(session, state, agents, run.consensus_threshold, [a.path for a in attachments if a.mime.startswith('image/')])
         run.finished_at = datetime.utcnow()
+        if run.status == 'running':
+            run.status = 'completed'
         run.result_summary = state.messages[-1]['content'][:300] if state.messages else ''
         session.add(run)
         for m in state.messages:
-            session.add(Message(run_id=run.id, agent_id_nullable=m.get('agent_id'), role=m['role'], content=m['content'], meta_json=json.dumps({})))
+            session.add(Message(run_id=run.id, agent_id_nullable=m.get('agent_id'), role=m['role'], content=m['content'], meta_json=json.dumps(m.get('meta', {}))))
+        usage = session.exec(select(TemplateUsage).where(TemplateUsage.template_id == run.team_id)).first() or TemplateUsage(template_id=run.team_id, runs_count=0)
+        usage.runs_count += 1
+        usage.last_used_at = datetime.utcnow()
+        session.add(usage)
         session.commit()
         return state
 
-    async def _agent_reply(self, agent, prompt: str) -> str:
+    async def _agent_reply(self, session: Session, agent, prompt: str, image_paths: list[str]) -> tuple[str, float, str]:
+        t0 = datetime.utcnow()
+        chosen_model = agent.model
+        cap = session.get(ModelCapability, agent.model)
+        if image_paths and not ((cap and cap.can_vision) or model_can_vision(agent.model)):
+            chosen_model = 'llava:latest'
         chunks = []
-        async for tok in self.client.stream_chat(agent.model, agent.system_prompt, prompt):
+        async for tok in self.client.stream_chat(chosen_model, agent.system_prompt, prompt, image_paths=image_paths):
             chunks.append(tok)
-        return ''.join(chunks).strip()
+        text = ''.join(chunks).strip()
+        return text, (datetime.utcnow() - t0).total_seconds(), chosen_model
 
-    async def _dispatch(self, state: RunState, agents: list[Agent]):
+    async def _dispatch(self, session: Session, state: RunState, agents: list[Agent], consensus_threshold: int, image_paths: list[str]):
         started = datetime.utcnow()
-        mode = state.mode
-        if mode == 'parallel' and agents:
-            lead = agents[-1]
-            workers = agents[:-1]
-            results = await asyncio.gather(*[self._agent_reply(a, state.prompt) for a in workers[: state.max_turns]])
-            for a, r in zip(workers, results):
-                state.add('assistant', r, a.id)
-            summary = await self._agent_reply(lead, 'Summarize:\n' + '\n'.join(results))
-            state.add('assistant', summary, lead.id)
-            return
-        if mode == 'debate' and len(agents) >= 3:
-            proposer, critic, synth = agents[0], agents[1], agents[2]
-            memo = state.prompt
-            for _ in range(min(2, state.max_turns)):
-                p = await self._agent_reply(proposer, memo)
-                state.add('assistant', p, proposer.id)
-                c = await self._agent_reply(critic, p)
-                state.add('assistant', c, critic.id)
-                memo = c
-            fin = await self._agent_reply(synth, memo)
-            state.add('assistant', fin, synth.id)
-            return
-        if mode == 'supervisor' and agents:
-            sup = agents[0]
-            workers = agents[1:] or [sup]
-            routed = []
-            for w in workers[: state.max_turns]:
-                routed.append(await self._agent_reply(w, state.prompt))
-            final = await self._agent_reply(sup, 'Route results:\n' + '\n'.join(routed))
-            for w, out in zip(workers, routed):
-                state.add('assistant', out, w.id)
-            state.add('assistant', final, sup.id)
-            return
-
+        agreements = 0
         for i, a in enumerate(agents[: state.max_turns]):
             if (datetime.utcnow() - started).total_seconds() > state.max_seconds:
                 state.add('system', 'Timeout reached')
                 break
-            reply = await self._agent_reply(a, state.prompt if i == 0 else state.messages[-1]['content'])
+            prompt = state.prompt if i == 0 else state.messages[-1]['content']
+            reply, seconds, model_used = await self._agent_reply(session, a, prompt, image_paths)
+            in_toks = max(1, len(prompt) // 4)
+            out_toks = max(1, len(reply) // 4)
+            session.add(RunMetric(run_id=state.run_id, agent_id=a.id or 0, tokens_in=in_toks, tokens_out=out_toks, seconds=seconds, tool_calls=0))
+            if sum((m.get('meta', {}).get('tokens_out', 0) for m in state.messages)) + out_toks > state.token_budget:
+                state.add('system', 'Max cost guard reached; run paused')
+                break
             if state.repeated(reply):
                 state.add('system', 'Loop detected; aborting')
                 break
-            state.add('assistant', reply, a.id)
+            if 'agree' in reply.lower() or 'consensus' in reply.lower():
+                agreements += 1
+            state.add('assistant', reply, a.id, meta={'model_used': model_used, 'tokens_out': out_toks})
             if state.reflection:
                 state.add('system', f'Reflection {a.name}: quality=0.8 uncertainty=0.2', a.id)
+
+        if state.mode == 'debate' and agreements < consensus_threshold:
+            state.add('system', f'Consensus threshold not met ({agreements}/{consensus_threshold}); awaiting more critique')
+
+        session.commit()

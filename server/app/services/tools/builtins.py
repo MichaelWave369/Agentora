@@ -3,7 +3,7 @@ import requests
 
 from app.core.config import settings
 from app.core.security import ensure_url_allowed
-from .sandbox import run_python_restricted
+from .sandbox import run_python_sandboxed
 
 
 def _run_dir(run_id: int) -> Path:
@@ -38,7 +38,7 @@ def local_files_read(run_id: int, path: str) -> dict:
 
 
 def capsule_search(query: str) -> dict:
-    return {'ok': False, 'message': 'capsule_search not configured', 'query': query}
+    return {'ok': False, 'message': 'not configured', 'query': query}
 
 
 def http_fetch(url: str) -> dict:
@@ -49,7 +49,7 @@ def http_fetch(url: str) -> dict:
     return {'ok': True, 'status': r.status_code, 'text': r.text[:1000]}
 
 
-def code_exec(python_code: str) -> dict:
+def python_exec(python_code: str) -> dict:
     if not settings.agentora_enable_code_exec:
-        return {'ok': False, 'error': 'code_exec disabled'}
-    return run_python_restricted(python_code)
+        return {'ok': False, 'error': 'sandbox disabled'}
+    return run_python_sandboxed(python_code)
