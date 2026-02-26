@@ -5,7 +5,6 @@ from sqlmodel import Session
 
 from app.db import engine
 from app.services.open_cosmos.service import (
-    global_wisdom_archive,
     community_spotlight,
     cross_cosmos_visit,
     forecast_values_2050,

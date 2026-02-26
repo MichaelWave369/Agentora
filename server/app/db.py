@@ -1,5 +1,7 @@
 from pathlib import Path
-from sqlmodel import SQLModel, create_engine, Session
+from typing import Optional
+
+from sqlmodel import SQLModel, Session, create_engine
 
 from .core.config import settings
 
@@ -12,11 +14,28 @@ def _normalize_sqlite_url(url: str) -> str:
     return f'sqlite:///{db_path.as_posix()}'
 
 
-engine = create_engine(_normalize_sqlite_url(settings.database_url), connect_args={'check_same_thread': False})
+def _build_engine(database_url: str):
+    return create_engine(_normalize_sqlite_url(database_url), connect_args={'check_same_thread': False})
+
+
+engine = _build_engine(settings.database_url)
+
+
+def set_engine(database_url: str):
+    global engine
+    engine = _build_engine(database_url)
+    return engine
 
 
 def create_db_and_tables() -> None:
     SQLModel.metadata.create_all(engine)
+
+
+def init_db(database_url: Optional[str] = None):
+    if database_url:
+        set_engine(database_url)
+    create_db_and_tables()
+    return engine
 
 
 def get_session():

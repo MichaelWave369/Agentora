@@ -9,6 +9,7 @@
 Agentora is now **Streamlit-first** for the complete product experience, while FastAPI remains the local orchestration/data backend.
 
 ## What’s new in v0.7
+- Fixed embedded Streamlit + FastAPI + SQLite initialization for Streamlit Cloud and local runs (`./agentora.db` fallback).
 - **Living Archive**: centralized, opt-in, anonymized wisdom timeline across shared/imported cosmoses.
 - **Cross-Cosmos Visitation**: agents can visit other imported cosmoses and bring back distilled inspiration.
 - **Wisdom Exchange**: guided dialogue between two cosmoses to generate merged content.
@@ -23,6 +24,8 @@ All core surfaces (Dashboard, Studio, Band, Arena, Gathering, Legacy, Cosmos, Op
 ```bash
 streamlit run app.py
 ```
+
+The Streamlit app auto-initializes SQLite tables on first run and keeps backend resources cached across reruns.
 
 ## Privacy-first defaults
 - 100% local-first and offline by default
@@ -53,6 +56,8 @@ uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
 python -m pip install -r requirements.txt
 streamlit run app.py
 ```
+
+The Streamlit app auto-initializes SQLite tables on first run and keeps backend resources cached across reruns.
 
 ### Optional React web scaffold
 ```bash

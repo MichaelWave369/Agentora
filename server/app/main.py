@@ -1,13 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.db import create_db_and_tables
+from app.db import init_db
 from app.routers import health, ollama, agents, teams, runs, tools, exports, snapshot
 from app.routers import marketplace, multimodal, voice, analytics, integrations, lan, studio, band, arena, gathering, legacy, cosmos, open_cosmos
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title='Agentora v0.6')
+    app = FastAPI(title='Agentora v0.7')
     app.add_middleware(
         CORSMiddleware,
         allow_origins=['*'],
@@ -18,7 +18,7 @@ def create_app() -> FastAPI:
 
     @app.on_event('startup')
     def startup():
-        create_db_and_tables()
+        init_db()
 
     app.include_router(health.router)
     app.include_router(ollama.router)
