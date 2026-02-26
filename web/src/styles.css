@@ -1,0 +1,5 @@
+:root{background:#090b10;color:#e2e8f0;font-family:Inter,Arial,sans-serif}
+body{margin:0}.shell{display:grid;grid-template-columns:220px 1fr;min-height:100vh}aside{padding:16px;border-right:1px solid #1f2937}main{padding:20px}
+nav{display:flex;flex-direction:column;gap:8px}a{color:#93c5fd;text-decoration:none}.badge{font-size:11px;background:#111827;padding:4px 8px;border-radius:6px;display:inline-block}
+.card{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:12px;margin:12px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+textarea{width:100%;background:#020617;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:12px}button{background:#2563eb;color:white;border:0;border-radius:8px;padding:8px 12px}

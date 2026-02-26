@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+node_modules/
+web/dist/
+dist/
+server/data/
+*.db
+*.zip
+*.png
+.env
