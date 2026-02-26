@@ -297,3 +297,23 @@ class GardenHarvest(SQLModel, table=True):
     harvest_type: str = 'wisdom'
     payload_json: str = '{}'
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorldGardenNode(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    source_kind: str = 'cosmos'
+    source_id: int = 0
+    title: str
+    lat: float = 0.0
+    lon: float = 0.0
+    glow: int = 30
+    visibility: str = 'private'
+    credits_json: str = '[]'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorldGardenEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    event_type: str = 'bloom'
+    payload_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)

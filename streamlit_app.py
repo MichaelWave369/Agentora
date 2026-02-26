@@ -353,6 +353,47 @@ def _garden_page():
     if st.button('Advance Season (Eternal Cycle)'):
         st.json(safe_api_post('/api/garden/season/advance', {}, 'advance season'))
 
+
+
+def _world_garden_page():
+    st.subheader('🌍🌸 The World Garden')
+    st.markdown("<div class='agentora-card'><h4>Living World Garden Map</h4></div>", unsafe_allow_html=True)
+    world = safe_api_get('/api/world-garden/map', 'world garden map')
+    items = world.get('items', []) if isinstance(world, dict) else []
+
+    if not items:
+        st.caption('No shared blooms yet. Create/share a cosmos to begin the Infinite Bloom cycle.')
+        return
+
+    # immersive pseudo-map using columns and glowing cards
+    cols = st.columns(2)
+    for i, node in enumerate(items[:12]):
+        with cols[i % 2]:
+            st.markdown(f"**{node.get('icon','🌿')} {node['title']}**")
+            st.progress(min(1.0, float(node.get('glow', 0)) / 100.0))
+            st.caption(f"Lat {node.get('lat',0):.1f} • Lon {node.get('lon',0):.1f} • Visibility: {node.get('visibility','private')}")
+            if st.button(f"Bloom #{node['id']}", key=f"wg_bloom_{node['id']}"):
+                st.balloons()
+                st.json(safe_api_post('/api/world-garden/bloom', {'node_id': node['id'], 'reason': 'community creation'}, 'infinite bloom'))
+
+    st.markdown("<div class='agentora-card'><h4>Safe Cross-Pollination</h4></div>", unsafe_allow_html=True)
+    ids = [n['id'] for n in items]
+    a = st.selectbox('From garden', options=ids, key='wg_from')
+    b = st.selectbox('To garden', options=ids, key='wg_to')
+    if st.button('Preview Merge'):
+        st.json(safe_api_post('/api/world-garden/cross-pollinate', {'from_node': a, 'to_node': b, 'preview_only': True}, 'merge preview'))
+    if st.button('Apply Safe Cross-Pollination'):
+        st.balloons()
+        st.json(safe_api_post('/api/world-garden/cross-pollinate', {'from_node': a, 'to_node': b, 'preview_only': False}, 'merge apply'))
+
+    st.markdown("<div class='agentora-card'><h4>Infinite Bloom Constellations</h4></div>", unsafe_allow_html=True)
+    st.json(safe_api_get('/api/world-garden/constellations', 'constellations'))
+
+    st.markdown("<div class='agentora-card'><h4>Eternal Harvest Festival</h4></div>", unsafe_allow_html=True)
+    if st.button('Run Harvest Festival'):
+        st.balloons()
+        st.json(safe_api_post('/api/world-garden/festival/harvest', {}, 'harvest festival'))
+
 def _core_page():
     _panel_json('Health', '/api/health')
     _panel_json('Runs', '/api/runs')
@@ -366,11 +407,11 @@ def render_dashboard() -> None:
         st.session_state['db_url'] = _resolve_streamlit_db_url()
     initialize_database()
 
-    st.title('Agentora v0.8 — The Eternal Garden')
+    st.title('Agentora v0.9 — Infinite Bloom & The World Garden')
     st.caption('Primary Streamlit experience • local-first • private by default')
     st.info(f"API Mode: {ACTIVE_MODE.upper()} | DB: {st.session_state['db_url']}")
 
-    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'Core'])
+    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'The World Garden', 'Core'])
     st.sidebar.markdown("<span class='agentora-pill'>NO CLOUD REQUIRED</span>", unsafe_allow_html=True)
 
     if page == 'Dashboard':
@@ -391,6 +432,8 @@ def render_dashboard() -> None:
         _open_cosmos_page()
     elif page == 'The Eternal Garden':
         _garden_page()
+    elif page == 'The World Garden':
+        _world_garden_page()
     else:
         _core_page()
 

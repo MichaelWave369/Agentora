@@ -3,11 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import init_db
 from app.routers import health, ollama, agents, teams, runs, tools, exports, snapshot
-from app.routers import marketplace, multimodal, voice, analytics, integrations, lan, studio, band, arena, gathering, legacy, cosmos, open_cosmos, garden
+from app.routers import marketplace, multimodal, voice, analytics, integrations, lan, studio, band, arena, gathering, legacy, cosmos, open_cosmos, garden, world_garden
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title='Agentora v0.7')
+    app = FastAPI(title='Agentora v0.9')
     app.add_middleware(
         CORSMiddleware,
         allow_origins=['*'],
@@ -42,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(cosmos.router)
     app.include_router(open_cosmos.router)
     app.include_router(garden.router)
+    app.include_router(world_garden.router)
     return app
 
 
