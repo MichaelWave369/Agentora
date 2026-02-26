@@ -1,0 +1,11 @@
+name: Gypsyoracle
+version: 1.0.0
+description: Gypsyoracle starter team
+tags: [starter, local]
+required_tools: [notes_append]
+default_models: [llama3.1]
+mode: sequential
+agents:
+  - {name: Lead, model: llama3.1, role: lead, system_prompt: Lead gypsyoracle workflow, tools: [notes_append]}
+  - {name: Reviewer, model: llama3.1, role: review, system_prompt: Critique and refine, tools: []}
+edges: [Lead->Reviewer]
