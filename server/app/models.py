@@ -21,7 +21,7 @@ class Team(SQLModel, table=True):
     description: str = ''
     mode: str = 'sequential'
     yaml_text: str = ''
-    version: str = '0.1.0'
+    version: str = '0.2.0'
     marketplace_id: str = ''
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -153,3 +153,62 @@ class VoiceSetting(SQLModel, table=True):
     whisper_cpp_path: str = ''
     piper_path: str = ''
     piper_voice_model_path: str = ''
+
+
+class VocalPersona(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    style: str
+    tts_voice_path: str = ''
+    prompt_style: str = ''
+    default_effects_json: str = '{}'
+
+
+class SongJob(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int = 0
+    team_id: int = 0
+    status: str = 'pending'
+    lyrics_json: str = '{}'
+    waveform_json: str = '[]'
+    master_path: str = ''
+    stems_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class BandTrackJob(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    team_id: int = 0
+    status: str = 'pending'
+    plan_json: str = '{}'
+    lyrics_json: str = '{}'
+    master_path: str = ''
+    stems_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ArenaMatch(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    mode: str = 'single'
+    topic: str
+    status: str = 'running'
+    transcript_json: str = '[]'
+    report_md: str = ''
+    scoreboard_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ArenaTournament(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    status: str = 'running'
+    topics_json: str = '[]'
+    bracket_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ArenaVote(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    match_id: int
+    agent_id: int
+    score: int
+    created_at: datetime = Field(default_factory=datetime.utcnow)

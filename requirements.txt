@@ -1,3 +1,4 @@
 -r server/requirements.txt
 streamlit>=1.32
 pillow>=10
+pydub>=0.25

@@ -1,18 +1,25 @@
-# Agentora
+# Agentora v0.2 — Soul & Arena Edition
 
-Agentora is a **local-first multi-agent orchestration studio for Ollama**. It runs privately on your machine, stores state in local SQLite, and defaults to localhost-only outbound networking.
+Agentora is a local-first multi-agent orchestration studio for Ollama with three creative modes:
+- **Studio**: voice/song generation with personas, stems, waveform, and Sing flow
+- **Band**: iterative music crews (beat/melody/bass/vocals/mix) with track exports
+- **Arena**: truth-seeking debate matches/tournaments with scoring and reports
 
-## What it includes
-- FastAPI backend with orchestration modes, template/marketplace APIs, multimodal attachments, analytics, snapshots, LAN scaffolding, and tool registry.
-- React web app for run studio, marketplace, analytics, team/agent pages.
-- Streamlit quick dashboard (`streamlit_app.py`) for lightweight operations.
+## Privacy & safety defaults
+- Local SQLite + local artifact storage only
+- No telemetry
+- Default network mode is localhost-only
+- Mock modes (`AGENTORA_USE_MOCK_OLLAMA`, `AGENTORA_USE_MOCK_VOICE`) for offline tests
 
-## Safety defaults
-- `AGENTORA_NETWORK_MODE=localhost_only` by default.
-- No telemetry.
-- Local persistence only.
+## Streamlit Cloud
+- Root `requirements.txt` includes server dependencies for embedded mode.
+- `streamlit_app.py` supports:
+  - `AGENTORA_STREAMLIT_MODE=auto|http|embedded`
+  - optional `AGENTORA_API_URL`
+  - automatic embedded fallback when HTTP API is unavailable
 
-## Quickstart (Server)
+## Run locally
+### Server
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -20,7 +27,7 @@ python -m pip install -r server/requirements.txt
 uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
 ```
 
-## Quickstart (Web)
+### Web
 ```bash
 cd web
 npm ci
@@ -28,22 +35,17 @@ npm run build
 npm run dev
 ```
 
-## Mock mode (tests without Ollama)
+### Streamlit
 ```bash
-AGENTORA_USE_MOCK_OLLAMA=true pytest server/tests
+python -m pip install -r requirements.txt
+streamlit run streamlit_app.py
 ```
 
-## Templates and marketplace
-Built-in templates are available under `teams/` and `agents/marketplace/`. Install/update/export via marketplace/template API endpoints.
+## Optional voice/music deps
+- Piper and Whisper.cpp are optional hooks via env vars; mock mode works without binaries.
+- Heavy musicgen models are intentionally not bundled in default install; a plugin hook approach is used.
 
-## Troubleshooting
-- Ollama not running: start Ollama (`ollama serve`) and check `OLLAMA_URL`.
-- No local model: `ollama pull llama3.1`.
-- To bypass Ollama for tests/dev checks: set `AGENTORA_USE_MOCK_OLLAMA=true`.
-
-
-## Streamlit Cloud
-- `streamlit_app.py` now tries HTTP API first, then automatically falls back to embedded backend mode if the API is unreachable.
-- Set `AGENTORA_STREAMLIT_MODE=embedded` to force no-network embedded mode.
-- Optionally set `AGENTORA_API_URL` to point Streamlit at a separately deployed backend.
-- Local usage works either with FastAPI running on `AGENTORA_PORT` (default 8088) or standalone via embedded mode.
+## Dev scripts
+- `scripts/dev.sh`
+- `scripts/dev.ps1`
+- `scripts/make_release_zip.py`

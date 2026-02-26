@@ -10,6 +10,9 @@ import RunStudio from './pages/RunStudio'
 import Runs from './pages/Runs'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
+import StudioMode from './pages/StudioMode'
+import BandMode from './pages/BandMode'
+import ArenaMode from './pages/ArenaMode'
 import './styles.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -18,6 +21,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <AppShell>
         <Routes>
           <Route path='/' element={<Dashboard/>}/>
+          <Route path='/studio-mode' element={<StudioMode/>}/>
+          <Route path='/band-mode' element={<BandMode/>}/>
+          <Route path='/arena-mode' element={<ArenaMode/>}/>
           <Route path='/agents' element={<Agents/>}/>
           <Route path='/teams' element={<Teams/>}/>
           <Route path='/marketplace' element={<Marketplace/>}/>

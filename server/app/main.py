@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import create_db_and_tables
 from app.routers import health, ollama, agents, teams, runs, tools, exports, snapshot
-from app.routers import marketplace, multimodal, voice, analytics, integrations, lan
+from app.routers import marketplace, multimodal, voice, analytics, integrations, lan, studio, band, arena
 
 
 def create_app() -> FastAPI:
@@ -34,6 +34,9 @@ def create_app() -> FastAPI:
     app.include_router(analytics.router)
     app.include_router(integrations.router)
     app.include_router(lan.router)
+    app.include_router(studio.router)
+    app.include_router(band.router)
+    app.include_router(arena.router)
     return app
 
 
