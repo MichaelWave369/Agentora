@@ -233,3 +233,26 @@ class GatheringEvent(SQLModel, table=True):
     event_type: str
     payload_json: str = '{}'
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CosmosWorld(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    seed_prompt: str
+    status: str = 'active'
+    warmth: int = 60
+    map_json: str = '[]'
+    rules_json: str = '{}'
+    history_json: str = '[]'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CosmosTimeline(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    world_id: int
+    parent_timeline_id: int = 0
+    title: str
+    branch_prompt: str = ''
+    diff_json: str = '{}'
+    status: str = 'active'
+    created_at: datetime = Field(default_factory=datetime.utcnow)

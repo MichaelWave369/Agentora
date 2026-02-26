@@ -96,9 +96,9 @@ def panel(title: str, path: str):
 
 
 def render_dashboard() -> None:
-    st.title('Agentora v0.4 — Legacy & Evolution')
+    st.title('Agentora v0.5 — Cosmos & Eternal')
     st.info(f'API Mode: {ACTIVE_MODE.upper()} | Local-first party edition')
-    tabs = st.tabs(['Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Core'])
+    tabs = st.tabs(['Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Core'])
     with tabs[0]:
         panel('Personas', '/api/studio/personas')
     with tabs[1]:
@@ -112,6 +112,9 @@ def render_dashboard() -> None:
         panel('Legacy Souls', '/api/legacy/souls')
         panel('Legacy Tree', '/api/legacy/tree')
     with tabs[5]:
+        panel('Cosmos Worlds', '/api/cosmos/worlds')
+        panel('Eternal Archive', '/api/cosmos/archive')
+    with tabs[6]:
         panel('Health', '/api/health')
         panel('Runs', '/api/runs')
 

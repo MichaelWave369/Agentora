@@ -1,17 +1,19 @@
-# Agentora v0.4 — Legacy & Evolution
+# Agentora v0.5 — Cosmos & Eternal
 
 ![Agentora Soul & Arena Hero](docs/hero-soul-arena.svg)
 
 [🚀 Try It Now: MicTek Rebellion](http://localhost:5173/band-mode)  
 [🏠 Try Gathering](http://localhost:5173/gathering-mode)  
-[🌳 Create Your First Legacy Agent](http://localhost:5173/legacy-mode)
+[🌳 Create Your First Legacy Agent](http://localhost:5173/legacy-mode)  
+[🌌 Plant Your First Cosmos](http://localhost:5173/cosmos-mode)
 
-Agentora is a local-first multi-agent orchestration studio for Ollama with five modes:
+Agentora is a local-first multi-agent orchestration studio for Ollama with six modes:
 - **Studio**: voice/song generation with personas, stems, waveform, and Sing flow
 - **Band**: iterative music crews (beat/melody/bass/vocals/mix) with track exports
 - **Arena**: truth-seeking debate matches/tournaments with scoring and reports
 - **Gathering**: family/friends LAN sessions with room codes, shared crews, and memory vault
 - **Legacy**: persistent agent souls, family trees, evolution points, heirloom exports
+- **Cosmos**: personal universes, branching timelines, cosmic reflection, eternal seed export
 
 ## Privacy & safety defaults
 - Local SQLite + local artifact storage only
@@ -20,13 +22,20 @@ Agentora is a local-first multi-agent orchestration studio for Ollama with five 
 - Mock modes (`AGENTORA_USE_MOCK_OLLAMA`, `AGENTORA_USE_MOCK_VOICE`) for offline tests
 - No cloud accounts required
 
+## Cosmos highlights
+- Create persistent worlds from real memories, dreams, sci-fi ideas, or family stories
+- Galaxy map where stars represent chapters/events linked to family legacy roots
+- Multi-timeline branching (`What if I moved to Chico in 2025?`) with side-by-side evolution
+- Cosmic Reflection / Oracle mode with warmth-controlled hopeful vs realistic tone
+- Eternal Archive search across songs, debates, and soul companions
+- Heirloom 2.0 export: `Eternal Seed` zip for full lineage + cosmos continuation
+
 ## Legacy highlights
 - Persistent Soul Files for every agent (`server/data/legacy/souls/*.soul.json`)
 - Evolution points and trait growth (humor/truth/creativity/empathy)
 - Agent family trees with child/fork creation and trait inheritance
 - Daily reflection + nurture mechanics
 - Heirloom export (`/api/legacy/heirloom/{agent_id}.zip`) for pass-it-on archives
-- Gathering synergy via `family-night-reflection` endpoint
 
 ## Streamlit Cloud
 - Root `requirements.txt` includes server dependencies for embedded mode.
@@ -34,12 +43,6 @@ Agentora is a local-first multi-agent orchestration studio for Ollama with five 
   - `AGENTORA_STREAMLIT_MODE=auto|http|embedded`
   - optional `AGENTORA_API_URL`
   - automatic embedded fallback when HTTP API is unavailable
-
-## Gathering highlights
-- LAN discovery + 4-digit room code join fallback
-- Warm neon living-room table visualization for participants
-- Shared jam/debate flow with live events and local-only memory import (consent-gated)
-- Mutual-aid templates included by default
 
 ## Run locally
 ### Server
@@ -71,7 +74,8 @@ streamlit run streamlit_app.py
 
 ## Screenshot placeholders
 - `docs/hero-soul-arena.svg` (current hero)
-- Add your own `docs/legacy-tree-placeholder.svg` if you want a custom Legacy tree hero shot.
+- `docs/legacy-tree-placeholder.svg` (optional)
+- `docs/cosmos-map-placeholder.svg` (optional)
 
 ## Dev scripts
 - `scripts/dev.sh`
