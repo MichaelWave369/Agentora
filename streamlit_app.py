@@ -71,6 +71,18 @@ def init_backend_resources(db_url: str):
     return {'engine': str(engine.url), 'db_url': db_url}
 
 
+
+
+def initialize_database() -> dict:
+    if st.session_state.get('db_ready'):
+        return st.session_state.get('backend_resources', {})
+    init_msg = st.info('Initializing database...')
+    resources = init_backend_resources(_db_url_from_state())
+    st.session_state['backend_resources'] = resources
+    st.session_state['db_ready'] = True
+    init_msg.empty()
+    return resources
+
 @st.cache_resource
 def embedded_client(db_url: str):
     init_backend_resources(db_url)
@@ -221,10 +233,19 @@ def _dashboard_page():
         st.json(health)
     with c2:
         st.markdown("<div class='agentora-card'><h4>Runs</h4></div>", unsafe_allow_html=True)
-        st.json(safe_api_get('/api/runs', 'runs'))
+        runs_payload = safe_api_get('/api/runs', 'runs')
+        if isinstance(runs_payload, list) and not runs_payload:
+            st.caption('No runs yet')
+        else:
+            st.json(runs_payload)
     with c3:
         st.markdown("<div class='agentora-card'><h4>Marketplace</h4></div>", unsafe_allow_html=True)
-        st.json(safe_api_get('/api/marketplace/templates', 'marketplace'))
+        market = safe_api_get('/api/marketplace/templates', 'marketplace')
+        templates = market.get('templates') if isinstance(market, dict) else None
+        if isinstance(templates, list) and not templates:
+            st.caption('Marketplace empty — install your first template')
+        else:
+            st.json(market)
 
 
 def _studio_page():
@@ -314,8 +335,7 @@ def render_dashboard() -> None:
 
     if 'db_url' not in st.session_state:
         st.session_state['db_url'] = _resolve_streamlit_db_url()
-    if 'backend_resources' not in st.session_state:
-        st.session_state['backend_resources'] = init_backend_resources(st.session_state['db_url'])
+    initialize_database()
 
     st.title('Agentora v0.7 — Wisdom Eternal & The Living Archive')
     st.caption('Primary Streamlit experience • local-first • private by default')

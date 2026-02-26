@@ -28,6 +28,9 @@ def set_engine(database_url: str):
 
 
 def create_db_and_tables() -> None:
+    # Ensure all SQLModel tables are registered before metadata.create_all()
+    from . import models  # noqa: F401
+
     SQLModel.metadata.create_all(engine)
 
 
