@@ -58,7 +58,8 @@ class RuntimeLoop:
                 run_id=run_id,
                 top_k=settings.agentora_capsule_top_k,
             )
-            add_trace(session, run_id, 'memory_retrieval', {'step': step, 'subgoal': subgoal, 'hits': memory[:4]}, agent_id=agent.id or 0)
+            add_trace(session, run_id, 'memory_layer_query', {'step': step, 'subgoal': subgoal, 'hits': memory[:4], 'layers': sorted({m.get('layer', 'unknown') for m in memory})}, agent_id=agent.id or 0)
+            add_trace(session, run_id, 'context_admission', {'step': step, 'admitted': memory[: settings.agentora_max_active_contexts]}, agent_id=agent.id or 0)
             memory_text = '\n'.join([f"[{i+1}] {m['text']}" for i, m in enumerate(memory)])
             planning_model, route_warnings = choose_model_for_role(session, role='tool_planning', has_images=bool(image_paths))
             warnings.extend(route_warnings)

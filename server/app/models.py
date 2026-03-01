@@ -145,7 +145,100 @@ class Capsule(SQLModel, table=True):
     text: str
     tags_json: str = '[]'
     is_summary: bool = False
+    memory_layer: str = 'L1_SHORT'
+    source_type: str = 'capsule'
+    project_key: str = ''
+    session_key: str = ''
+    archive_status: str = 'active'
+    decay_class: str = 'short'
+    confidence: float = 0.5
+    consolidation_score: float = 0.5
+    trust_score: float = 0.5
+    retrieval_count: int = 0
+    success_count: int = 0
+    failure_count: int = 0
+    recency_score: float = 1.0
+    contradiction_flag: bool = False
+    drift_score: float = 0.0
+    helped_final_answer_score: float = 0.0
+    created_from_run_id: Optional[int] = None
+    parent_capsule_id: Optional[int] = None
+    lineage_root_id: Optional[int] = None
+    last_accessed_at: Optional[datetime] = None
+    last_used_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MemoryLayer(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    description: str = ''
+    priority: int = 0
+    default_weight: float = 1.0
+    active_by_default: bool = True
+    max_contexts: int = 4
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MemoryCapsuleState(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    capsule_id: int
+    layer: str = 'L1_SHORT'
+    status: str = 'active'
+    confidence: float = 0.5
+    consolidation_score: float = 0.5
+    trust_score: float = 0.5
+    retrieval_count: int = 0
+    usage_count: int = 0
+    last_accessed_at: Optional[datetime] = None
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MemoryEdge(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    from_capsule_id: int
+    to_capsule_id: int
+    edge_type: str = 'semantic'
+    weight: float = 0.5
+    confidence: float = 0.5
+    trust_score: float = 0.5
+    usage_count: int = 0
+    last_reinforced_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MemorySummary(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    summary_capsule_id: int
+    source_group_key: str = ''
+    member_capsule_ids_json: str = '[]'
+    detail_level: str = 'project'
+    refreshed_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ContextActivation(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int
+    capsule_id: int
+    layer: str
+    query: str
+    score: float = 0.0
+    reason_json: str = '{}'
+    admitted: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MemoryMaintenanceJob(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: Optional[int] = None
+    job_type: str
+    status: str = 'queued'
+    details_json: str = '{}'
+    used_worker: bool = False
+    error: str = ''
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class CapsuleEmbedding(SQLModel, table=True):

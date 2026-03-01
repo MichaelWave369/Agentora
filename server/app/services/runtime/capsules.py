@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.models import Capsule, CapsuleEmbedding
 from app.services.ollama_client import OllamaClient
+from app.services.runtime.layers import layered_retrieval
 
 
 def chunk_text(text: str, chunk_size: int = 850, overlap: int = 150) -> list[str]:
@@ -29,6 +30,19 @@ def _summary_chunk(text: str) -> str:
     return clean[:1000]
 
 
+def _derive_layer(source: str, is_summary: bool, text_len: int) -> tuple[str, str]:
+    source_l = (source or '').lower()
+    if source_l in {'runtime', 'tool', 'scratchpad'}:
+        return 'L0_HOT', 'short'
+    if source_l in {'attachment', 'extract'} and text_len > 1600:
+        return 'L5_COLD', 'long'
+    if is_summary:
+        return 'L1_SHORT', 'medium'
+    if source_l in {'profile', 'preference', 'identity'}:
+        return 'L3_DURABLE', 'long'
+    return 'L2_SESSION', 'medium'
+
+
 async def ingest_text_as_capsules(
     session: Session,
     run_id: int,
@@ -42,7 +56,7 @@ async def ingest_text_as_capsules(
         return 0
     created_chunks = chunks[:]
     summary_added = False
-    if len(text) > 4000:
+    if len(text) > 4000 and settings.agentora_enable_memory_summaries:
         created_chunks = [_summary_chunk(text)] + created_chunks
         summary_added = True
 
@@ -50,6 +64,8 @@ async def ingest_text_as_capsules(
     inserted = 0
     tags_json = json.dumps(tags or [])
     for idx, chunk in enumerate(created_chunks):
+        is_summary = summary_added and idx == 0
+        layer, decay = _derive_layer(source=source, is_summary=is_summary, text_len=len(chunk))
         capsule = Capsule(
             run_id=run_id,
             attachment_id=attachment_id,
@@ -57,7 +73,18 @@ async def ingest_text_as_capsules(
             chunk_index=idx,
             text=chunk,
             tags_json=tags_json,
-            is_summary=(summary_added and idx == 0),
+            is_summary=is_summary,
+            memory_layer=layer,
+            source_type='attachment' if attachment_id else 'run',
+            project_key=f'run:{run_id}',
+            session_key=f'run:{run_id}',
+            archive_status='cold' if layer == 'L5_COLD' else 'active',
+            decay_class=decay,
+            confidence=0.55,
+            consolidation_score=0.5,
+            trust_score=0.55,
+            recency_score=1.0,
+            created_from_run_id=run_id,
             created_at=datetime.utcnow(),
         )
         session.add(capsule)
@@ -99,7 +126,12 @@ def search_capsules_sync(
     run_id: int | None = None,
     top_k: int | None = None,
     source_weight: dict[str, float] | None = None,
+    query: str = '',
 ) -> list[dict]:
+    if settings.agentora_enable_layered_memory and run_id is not None:
+        layered = layered_retrieval(session, query_vector=query_vector, query=query or 'query', run_id=run_id, top_k=top_k)
+        return layered['items']
+
     top_k = top_k or settings.agentora_capsule_top_k
     source_weight = source_weight or {}
 
@@ -133,6 +165,7 @@ def search_capsules_sync(
                 'run_id': cap.run_id,
                 'is_summary': cap.is_summary,
                 'created_at': cap.created_at.isoformat(),
+                'layer': cap.memory_layer,
             }
         )
     scored.sort(key=lambda x: x['score'], reverse=True)
@@ -147,4 +180,4 @@ async def search_capsules(
     source_weight: dict[str, float] | None = None,
 ) -> list[dict]:
     qv = (await OllamaClient().embed_texts([query], model=settings.agentora_embed_model))[0]
-    return search_capsules_sync(session=session, query_vector=qv, run_id=run_id, top_k=top_k, source_weight=source_weight)
+    return search_capsules_sync(session=session, query_vector=qv, run_id=run_id, top_k=top_k, source_weight=source_weight, query=query)

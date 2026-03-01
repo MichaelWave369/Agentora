@@ -43,3 +43,13 @@ class WorkerDispatchIn(BaseModel):
     job_type: str
     payload: dict = {}
     priority: int = 5
+
+
+
+class MemoryMaintenanceIn(BaseModel):
+    run_id: int | None = None
+    try_worker: bool = True
+
+
+class CapsuleLayerUpdateIn(BaseModel):
+    reason: str = 'manual'
