@@ -84,3 +84,36 @@ def run(workflow_id: int, payload: WorkflowRunIn, session: Session = Depends(get
 @router.get('/{workflow_id}/runs')
 def runs(workflow_id: int, session: Session = Depends(get_session)):
     return {'ok': True, 'items': [_run_payload(r) for r in list_workflow_runs(session, workflow_id)]}
+
+
+@router.post('/{workflow_id}/clone')
+def clone_workflow(workflow_id: int, payload: dict | None = None, session: Session = Depends(get_session)):
+    wf = session.get(Workflow, workflow_id)
+    if not wf:
+        raise HTTPException(404, 'workflow not found')
+    steps = list(session.exec(select(WorkflowStep).where(WorkflowStep.workflow_id == workflow_id).order_by(WorkflowStep.position)))
+    cloned = create_workflow(
+        session,
+        name=(payload or {}).get('name', f"{wf.name} (copy)"),
+        description=wf.description,
+        params_schema={},
+        steps=[{'position': s.position, 'step_type': s.step_type, 'tool_name': s.tool_name, 'params': __import__('json').loads(s.params_json or '{}'), 'requires_approval': s.requires_approval} for s in steps],
+    )
+    return {'ok': True, 'item': _wf_payload(cloned)}
+
+
+@router.post('/{workflow_id}/steps/{step_id}')
+def edit_step(workflow_id: int, step_id: int, payload: dict, session: Session = Depends(get_session)):
+    step = session.get(WorkflowStep, step_id)
+    if not step or step.workflow_id != workflow_id:
+        raise HTTPException(404, 'workflow step not found')
+    if 'tool_name' in payload:
+        step.tool_name = str(payload['tool_name'])
+    if 'params' in payload:
+        step.params_json = __import__('json').dumps(payload['params'])
+    if 'requires_approval' in payload:
+        step.requires_approval = bool(payload['requires_approval'])
+    session.add(step)
+    session.commit()
+    session.refresh(step)
+    return {'ok': True, 'item': _step_payload(step)}

@@ -1,0 +1,41 @@
+version: '3.9'
+services:
+  agentora:
+    build: .
+    ports:
+      - '8088:8088'
+      - '8501:8501'
+    environment:
+      AGENTORA_DATABASE_URL: sqlite:////app/server/data/agentora.db
+      AGENTORA_STREAMLIT_MODE: http
+      AGENTORA_API_URL: http://127.0.0.1:8088
+    volumes:
+      - ./server/data:/app/server/data
+      - ./.env:/app/.env:ro
+    profiles: ['single-pc']
+
+  agentora-main:
+    build: .
+    ports:
+      - '8089:8088'
+      - '8502:8501'
+    environment:
+      AGENTORA_DATABASE_URL: sqlite:////app/server/data/main.db
+      AGENTORA_WORKER_URLS: http://agentora-worker:8088
+      AGENTORA_STREAMLIT_MODE: http
+      AGENTORA_API_URL: http://127.0.0.1:8088
+    volumes:
+      - ./server/data/main:/app/server/data
+    profiles: ['two-pc']
+
+  agentora-worker:
+    build: .
+    ports:
+      - '8090:8088'
+    environment:
+      AGENTORA_DATABASE_URL: sqlite:////app/server/data/worker.db
+      AGENTORA_STREAMLIT_MODE: embedded
+    volumes:
+      - ./server/data/worker:/app/server/data
+    command: ["bash", "-lc", "uvicorn app.main:app --app-dir server --host 0.0.0.0 --port 8088"]
+    profiles: ['two-pc']

@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_prefix='', extra='ignore')
 
     app_name: str = 'Agentora'
+    agentora_version: str = Field(default='0.9.6', alias='AGENTORA_VERSION')
     database_url: str = Field(default='sqlite:///server/data/agentora.db', alias='AGENTORA_DATABASE_URL')
     ollama_url: str = Field(default='http://localhost:11434', alias='OLLAMA_URL')
     ollama_model_default: str = Field(default='llama3.1', alias='OLLAMA_MODEL_DEFAULT')

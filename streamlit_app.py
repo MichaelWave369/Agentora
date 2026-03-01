@@ -247,6 +247,24 @@ def _dashboard_page():
 
 
 
+    with st.expander('Operator Center', expanded=False):
+        st.json(safe_api_get('/api/system/version', 'system version'))
+        st.json(safe_api_get('/api/system/doctor', 'system doctor'))
+        st.json(safe_api_get('/api/operator/runs', 'operator runs'))
+        op_run = st.text_input('Operator Run ID', value='', key='operator_run_id')
+        if op_run.strip():
+            st.json(safe_api_get(f'/api/operator/runs/{op_run.strip()}', 'operator run detail'))
+            c_op1, c_op2, c_op3 = st.columns(3)
+            with c_op1:
+                if st.button('Pause Operator Run'):
+                    st.json(safe_api_post(f'/api/operator/runs/{op_run.strip()}/pause', {}, 'pause operator run'))
+            with c_op2:
+                if st.button('Resume Operator Run'):
+                    st.json(safe_api_post(f'/api/operator/runs/{op_run.strip()}/resume', {}, 'resume operator run'))
+            with c_op3:
+                if st.button('Advance Operator Run'):
+                    st.json(safe_api_post(f'/api/operator/runs/{op_run.strip()}/advance', {}, 'advance operator run'))
+
     with st.expander('Action Center / Automation Inspector', expanded=False):
         st.json(safe_api_get('/api/actions/pending', 'pending actions'))
         st.json(safe_api_get('/api/actions/history', 'action history'))
@@ -464,14 +482,14 @@ def _core_page():
 
 
 def render_dashboard() -> None:
-    st.set_page_config(page_title='Agentora v0.9.1', layout='wide', initial_sidebar_state='expanded')
+    st.set_page_config(page_title='Agentora v0.9.6', layout='wide', initial_sidebar_state='expanded')
     _theme_css()
 
     if 'db_url' not in st.session_state:
         st.session_state['db_url'] = _resolve_streamlit_db_url()
     initialize_database()
 
-    st.title('Agentora v0.9.1 — Infinite Bloom & The World Garden')
+    st.title('Agentora v0.9.6 — Operator Mode & One-Click Deployment')
     st.caption('Primary Streamlit experience • local-first • private by default')
     st.info(f"API Mode: {ACTIVE_MODE.upper()} | DB: {st.session_state['db_url']}")
 
