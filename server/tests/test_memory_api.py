@@ -25,6 +25,15 @@ def test_memory_endpoints_smoke():
     trace = client.get('/api/memory/runs/9901/trace')
     assert trace.status_code == 200
 
+    health = client.get('/api/memory/health')
+    assert health.status_code == 200
+
+    lineage = client.get(f'/api/memory/capsules/{cap.id}/lineage')
+    assert lineage.status_code == 200
+
+    neighbors = client.get(f'/api/memory/capsules/{cap.id}/neighbors')
+    assert neighbors.status_code == 200
+
     maintenance = client.post('/api/memory/maintenance/run', json={'run_id': 9901, 'try_worker': False})
     assert maintenance.status_code == 200
 

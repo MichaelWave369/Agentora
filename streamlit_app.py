@@ -246,11 +246,19 @@ def _dashboard_page():
             st.json(trace_payload)
 
     with st.expander('Lattice Memory Inspector', expanded=False):
+        st.json(safe_api_get('/api/memory/health', 'memory health'))
         st.json(safe_api_get('/api/memory/layers', 'memory layers'))
+        st.json(safe_api_get('/api/memory/conflicts', 'memory conflicts'))
+        st.json(safe_api_get('/api/memory/duplicates', 'memory duplicates'))
         mem_run_id = st.text_input('Run ID for memory contexts', value='', key='mem_run_id')
         if mem_run_id.strip():
             st.json(safe_api_get(f'/api/memory/runs/{mem_run_id.strip()}/contexts', 'memory contexts'))
+            st.json(safe_api_get(f'/api/memory/runs/{mem_run_id.strip()}/retrieval', 'memory retrieval view'))
             st.json(safe_api_get(f'/api/memory/runs/{mem_run_id.strip()}/trace', 'memory trace'))
+        cap_id = st.text_input('Capsule ID for lineage', value='', key='mem_capsule_id')
+        if cap_id.strip():
+            st.json(safe_api_get(f'/api/memory/capsules/{cap_id.strip()}/lineage', 'capsule lineage'))
+            st.json(safe_api_get(f'/api/memory/capsules/{cap_id.strip()}/neighbors', 'capsule neighbors'))
         if st.button('Run memory maintenance now'):
             st.json(safe_api_post('/api/memory/maintenance/run', {'try_worker': True}, 'memory maintenance'))
     with c3:

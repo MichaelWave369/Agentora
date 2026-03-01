@@ -6,8 +6,10 @@ from datetime import datetime, timedelta
 from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.models import Capsule, MemoryMaintenanceJob, MemorySummary
+from app.models import Capsule, MemoryConflict, MemoryEdge, MemoryMaintenanceJob, MemorySummary
 from app.services.runtime.router import route_worker_job
+from app.services.runtime.conflicts import detect_conflicts_for_run, upsert_duplicate_cluster
+from app.services.runtime.trace import add_trace
 
 
 LAYER_PROMOTE = {
@@ -139,6 +141,9 @@ def run_maintenance(session: Session, run_id: int | None = None, try_worker: boo
     promoted = 0
     demoted = 0
     refined = 0
+    duplicates = 0
+    weak_edges_pruned = 0
+    conflicts_detected = 0
     now = datetime.utcnow()
     old_cutoff = now - timedelta(days=settings.agentora_cold_archive_after_days)
 
@@ -157,16 +162,32 @@ def run_maintenance(session: Session, run_id: int | None = None, try_worker: boo
             cap.archive_status = 'cold'
             session.add(cap)
             demoted += 1
+        cluster = upsert_duplicate_cluster(session, cap)
+        if cluster.cluster_size > 1:
+            duplicates += 1
         if settings.agentora_enable_adaptive_refinement and len(cap.text or '') > 2600:
             result = refine_capsule(session, cap.id)
             if result.get('ok') and result.get('created', 0) > 0:
                 refined += 1
 
-    details = {'promoted': promoted, 'demoted': demoted, 'refined': refined}
+    if run_id:
+        conflicts_detected = len(detect_conflicts_for_run(session, run_id))
+
+    edges = list(session.exec(select(MemoryEdge)))
+    for edge in edges:
+        if edge.weight < 0.18 and edge.usage_count < 2:
+            session.delete(edge)
+            weak_edges_pruned += 1
+    session.commit()
+
+    details = {'promoted': promoted, 'demoted': demoted, 'refined': refined, 'duplicates': duplicates, 'weak_edges_pruned': weak_edges_pruned, 'conflicts_detected': conflicts_detected}
     job.status = 'done'
     job.details_json = json.dumps(details)
     job.updated_at = datetime.utcnow()
     session.add(job)
     session.commit()
     session.refresh(job)
+    if run_id:
+        add_trace(session, run_id, 'maintenance_summary', {'job_id': job.id, 'details': details, 'used_worker': job.used_worker}, agent_id=0)
+        session.commit()
     return job

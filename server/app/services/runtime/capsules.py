@@ -166,6 +166,21 @@ def search_capsules_sync(
                 'is_summary': cap.is_summary,
                 'created_at': cap.created_at.isoformat(),
                 'layer': cap.memory_layer,
+                'score_breakdown': {
+                    'semantic': sim,
+                    'decay': recency,
+                    'access_frequency': min(1.0, cap.retrieval_count / 16.0),
+                    'trust': cap.trust_score,
+                    'consolidation': cap.consolidation_score,
+                    'project_match': 0.0,
+                    'layer_weight': 1.0,
+                    'graph_rerank': 0.0,
+                    'final_score': final,
+                },
+                'admission_reason': {'admission': 'flat_retrieval_fallback'},
+                'conflict_flag': cap.contradiction_flag,
+                'duplicate_cluster_id': cap.duplicate_cluster_id,
+                'duplicate_score': cap.duplicate_score,
             }
         )
     scored.sort(key=lambda x: x['score'], reverse=True)

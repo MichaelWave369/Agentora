@@ -161,6 +161,10 @@ class Capsule(SQLModel, table=True):
     contradiction_flag: bool = False
     drift_score: float = 0.0
     helped_final_answer_score: float = 0.0
+    duplicate_cluster_id: Optional[int] = None
+    duplicate_score: float = 0.0
+    retrieved_and_used_count: int = 0
+    retrieved_but_unused_count: int = 0
     created_from_run_id: Optional[int] = None
     parent_capsule_id: Optional[int] = None
     lineage_root_id: Optional[int] = None
@@ -240,6 +244,45 @@ class MemoryMaintenanceJob(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+
+
+
+class MemoryConflict(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    left_capsule_id: int
+    right_capsule_id: int
+    conflict_type: str = 'contradiction'
+    conflict_score: float = 0.0
+    status: str = 'open'
+    detail_json: str = '{}'
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class DuplicateCluster(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    hash_key: str
+    canonical_capsule_id: int
+    member_capsule_ids_json: str = '[]'
+    cluster_size: int = 1
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MemoryUsefulnessMetric(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    capsule_id: int
+    retrieved_count: int = 0
+    retrieved_and_used_count: int = 0
+    retrieved_but_unused_count: int = 0
+    helped_final_answer_score: float = 0.0
+    helped_tool_execution_score: float = 0.0
+    user_confirmed_useful: bool = False
+    contradiction_penalty: float = 0.0
+    stale_penalty: float = 0.0
+    confidence_gain: float = 0.0
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class CapsuleEmbedding(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

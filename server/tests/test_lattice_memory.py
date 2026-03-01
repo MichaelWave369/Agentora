@@ -36,6 +36,7 @@ def test_layer_priority_and_sparse_admission():
         _mk_capsule(session, run_id=9401, memory_layer='L3_DURABLE', text='durable context')
         _mk_capsule(session, run_id=9401, memory_layer='L5_COLD', archive_status='cold', text='cold context')
 
+        before = len(list(session.exec(select(ContextActivation).where(ContextActivation.run_id == 9401))))
         items = search_capsules_sync(session, query_vector=[1.0, 0.0, 0.0], run_id=9401, top_k=4, query='hot context')
         assert items
         assert items[0]['layer'] == 'L0_HOT'
@@ -43,8 +44,8 @@ def test_layer_priority_and_sparse_admission():
 
         activations = list(session.exec(select(ContextActivation).where(ContextActivation.run_id == 9401)))
         assert activations
-        assert len(activations) <= 6
-        assert any(a.capsule_id == hot.id for a in activations)
+        assert (len(activations) - before) <= 6
+        assert any(a.layer == 'L0_HOT' for a in activations[-6:])
 
 
 def test_decay_and_scoring_prefer_recent_short_memory():

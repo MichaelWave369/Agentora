@@ -7,7 +7,7 @@ from app.routers import marketplace, multimodal, voice, analytics, integrations,
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title='Agentora v0.9.2 — Lattice Memory & Sparse Context')
+    app = FastAPI(title='Agentora v0.9.3 — Memory Quality & Observability')
     app.add_middleware(
         CORSMiddleware,
         allow_origins=['*'],

@@ -53,3 +53,12 @@ class MemoryMaintenanceIn(BaseModel):
 
 class CapsuleLayerUpdateIn(BaseModel):
     reason: str = 'manual'
+
+
+
+class MemoryFeedbackIn(BaseModel):
+    run_id: int
+    retrieved_capsule_ids: list[int] = []
+    used_capsule_ids: list[int] = []
+    helped_final_answer: bool = False
+    helped_tool_execution: bool = False

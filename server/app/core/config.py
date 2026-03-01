@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     agentora_enable_graph_rerank: bool = Field(default=True, alias='AGENTORA_ENABLE_GRAPH_RERANK')
     agentora_enable_adaptive_refinement: bool = Field(default=True, alias='AGENTORA_ENABLE_ADAPTIVE_REFINEMENT')
     agentora_enable_memory_summaries: bool = Field(default=True, alias='AGENTORA_ENABLE_MEMORY_SUMMARIES')
+    agentora_project_memory_boost: float = Field(default=1.2, alias='AGENTORA_PROJECT_MEMORY_BOOST')
+    agentora_cross_project_memory_enabled: bool = Field(default=False, alias='AGENTORA_CROSS_PROJECT_MEMORY_ENABLED')
+    agentora_global_memory_fallback_enabled: bool = Field(default=True, alias='AGENTORA_GLOBAL_MEMORY_FALLBACK_ENABLED')
+    agentora_duplicate_suppression_enabled: bool = Field(default=True, alias='AGENTORA_DUPLICATE_SUPPRESSION_ENABLED')
 
     coevo_url: str = Field(default='', alias='COEVO_URL')
     coevo_api_key: str = Field(default='', alias='COEVO_API_KEY')
