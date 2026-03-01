@@ -13,7 +13,7 @@ def test_system_endpoints():
     client = make_client()
     r = client.get('/api/system/version')
     assert r.status_code == 200
-    assert r.json()['version'] == '0.9.6'
+    assert r.json()['version'] == '0.9.7'
 
     d = client.get('/api/system/doctor')
     assert d.status_code == 200

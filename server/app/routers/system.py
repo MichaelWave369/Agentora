@@ -18,8 +18,8 @@ def health():
 def version():
     return {
         'ok': True,
-        'version': '0.9.6',
-        'title': 'Agentora v0.9.6 — Operator Mode & One-Click Deployment',
+        'version': settings.agentora_version,
+        'title': settings.agentora_release_title,
     }
 
 
