@@ -47,6 +47,38 @@ The Streamlit app auto-initializes SQLite tables on first run and keeps backend 
 - `AGENTORA_DATABASE_URL` (defaults to local SQLite at `./agentora.db` from Streamlit mode)
 - `AGENTORA_USE_MOCK_OLLAMA=true` (recommended for smoke/demo without local model runtime)
 
+
+## Agentora Cortex (new runtime subsystem)
+Agentora Cortex upgrades runs into a local agent runtime with:
+- retrieval-backed **Capsule Memory** (chunked attachment text + embeddings)
+- structured action planning (`thought`, memory requests, tool calls, final/handoff)
+- iterative tool execution loop with persisted `ToolCall` history
+- optional worker-node offload for long tasks (embedding/PDF/sandbox/tool jobs)
+
+### Cortex defaults
+- local-first and offline-first are preserved
+- mock Ollama remains supported for smoke tests
+- no mandatory cloud dependencies
+
+### Single-PC smoke test
+```bash
+python -m pip install -r requirements.txt
+AGENTORA_USE_MOCK_OLLAMA=true streamlit run app.py
+```
+Then:
+1. create a run,
+2. upload a PDF/text attachment,
+3. verify capsule creation through `/api/capsules/search`.
+
+### Two-PC worker mode (optional)
+- Host A: run Agentora backend+Streamlit normally.
+- Host B: run a worker endpoint compatible with `POST /api/worker/execute`.
+- Set on Host A:
+```bash
+export AGENTORA_WORKER_URLS=http://<worker-ip>:<port>
+```
+- Register workers via `/api/workers/register` and dispatch via `/api/workers/dispatch`.
+
 ## Privacy-first defaults
 - 100% local-first and offline by default
 - No mandatory network calls

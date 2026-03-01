@@ -28,6 +28,14 @@ class Settings(BaseSettings):
 
     agentora_lan_discovery_enabled: bool = Field(default=True, alias='AGENTORA_LAN_DISCOVERY_ENABLED')
     agentora_gathering_encryption_key: str = Field(default='', alias='AGENTORA_GATHERING_ENCRYPTION_KEY')
+
+    agentora_embed_model: str = Field(default='embeddinggemma', alias='AGENTORA_EMBED_MODEL')
+    agentora_tool_model: str = Field(default='qwen3:14b', alias='AGENTORA_TOOL_MODEL')
+    agentora_chat_model: str = Field(default='gemma3:12b', alias='AGENTORA_CHAT_MODEL')
+    agentora_worker_urls: str = Field(default='', alias='AGENTORA_WORKER_URLS')
+    agentora_capsule_top_k: int = Field(default=6, alias='AGENTORA_CAPSULE_TOP_K')
+    agentora_max_tool_steps: int = Field(default=4, alias='AGENTORA_MAX_TOOL_STEPS')
+
     coevo_url: str = Field(default='', alias='COEVO_URL')
     coevo_api_key: str = Field(default='', alias='COEVO_API_KEY')
 

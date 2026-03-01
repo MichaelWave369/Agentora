@@ -37,8 +37,16 @@ def local_files_read(run_id: int, path: str) -> dict:
     return {'ok': True, 'content': p.read_text(encoding='utf-8')}
 
 
-def capsule_search(query: str) -> dict:
-    return {'ok': False, 'message': 'not configured', 'query': query}
+def capsule_search(query: str, run_id: int | None = None, session=None) -> dict:
+    if session is None:
+        return {'ok': False, 'error': 'session required'}
+    import hashlib
+    from app.services.runtime.capsules import search_capsules_sync
+
+    digest = hashlib.sha256(query.encode('utf-8')).digest()
+    query_vector = [((b / 255.0) * 2 - 1) for b in digest[:32]]
+    items = search_capsules_sync(session=session, query_vector=query_vector, run_id=run_id)
+    return {'ok': True, 'query': query, 'items': items}
 
 
 def http_fetch(url: str) -> dict:

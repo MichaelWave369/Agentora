@@ -3,15 +3,14 @@ import json
 from datetime import datetime
 from sqlmodel import Session, select
 
-from app.models import TeamAgent, Agent, Run, Message, RunMetric, TemplateUsage, Attachment, ModelCapability
-from app.services.ollama_client import OllamaClient
-from app.services.multimodal.service import model_can_vision
+from app.models import TeamAgent, Agent, Run, Message, RunMetric, TemplateUsage, Attachment
+from app.services.runtime.loop import runtime_loop
 from .state import RunState
 
 
 class OrchestrationEngine:
     def __init__(self):
-        self.client = OllamaClient()
+        pass
 
     async def execute(self, session: Session, run: Run, prompt: str, reflection: bool = False) -> RunState:
         links = list(session.exec(select(TeamAgent).where(TeamAgent.team_id == run.team_id).order_by(TeamAgent.position)))
@@ -34,18 +33,6 @@ class OrchestrationEngine:
         session.commit()
         return state
 
-    async def _agent_reply(self, session: Session, agent, prompt: str, image_paths: list[str]) -> tuple[str, float, str]:
-        t0 = datetime.utcnow()
-        chosen_model = agent.model
-        cap = session.get(ModelCapability, agent.model)
-        if image_paths and not ((cap and cap.can_vision) or model_can_vision(agent.model)):
-            chosen_model = 'llava:latest'
-        chunks = []
-        async for tok in self.client.stream_chat(chosen_model, agent.system_prompt, prompt, image_paths=image_paths):
-            chunks.append(tok)
-        text = ''.join(chunks).strip()
-        return text, (datetime.utcnow() - t0).total_seconds(), chosen_model
-
     async def _dispatch(self, session: Session, state: RunState, agents: list[Agent], consensus_threshold: int, image_paths: list[str]):
         started = datetime.utcnow()
         agreements = 0
@@ -54,10 +41,16 @@ class OrchestrationEngine:
                 state.add('system', 'Timeout reached')
                 break
             prompt = state.prompt if i == 0 else state.messages[-1]['content']
-            reply, seconds, model_used = await self._agent_reply(session, a, prompt, image_paths)
+            reply, used_tools, seconds, model_used = await runtime_loop.run_agent(
+                session=session,
+                run_id=state.run_id,
+                agent=a,
+                prompt=prompt,
+                image_paths=image_paths,
+            )
             in_toks = max(1, len(prompt) // 4)
             out_toks = max(1, len(reply) // 4)
-            session.add(RunMetric(run_id=state.run_id, agent_id=a.id or 0, tokens_in=in_toks, tokens_out=out_toks, seconds=seconds, tool_calls=0))
+            session.add(RunMetric(run_id=state.run_id, agent_id=a.id or 0, tokens_in=in_toks, tokens_out=out_toks, seconds=seconds, tool_calls=used_tools))
             if sum((m.get('meta', {}).get('tokens_out', 0) for m in state.messages)) + out_toks > state.token_budget:
                 state.add('system', 'Max cost guard reached; run paused')
                 break
@@ -66,7 +59,7 @@ class OrchestrationEngine:
                 break
             if 'agree' in reply.lower() or 'consensus' in reply.lower():
                 agreements += 1
-            state.add('assistant', reply, a.id, meta={'model_used': model_used, 'tokens_out': out_toks})
+            state.add('assistant', reply, a.id, meta={'model_used': model_used, 'tokens_out': out_toks, 'tool_calls': used_tools})
             if state.reflection:
                 state.add('system', f'Reflection {a.name}: quality=0.8 uncertainty=0.2', a.id)
 
