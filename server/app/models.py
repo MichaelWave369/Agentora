@@ -607,6 +607,52 @@ class WorkflowRun(SQLModel, table=True):
     started_at: datetime = Field(default_factory=datetime.utcnow)
     finished_at: Optional[datetime] = None
 
+
+class OperatorRun(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workflow_id: Optional[int] = None
+    run_id: int = 0
+    mode: str = 'stepwise'
+    status: str = 'running'
+    requested_by: str = 'user'
+    worker_mode: str = 'auto'
+    summary: str = ''
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    finished_at: Optional[datetime] = None
+
+
+class OperatorStep(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    operator_run_id: int
+    workflow_step_id: Optional[int] = None
+    position: int = 0
+    action_request_id: Optional[int] = None
+    status: str = 'queued'
+    retries: int = 0
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    result_json: str = '{}'
+    error: str = ''
+
+
+class ApprovalDecisionLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    action_request_id: int
+    decision: str = 'pending'
+    reason: str = ''
+    scope_preview: str = ''
+    reusable: bool = False
+    decided_by: str = 'user'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class BootstrapState(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    version: str = '0.9.6'
+    doctor_status: str = 'unknown'
+    report_json: str = '{}'
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
 class CosmosWorld(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str

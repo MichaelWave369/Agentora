@@ -121,3 +121,15 @@ class WorkflowIn(BaseModel):
 class WorkflowRunIn(BaseModel):
     run_id: int = 0
     inputs: dict = {}
+
+
+class OperatorRunIn(BaseModel):
+    workflow_id: int
+    run_id: int = 0
+    mode: str = 'stepwise'
+    worker_mode: str = 'auto'
+
+
+class OperatorStepDecisionIn(BaseModel):
+    step_id: int
+    reason: str = ''

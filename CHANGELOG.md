@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.9.6] - 2026-03-01
+### Added
+- Added one-click local launchers (`launch_agentora.bat`, `launch_agentora.ps1`) and a Python bootstrap helper (`scripts/agentora_bootstrap.py`).
+- Added system diagnostics and bootstrap APIs (`/api/system/doctor`, `/api/system/bootstrap`, `/api/system/version`, `/api/system/health`).
+- Added Operator Mode runtime entities and APIs for stepwise execution, pause/resume, and step controls.
+- Added Docker and compose deployment profiles for single-PC and two-node local network setups.
+- Added tests for operator mode, system doctor, and bootstrap.
+
+### Changed
+- Upgraded FastAPI app title/version metadata to `v0.9.6`.
+- Expanded action approval logging and scope previews.
+- Refreshed README for modern quickstart, operator center, and release progression.
+
 ## [0.9.0-rc1] - 2026-03-01
 ### Added
 - Added first public release docs: `CHANGELOG.md`, `RELEASE_NOTES.md`, and `DEPLOYMENT.md`.

@@ -1,32 +1,19 @@
-# Agentora 0.9.0-rc1 Release Notes
+# Agentora v0.9.6 — Operator Mode & One-Click Deployment
 
-## Release summary
-Agentora `0.9.0-rc1` is the first public GitHub release candidate focused on release hardening, version consistency, Streamlit-first runtime clarity, and deployment readiness.
+This release focuses on two practical outcomes:
+1. **One-click local usability** for installation, setup checks, and startup.
+2. **Safer and more useful Operator Mode** for supervised desktop/browser workflows.
 
 ## Highlights
-- Streamlit remains the primary runtime/UI.
-- FastAPI remains the orchestration/data backend.
-- Runtime behavior is now clearly documented for:
-  - `auto` mode (HTTP-first with embedded fallback)
-  - explicit `http` mode
-  - explicit `embedded` mode
-- Public release docs and packaging flow are now included.
+- Windows launchers (`launch_agentora.bat`, `launch_agentora.ps1`)
+- System doctor + bootstrap APIs
+- Operator run lifecycle APIs (start/list/detail/pause/resume/advance/retry/skip)
+- Approval decision logging improvements
+- Operator Center additions in Streamlit dashboard
+- Docker compose profiles for local single-PC and two-node modes
 
-## Included in this RC
-- Version normalization to `0.9.0-rc1`.
-- Deployment and environment variable documentation.
-- Optional release archive packaging script.
-- Optional tag-based GitHub release workflow.
-- No architectural rewrite; major features preserved.
+## Recommended tag
+- `v0.9.6`
 
-## Recommended validation before tagging
-1. `python -m pip install -r requirements.txt`
-2. `AGENTORA_USE_MOCK_OLLAMA=true AGENTORA_USE_MOCK_VOICE=true PYTHONPATH=server pytest -q server/tests`
-3. `python -c "import streamlit_app"`
-4. `cd web && npm ci && npm run build`
-5. `scripts/create_release_archive.sh 0.9.0-rc1`
-
-## Known limitations
-- Embedded mode uses FastAPI `TestClient` and is intended for local/dev convenience.
-- Real model runtime requires local Ollama and model availability.
-- React web scaffold remains optional and secondary to Streamlit-first runtime.
+## Recommended release title
+- `Agentora v0.9.6 — Operator Mode & One-Click Deployment`

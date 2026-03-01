@@ -11,7 +11,7 @@ import requests
 from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.models import ActionApproval, ActionArtifact, ActionExecution, ActionRequest, PolicyRule
+from app.models import ActionApproval, ActionArtifact, ActionExecution, ActionRequest, ApprovalDecisionLog, PolicyRule
 from app.services.runtime.router import route_worker_job
 from app.services.runtime.trace import add_trace
 
@@ -51,7 +51,7 @@ def evaluate_policy(session: Session, action_class: str, tool_name: str, agent_r
         if url and not _domain_allowed(url):
             return 'deny', 'domain_blocked_or_not_allowlisted'
 
-    if tool_name in {'desktop_write_text', 'desktop_move', 'desktop_copy', 'desktop_rename', 'desktop_run_app', 'desktop_shell', 'browser_download'}:
+    if tool_name in {'desktop_write_text', 'desktop_move', 'desktop_copy', 'desktop_rename', 'desktop_run_app', 'desktop_shell', 'browser_download', 'browser_fill_form'}:
         return settings.agentora_action_require_approval_default, 'sensitive_default'
     return 'auto_allow', 'safe_default'
 
@@ -204,6 +204,7 @@ def approve_action(session: Session, action_id: int, decided_by: str = 'user', r
     req.decided_at = datetime.utcnow()
     session.add(req)
     session.add(ActionApproval(action_request_id=req.id or 0, decision='granted', decided_by=decided_by, reason=reason))
+    session.add(ApprovalDecisionLog(action_request_id=req.id or 0, decision='approved', reason=reason, decided_by=decided_by, scope_preview=req.params_json[:300], reusable=req.policy_decision == 'always_ask'))
     add_trace(session, req.run_id, 'approval_granted', {'action_id': req.id, 'tool_name': req.tool_name, 'decided_by': decided_by}, agent_id=req.agent_id)
     add_trace(session, req.run_id, 'desktop_action_approved' if req.action_class == 'desktop' else 'browser_action_requested', {'action_id': req.id}, agent_id=req.agent_id)
     session.commit()
@@ -218,6 +219,7 @@ def deny_action(session: Session, action_id: int, decided_by: str = 'user', reas
     req.decided_at = datetime.utcnow()
     session.add(req)
     session.add(ActionApproval(action_request_id=req.id or 0, decision='denied', decided_by=decided_by, reason=reason))
+    session.add(ApprovalDecisionLog(action_request_id=req.id or 0, decision='denied', reason=reason, decided_by=decided_by, scope_preview=req.params_json[:300], reusable=False))
     add_trace(session, req.run_id, 'approval_denied', {'action_id': req.id, 'reason': reason}, agent_id=req.agent_id)
     add_trace(session, req.run_id, 'desktop_action_denied' if req.action_class == 'desktop' else 'policy_blocked', {'action_id': req.id, 'reason': reason}, agent_id=req.agent_id)
     session.commit()

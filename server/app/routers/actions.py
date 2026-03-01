@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from app.db import get_session
-from app.models import ActionExecution, ActionRequest
+from app.models import ActionExecution, ActionRequest, ApprovalDecisionLog
 from app.schemas import ActionDecisionIn, ActionRequestIn
 from app.services.runtime.actions import approve_action, create_action_request, deny_action
 
@@ -21,6 +21,8 @@ def _req_payload(a: ActionRequest) -> dict:
         'policy_decision': a.policy_decision,
         'status': a.status,
         'requires_approval': a.requires_approval,
+        'approval_reason': a.policy_decision,
+        'scope_preview': a.params_json[:300],
         'requested_worker': a.requested_worker,
         'requested_at': a.requested_at.isoformat() if a.requested_at else '',
     }
@@ -51,7 +53,8 @@ def pending_actions(session: Session = Depends(get_session)):
 def action_history(session: Session = Depends(get_session)):
     items = list(session.exec(select(ActionRequest).order_by(ActionRequest.id.desc()).limit(200)))
     executions = list(session.exec(select(ActionExecution).order_by(ActionExecution.id.desc()).limit(200)))
-    return {'ok': True, 'items': [_req_payload(x) for x in items], 'executions': [_exec_payload(x) for x in executions]}
+    logs = list(session.exec(select(ApprovalDecisionLog).order_by(ApprovalDecisionLog.id.desc()).limit(200)))
+    return {'ok': True, 'items': [_req_payload(x) for x in items], 'executions': [_exec_payload(x) for x in executions], 'approval_history': logs}
 
 
 @router.post('')
