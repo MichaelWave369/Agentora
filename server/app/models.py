@@ -134,6 +134,62 @@ class RunMetric(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+
+
+class Capsule(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int
+    attachment_id: Optional[int] = None
+    source: str = ''
+    chunk_index: int = 0
+    text: str
+    tags_json: str = '[]'
+    is_summary: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CapsuleEmbedding(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    capsule_id: int
+    vector_json: str = '[]'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkerNode(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    url: str
+    capabilities_json: str = '[]'
+    status: str = 'idle'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_seen_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkerJob(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    job_type: str
+    payload_json: str = '{}'
+    priority: int = 5
+    status: str = 'queued'
+    retries: int = 0
+    max_retries: int = 0
+    worker_node_id: Optional[int] = None
+    used_fallback_local: bool = False
+    result_json: str = '{}'
+    error: str = ''
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RunTrace(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int
+    agent_id: int = 0
+    event_type: str
+    payload_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class TemplateUsage(SQLModel, table=True):
     template_id: int
     runs_count: int = 0

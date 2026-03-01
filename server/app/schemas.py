@@ -26,3 +26,20 @@ class RunIn(BaseModel):
     token_budget: int = 3000
     consensus_threshold: int = 1
     reflection: bool = False
+
+
+class WorkerIn(BaseModel):
+    name: str
+    url: str
+    capabilities: list[str] = []
+
+
+class WorkerHeartbeatIn(BaseModel):
+    worker_id: int
+    status: str = "idle"
+
+
+class WorkerDispatchIn(BaseModel):
+    job_type: str
+    payload: dict = {}
+    priority: int = 5
