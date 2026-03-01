@@ -1,3 +1,19 @@
+## [1.0.0-rc1] - 2026-03-01
+
+### Changed
+- Promoted product identity to `v1.0.0-rc1` across config, system API, Streamlit title/banner, README/docs, and web package metadata.
+- Hardened run control endpoints with explicit not-found errors for pause/resume/clone-agent paths.
+- Improved doctor output with actionable `next_steps` guidance for missing optional dependencies.
+- Polished Windows launcher to start API + Streamlit for one-click local startup.
+- Expanded release-readiness smoke checks for workflow replay and worker fallback behavior.
+
+## [0.9.7] - 2026-03-01
+
+### Changed
+- Unified release/version branding in API, Streamlit, config, and docs for `v0.9.7`.
+- Polished Streamlit dashboard labeling for first-run clarity, approvals, and inspector discoverability.
+- Refreshed README and added focused docs for quickstart, operator mode, two-PC setup, troubleshooting, and release history.
+
 # Changelog
 
 All notable changes to this project are documented in this file.

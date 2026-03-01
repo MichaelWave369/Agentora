@@ -36,6 +36,8 @@ async def create_run(payload: RunIn, session: Session = Depends(get_session)):
 @router.post('/{run_id}/pause')
 def pause_run(run_id: int, session: Session = Depends(get_session)):
     run = session.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, 'run not found')
     run.status = 'paused'
     run.paused_reason = 'manual'
     session.add(run)
@@ -46,6 +48,8 @@ def pause_run(run_id: int, session: Session = Depends(get_session)):
 @router.post('/{run_id}/resume')
 def resume_run(run_id: int, session: Session = Depends(get_session)):
     run = session.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, 'run not found')
     run.status = 'running'
     session.add(run)
     session.commit()
@@ -55,11 +59,15 @@ def resume_run(run_id: int, session: Session = Depends(get_session)):
 @router.post('/{run_id}/clone-agent')
 def clone_agent(run_id: int, payload: dict, session: Session = Depends(get_session)):
     source = session.get(Agent, payload['agent_id'])
+    if not source:
+        raise HTTPException(404, 'source agent not found')
     clone = Agent(name=payload.get('name', f'{source.name}-clone'), model=source.model, role=payload.get('role', source.role), system_prompt=payload.get('system_prompt', source.system_prompt), tools_json=source.tools_json, memory_mode=source.memory_mode)
     session.add(clone)
     session.commit()
     session.refresh(clone)
     run = session.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, 'run not found')
     links = list(session.exec(select(TeamAgent).where(TeamAgent.team_id == run.team_id).order_by(TeamAgent.position.desc())))
     pos = links[0].position + 1 if links else 0
     session.add(TeamAgent(team_id=run.team_id, agent_id=clone.id, position=pos, params_json='{}'))
