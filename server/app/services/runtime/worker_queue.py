@@ -9,13 +9,34 @@ from sqlmodel import Session, select
 
 from app.core.config import settings
 from app.models import WorkerNode, WorkerJob
+from app.services.runtime.trace import add_trace
 
 
 TASK_CAPABILITY = {
+    'interactive_chat': 'interactive_chat',
+    'tool_planning': 'tool_planning',
     'embed_batch': 'embed_batch',
     'capsule_ingest': 'capsule_ingest',
+    'summary_generation': 'summary_generation',
+    'archive_compaction': 'archive_compaction',
+    'edge_recompute': 'edge_recompute',
+    'memory_maintenance': 'memory_maintenance',
+    'maintenance': 'memory_maintenance',
+    'conflict_detection': 'conflict_detection',
+    'large_attachment_processing': 'large_attachment_processing',
+    'vision_extraction': 'vision_extraction',
     'python_exec': 'python_exec',
     'long_tool_job': 'long_tool_job',
+    'web_fetch': 'web_fetch',
+    'desktop_action': 'desktop_action',
+    'browser_action': 'browser_action',
+    'workflow_run': 'workflow_run',
+}
+
+
+HEAVY_TASKS = {
+    'embed_batch', 'capsule_ingest', 'summary_generation', 'archive_compaction', 'edge_recompute',
+    'memory_maintenance', 'maintenance', 'large_attachment_processing', 'browser_action', 'workflow_run',
 }
 
 
@@ -82,15 +103,38 @@ class WorkerQueue:
         session.refresh(job)
         return job
 
+    def _score_worker(self, node: WorkerNode, job_type: str) -> float:
+        caps = self._parse_caps(node)
+        capability_bonus = 1.0 if TASK_CAPABILITY.get(job_type, job_type) in caps else 0.0
+        load_penalty = 0.4 if node.status == 'busy' else 0.0
+        heavy_bonus = 0.3 if job_type in HEAVY_TASKS and 'maintenance' in ','.join(caps) else 0.0
+        return capability_bonus + heavy_bonus - load_penalty
+
     def dispatch(self, session: Session, job_type: str, payload: dict, priority: int = 5) -> WorkerJob:
         job = self._create_job(session, job_type=job_type, payload=payload, priority=priority)
+        run_id = int(payload.get('run_id', 0) or 0)
         urls = [u.strip() for u in settings.agentora_worker_urls.split(',') if u.strip()]
         candidates = self._eligible_workers(session, job_type)
         if not candidates and urls:
-            # implicit workers from env urls with unknown capabilities
             candidates = [WorkerNode(id=None, name='env-worker', url=u, capabilities_json='[]', status='idle') for u in urls]
 
+        if job_type in {'interactive_chat', 'tool_planning'} and priority >= 5:
+            # keep interactive work local unless explicit worker-capable candidates are idle and stronger
+            if run_id:
+                add_trace(session, run_id, 'worker_route_rejected', {'job_type': job_type, 'reason': 'interactive_local_priority'}, agent_id=0)
+                session.commit()
+            job.status = 'fallback_local'
+            job.used_fallback_local = True
+            job.result_json = json.dumps({'mode': 'local', 'reason': 'interactive_local_priority'})
+            job.updated_at = datetime.utcnow()
+            session.add(job)
+            session.commit()
+            return job
+
         if not candidates:
+            if run_id:
+                add_trace(session, run_id, 'worker_route_fallback', {'job_type': job_type, 'reason': 'no_worker_available'}, agent_id=0)
+                session.commit()
             job.status = 'fallback_local'
             job.used_fallback_local = True
             job.result_json = json.dumps({'mode': 'local', 'reason': 'no_worker_available'})
@@ -99,43 +143,51 @@ class WorkerQueue:
             session.commit()
             return job
 
-        for node in sorted(candidates, key=lambda x: x.status != 'idle'):
-            timeout = 12
-            for attempt in range(settings.agentora_max_worker_retries + 1):
-                job.retries = attempt
-                job.status = 'running'
-                job.worker_node_id = node.id
-                job.updated_at = datetime.utcnow()
-                session.add(job)
-                session.commit()
-                try:
-                    r = requests.post(
-                        f'{node.url.rstrip("/")}/api/worker/execute',
-                        json={'job_id': job.id, 'type': job_type, 'payload': payload, 'priority': priority},
-                        timeout=timeout,
-                    )
-                    if r.ok:
-                        job.status = 'done'
-                        job.result_json = r.text[:8000]
-                        job.updated_at = datetime.utcnow()
-                        session.add(job)
-                        if node.id:
-                            db_node = session.get(WorkerNode, node.id)
-                            if db_node:
-                                db_node.status = 'idle'
-                                db_node.last_seen_at = datetime.utcnow()
-                                session.add(db_node)
-                        session.commit()
-                        return job
-                    job.error = f'http {r.status_code}'
-                except requests.Timeout:
-                    job.error = 'worker_timeout'
-                except Exception as exc:
-                    job.error = str(exc)
-                job.updated_at = datetime.utcnow()
-                session.add(job)
-                session.commit()
+        ranked = sorted(candidates, key=lambda n: self._score_worker(n, job_type), reverse=True)
+        node = ranked[0]
+        if run_id:
+            add_trace(session, run_id, 'worker_route_selected', {'job_type': job_type, 'worker': node.name, 'worker_url': node.url, 'score': self._score_worker(node, job_type)}, agent_id=0)
+            session.commit()
 
+        timeout = 12
+        for attempt in range(settings.agentora_max_worker_retries + 1):
+            job.retries = attempt
+            job.status = 'running'
+            job.worker_node_id = node.id
+            job.updated_at = datetime.utcnow()
+            session.add(job)
+            session.commit()
+            try:
+                r = requests.post(
+                    f'{node.url.rstrip("/")}/api/worker/execute',
+                    json={'job_id': job.id, 'type': job_type, 'payload': payload, 'priority': priority},
+                    timeout=timeout,
+                )
+                if r.ok:
+                    job.status = 'done'
+                    job.result_json = r.text[:8000]
+                    job.updated_at = datetime.utcnow()
+                    session.add(job)
+                    if node.id:
+                        db_node = session.get(WorkerNode, node.id)
+                        if db_node:
+                            db_node.status = 'idle'
+                            db_node.last_seen_at = datetime.utcnow()
+                            session.add(db_node)
+                    session.commit()
+                    return job
+                job.error = f'http {r.status_code}'
+            except requests.Timeout:
+                job.error = 'worker_timeout'
+            except Exception as exc:
+                job.error = str(exc)
+            job.updated_at = datetime.utcnow()
+            session.add(job)
+            session.commit()
+
+        if run_id:
+            add_trace(session, run_id, 'worker_route_fallback', {'job_type': job_type, 'reason': job.error or 'worker_failed'}, agent_id=0)
+            session.commit()
         job.status = 'fallback_local'
         job.used_fallback_local = True
         job.result_json = json.dumps({'mode': 'local', 'reason': job.error or 'worker_failed'})

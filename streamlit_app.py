@@ -244,6 +244,64 @@ def _dashboard_page():
         if run_id.strip():
             trace_payload = safe_api_get(f'/api/runs/{run_id.strip()}/trace', 'run trace')
             st.json(trace_payload)
+
+
+
+    with st.expander('Action Center / Automation Inspector', expanded=False):
+        st.json(safe_api_get('/api/actions/pending', 'pending actions'))
+        st.json(safe_api_get('/api/actions/history', 'action history'))
+        st.json(safe_api_get('/api/workflows', 'workflows'))
+        action_id = st.text_input('Action ID decision', value='', key='action_decision_id')
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button('Approve Action') and action_id.strip():
+                st.json(safe_api_post(f'/api/actions/{action_id.strip()}/approve', {'reason': 'approved from streamlit'}, 'approve action'))
+        with c2:
+            if st.button('Deny Action') and action_id.strip():
+                st.json(safe_api_post(f'/api/actions/{action_id.strip()}/deny', {'reason': 'denied from streamlit'}, 'deny action'))
+
+        wf_name = st.text_input('New workflow name', value='', key='wf_name')
+        if st.button('Create sample workflow') and wf_name.strip():
+            payload = {
+                'name': wf_name.strip(),
+                'description': 'Sample safe workflow',
+                'params_schema': {},
+                'steps': [
+                    {'position': 0, 'step_type': 'desktop', 'tool_name': 'desktop_list_dir', 'params': {'path': '.'}, 'requires_approval': False},
+                    {'position': 1, 'step_type': 'browser', 'tool_name': 'browser_page_summary', 'params': {'url': 'http://localhost:8088/api/health'}, 'requires_approval': True},
+                ],
+            }
+            st.json(safe_api_post('/api/workflows', payload, 'create workflow'))
+        wf_id = st.text_input('Workflow ID run', value='', key='wf_id_run')
+        wf_run_id = st.text_input('Run ID for workflow', value='', key='wf_run_id')
+        if st.button('Run workflow') and wf_id.strip():
+            st.json(safe_api_post(f'/api/workflows/{wf_id.strip()}/run', {'run_id': int(wf_run_id or 0), 'inputs': {}}, 'run workflow'))
+
+    with st.expander('Team Collaboration Inspector', expanded=False):
+        collab_run_id = st.text_input('Run ID for team collaboration', value='', key='collab_run_id')
+        if collab_run_id.strip():
+            st.json(safe_api_get(f'/api/runs/{collab_run_id.strip()}/plan', 'team plan'))
+            st.json(safe_api_get(f'/api/runs/{collab_run_id.strip()}/team', 'team overview'))
+            st.json(safe_api_get(f'/api/runs/{collab_run_id.strip()}/handoffs', 'handoffs'))
+            st.json(safe_api_get(f'/api/runs/{collab_run_id.strip()}/collaboration-trace', 'collaboration trace'))
+        st.json(safe_api_get('/api/agents/capabilities', 'agent capabilities'))
+
+    with st.expander('Lattice Memory Inspector', expanded=False):
+        st.json(safe_api_get('/api/memory/health', 'memory health'))
+        st.json(safe_api_get('/api/memory/layers', 'memory layers'))
+        st.json(safe_api_get('/api/memory/conflicts', 'memory conflicts'))
+        st.json(safe_api_get('/api/memory/duplicates', 'memory duplicates'))
+        mem_run_id = st.text_input('Run ID for memory contexts', value='', key='mem_run_id')
+        if mem_run_id.strip():
+            st.json(safe_api_get(f'/api/memory/runs/{mem_run_id.strip()}/contexts', 'memory contexts'))
+            st.json(safe_api_get(f'/api/memory/runs/{mem_run_id.strip()}/retrieval', 'memory retrieval view'))
+            st.json(safe_api_get(f'/api/memory/runs/{mem_run_id.strip()}/trace', 'memory trace'))
+        cap_id = st.text_input('Capsule ID for lineage', value='', key='mem_capsule_id')
+        if cap_id.strip():
+            st.json(safe_api_get(f'/api/memory/capsules/{cap_id.strip()}/lineage', 'capsule lineage'))
+            st.json(safe_api_get(f'/api/memory/capsules/{cap_id.strip()}/neighbors', 'capsule neighbors'))
+        if st.button('Run memory maintenance now'):
+            st.json(safe_api_post('/api/memory/maintenance/run', {'try_worker': True}, 'memory maintenance'))
     with c3:
         st.markdown("<div class='agentora-card'><h4>Marketplace</h4></div>", unsafe_allow_html=True)
         market = safe_api_get('/api/marketplace/templates', 'marketplace')

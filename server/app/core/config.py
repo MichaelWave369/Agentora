@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
+import json
 
 
 class Settings(BaseSettings):
@@ -44,6 +45,42 @@ class Settings(BaseSettings):
     agentora_http_allowlist: str = Field(default='', alias='AGENTORA_HTTP_ALLOWLIST')
     agentora_file_write_root: str = Field(default='server/data/artifacts', alias='AGENTORA_FILE_WRITE_ROOT')
     agentora_max_worker_retries: int = Field(default=2, alias='AGENTORA_MAX_WORKER_RETRIES')
+    agentora_enable_layered_memory: bool = Field(default=True, alias='AGENTORA_ENABLE_LAYERED_MEMORY')
+    agentora_context_top_k: int = Field(default=8, alias='AGENTORA_CONTEXT_TOP_K')
+    agentora_max_active_contexts: int = Field(default=6, alias='AGENTORA_MAX_ACTIVE_CONTEXTS')
+    agentora_context_min_score: float = Field(default=0.25, alias='AGENTORA_CONTEXT_MIN_SCORE')
+    agentora_context_layer_budgets: str = Field(default='{"L0_HOT":2,"L1_SHORT":3,"L2_SESSION":2,"L3_DURABLE":2,"L4_SPARSE":2}', alias='AGENTORA_CONTEXT_LAYER_BUDGETS')
+    agentora_memory_decay_short: float = Field(default=0.85, alias='AGENTORA_MEMORY_DECAY_SHORT')
+    agentora_memory_decay_medium: float = Field(default=0.95, alias='AGENTORA_MEMORY_DECAY_MEDIUM')
+    agentora_memory_decay_long: float = Field(default=0.995, alias='AGENTORA_MEMORY_DECAY_LONG')
+    agentora_memory_layer_weights: str = Field(default='{"L0_HOT":1.25,"L1_SHORT":1.0,"L2_SESSION":0.92,"L3_DURABLE":0.88,"L4_SPARSE":0.8,"L5_COLD":0.35}', alias='AGENTORA_MEMORY_LAYER_WEIGHTS')
+    agentora_memory_promotion_threshold: float = Field(default=0.68, alias='AGENTORA_MEMORY_PROMOTION_THRESHOLD')
+    agentora_memory_demotion_threshold: float = Field(default=0.22, alias='AGENTORA_MEMORY_DEMOTION_THRESHOLD')
+    agentora_cold_archive_after_days: int = Field(default=30, alias='AGENTORA_COLD_ARCHIVE_AFTER_DAYS')
+    agentora_memory_maintenance_interval: int = Field(default=3600, alias='AGENTORA_MEMORY_MAINTENANCE_INTERVAL')
+    agentora_enable_graph_rerank: bool = Field(default=True, alias='AGENTORA_ENABLE_GRAPH_RERANK')
+    agentora_enable_adaptive_refinement: bool = Field(default=True, alias='AGENTORA_ENABLE_ADAPTIVE_REFINEMENT')
+    agentora_enable_memory_summaries: bool = Field(default=True, alias='AGENTORA_ENABLE_MEMORY_SUMMARIES')
+    agentora_project_memory_boost: float = Field(default=1.2, alias='AGENTORA_PROJECT_MEMORY_BOOST')
+    agentora_cross_project_memory_enabled: bool = Field(default=False, alias='AGENTORA_CROSS_PROJECT_MEMORY_ENABLED')
+    agentora_global_memory_fallback_enabled: bool = Field(default=True, alias='AGENTORA_GLOBAL_MEMORY_FALLBACK_ENABLED')
+    agentora_duplicate_suppression_enabled: bool = Field(default=True, alias='AGENTORA_DUPLICATE_SUPPRESSION_ENABLED')
+    agentora_enable_team_debate: bool = Field(default=True, alias='AGENTORA_ENABLE_TEAM_DEBATE')
+    agentora_default_team_mode: str = Field(default='careful', alias='AGENTORA_DEFAULT_TEAM_MODE')
+    agentora_max_team_turns: int = Field(default=6, alias='AGENTORA_MAX_TEAM_TURNS')
+    agentora_max_handoffs: int = Field(default=8, alias='AGENTORA_MAX_HANDOFFS')
+    agentora_enable_single_agent_fallback: bool = Field(default=True, alias='AGENTORA_ENABLE_SINGLE_AGENT_FALLBACK')
+    agentora_force_synthesis_on_budget_exhaust: bool = Field(default=True, alias='AGENTORA_FORCE_SYNTHESIS_ON_BUDGET_EXHAUST')
+    agentora_enable_desktop_actions: bool = Field(default=True, alias='AGENTORA_ENABLE_DESKTOP_ACTIONS')
+    agentora_enable_browser_actions: bool = Field(default=True, alias='AGENTORA_ENABLE_BROWSER_ACTIONS')
+    agentora_action_require_approval_default: str = Field(default='ask_once', alias='AGENTORA_ACTION_REQUIRE_APPROVAL_DEFAULT')
+    agentora_allowed_path_roots: str = Field(default='.', alias='AGENTORA_ALLOWED_PATH_ROOTS')
+    agentora_blocked_path_roots: str = Field(default='', alias='AGENTORA_BLOCKED_PATH_ROOTS')
+    agentora_allowed_domains: str = Field(default='localhost,127.0.0.1', alias='AGENTORA_ALLOWED_DOMAINS')
+    agentora_blocked_domains: str = Field(default='', alias='AGENTORA_BLOCKED_DOMAINS')
+    agentora_allowed_apps: str = Field(default='', alias='AGENTORA_ALLOWED_APPS')
+    agentora_max_action_steps: int = Field(default=12, alias='AGENTORA_MAX_ACTION_STEPS')
+    agentora_max_workflow_duration_seconds: int = Field(default=300, alias='AGENTORA_MAX_WORKFLOW_DURATION_SECONDS')
 
     coevo_url: str = Field(default='', alias='COEVO_URL')
     coevo_api_key: str = Field(default='', alias='COEVO_API_KEY')
@@ -64,6 +101,42 @@ class Settings(BaseSettings):
     @property
     def allowed_hosts(self) -> list[str]:
         return [h.strip() for h in self.agentora_allowed_hosts.split(',') if h.strip()]
+
+    @property
+    def memory_layer_weights(self) -> dict[str, float]:
+        try:
+            raw = json.loads(self.agentora_memory_layer_weights or '{}')
+            return {str(k): float(v) for k, v in raw.items()}
+        except Exception:
+            return {}
+
+    @property
+    def context_layer_budgets(self) -> dict[str, int]:
+        try:
+            raw = json.loads(self.agentora_context_layer_budgets or '{}')
+            return {str(k): int(v) for k, v in raw.items()}
+        except Exception:
+            return {}
+
+    @property
+    def allowed_path_roots(self) -> list[str]:
+        return [x.strip() for x in self.agentora_allowed_path_roots.split(',') if x.strip()]
+
+    @property
+    def blocked_path_roots(self) -> list[str]:
+        return [x.strip() for x in self.agentora_blocked_path_roots.split(',') if x.strip()]
+
+    @property
+    def allowed_domains(self) -> list[str]:
+        return [x.strip() for x in self.agentora_allowed_domains.split(',') if x.strip()]
+
+    @property
+    def blocked_domains(self) -> list[str]:
+        return [x.strip() for x in self.agentora_blocked_domains.split(',') if x.strip()]
+
+    @property
+    def allowed_apps(self) -> list[str]:
+        return [x.strip() for x in self.agentora_allowed_apps.split(',') if x.strip()]
 
 
 settings = Settings()

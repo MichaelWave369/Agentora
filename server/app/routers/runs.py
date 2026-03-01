@@ -5,10 +5,11 @@ from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
 from app.db import get_session
-from app.models import Run, Team, Message, Agent, TeamAgent
+from app.models import Run, Team, Message, Agent, TeamAgent, AgentHandoff, CollaborationMetric, TeamPlan, TeamSubgoal, ActionRequest, ActionExecution, ActionArtifact
 from app.schemas import RunIn
 from app.services.orchestration.engine import OrchestrationEngine
 from app.services.runtime.trace import get_run_trace
+from app.services.runtime.team import collaboration_trace, list_plan
 
 router = APIRouter(prefix='/api/runs', tags=['runs'])
 engine = OrchestrationEngine()
@@ -94,3 +95,56 @@ def stream_run(run_id: int, session: Session = Depends(get_session)):
             await asyncio.sleep(0.01)
 
     return StreamingResponse(event_gen(), media_type='text/event-stream')
+
+
+@router.get('/{run_id}/plan')
+def run_plan(run_id: int, session: Session = Depends(get_session)):
+    run = session.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, 'run not found')
+    payload = list_plan(session, run_id)
+    if not payload.get('ok'):
+        return {'ok': True, 'plan': None, 'subgoals': []}
+    return payload
+
+
+@router.get('/{run_id}/handoffs')
+def run_handoffs(run_id: int, session: Session = Depends(get_session)):
+    run = session.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, 'run not found')
+    items = list(session.exec(select(AgentHandoff).where(AgentHandoff.run_id == run_id).order_by(AgentHandoff.id)))
+    return {'ok': True, 'items': items}
+
+
+@router.get('/{run_id}/collaboration-trace')
+def run_collaboration_trace(run_id: int, session: Session = Depends(get_session)):
+    run = session.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, 'run not found')
+    return {'ok': True, 'run_id': run_id, 'trace': collaboration_trace(session, run_id)}
+
+
+@router.get('/{run_id}/team')
+def run_team(run_id: int, session: Session = Depends(get_session)):
+    run = session.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, 'run not found')
+    plan = session.exec(select(TeamPlan).where(TeamPlan.run_id == run_id).order_by(TeamPlan.id.desc())).first()
+    subgoals = list(session.exec(select(TeamSubgoal).where(TeamSubgoal.run_id == run_id).order_by(TeamSubgoal.id)))
+    metric = session.exec(select(CollaborationMetric).where(CollaborationMetric.run_id == run_id)).first()
+    handoffs = list(session.exec(select(AgentHandoff).where(AgentHandoff.run_id == run_id).order_by(AgentHandoff.id)))
+    return {'ok': True, 'plan': plan, 'subgoals': subgoals, 'handoffs': handoffs, 'metric': metric}
+
+
+@router.get('/{run_id}/actions')
+def run_actions(run_id: int, session: Session = Depends(get_session)):
+    run = session.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, 'run not found')
+    requests = list(session.exec(select(ActionRequest).where(ActionRequest.run_id == run_id).order_by(ActionRequest.id.desc())))
+    req_ids = [r.id for r in requests if r.id]
+    executions = list(session.exec(select(ActionExecution).where(ActionExecution.action_request_id.in_(req_ids)).order_by(ActionExecution.id.desc()))) if req_ids else []
+    exec_ids = [e.id for e in executions if e.id]
+    artifacts = list(session.exec(select(ActionArtifact).where(ActionArtifact.action_execution_id.in_(exec_ids)).order_by(ActionArtifact.id.desc()))) if exec_ids else []
+    return {'ok': True, 'requests': requests, 'executions': executions, 'artifacts': artifacts}
