@@ -1,13 +1,22 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.config import settings
 from app.db import init_db
 from app.routers import health, ollama, agents, teams, runs, tools, exports, snapshot
 from app.routers import marketplace, multimodal, voice, analytics, integrations, lan, studio, band, arena, gathering, legacy, cosmos, open_cosmos, garden, world_garden, capsules, workers, memory, team, actions, workflows, operator, system
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_db()
+    yield
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title='Agentora v0.9.6 — Operator Mode & One-Click Deployment')
+    app = FastAPI(title=settings.agentora_release_title, version=settings.agentora_version, lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=['*'],
@@ -16,9 +25,6 @@ def create_app() -> FastAPI:
         allow_headers=['*'],
     )
 
-    @app.on_event('startup')
-    def startup():
-        init_db()
 
     app.include_router(health.router)
     app.include_router(ollama.router)

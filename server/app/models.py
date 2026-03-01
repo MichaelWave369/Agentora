@@ -648,7 +648,7 @@ class ApprovalDecisionLog(SQLModel, table=True):
 
 class BootstrapState(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    version: str = '0.9.6'
+    version: str = '1.0.0'
     doctor_status: str = 'unknown'
     report_json: str = '{}'
     updated_at: datetime = Field(default_factory=datetime.utcnow)

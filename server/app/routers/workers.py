@@ -10,6 +10,23 @@ router = APIRouter(prefix='/api/workers', tags=['workers'])
 worker_router = APIRouter(prefix='/api/worker', tags=['worker-node-contract'])
 
 
+def _job_payload(job: WorkerJob) -> dict:
+    return {
+        'id': job.id,
+        'job_type': job.job_type,
+        'status': job.status,
+        'priority': job.priority,
+        'retries': job.retries,
+        'max_retries': job.max_retries,
+        'worker_node_id': job.worker_node_id,
+        'used_fallback_local': job.used_fallback_local,
+        'result_json': job.result_json,
+        'error': job.error,
+        'created_at': job.created_at.isoformat() if job.created_at else '',
+        'updated_at': job.updated_at.isoformat() if job.updated_at else '',
+    }
+
+
 @router.get('')
 def list_workers(session: Session = Depends(get_session)):
     return {'ok': True, 'items': worker_queue.list_nodes(session)}
@@ -32,7 +49,7 @@ def heartbeat(payload: WorkerHeartbeatIn, session: Session = Depends(get_session
 @router.post('/dispatch')
 def dispatch_job(payload: WorkerDispatchIn, session: Session = Depends(get_session)):
     job = worker_queue.dispatch(session, payload.job_type, payload.payload, priority=payload.priority)
-    return {'ok': True, 'job': job}
+    return {'ok': True, 'job': _job_payload(job)}
 
 
 @router.get('/jobs/{job_id}')
@@ -40,7 +57,7 @@ def get_job(job_id: int, session: Session = Depends(get_session)):
     job = session.get(WorkerJob, job_id)
     if not job:
         raise HTTPException(404, 'job not found')
-    return {'ok': True, 'job': job}
+    return {'ok': True, 'job': _job_payload(job)}
 
 
 # Worker endpoint contract (for two-PC mode)

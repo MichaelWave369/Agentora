@@ -1,19 +1,19 @@
-# Agentora v0.9.6 — Operator Mode & One-Click Deployment
+# Agentora v1.0.0 — Local Agent Operating Studio
 
-This release focuses on two practical outcomes:
-1. **One-click local usability** for installation, setup checks, and startup.
-2. **Safer and more useful Operator Mode** for supervised desktop/browser workflows.
+## Tag + title
+- `v1.0.0`
+- `Agentora v1.0.0 — Local Agent Operating Studio`
 
-## Highlights
-- Windows launchers (`launch_agentora.bat`, `launch_agentora.ps1`)
-- System doctor + bootstrap APIs
-- Operator run lifecycle APIs (start/list/detail/pause/resume/advance/retry/skip)
-- Approval decision logging improvements
-- Operator Center additions in Streamlit dashboard
-- Docker compose profiles for local single-PC and two-node modes
+## What’s stable in v1.0.0
+- Local-first runtime with private-by-default defaults.
+- Memory-aware retrieval and inspector surfaces.
+- Team planning, subgoals, handoffs, and collaboration tracing.
+- Approval-gated action system with history visibility.
+- Workflow execution/replay and Operator Mode controls.
+- Optional worker assist with graceful fallback behavior.
 
-## Recommended tag
-- `v0.9.6`
-
-## Recommended release title
-- `Agentora v0.9.6 — Operator Mode & One-Click Deployment`
+## GA polish delivered
+- Final version promotion from RC to GA across config, API, UI, docs, and package metadata.
+- Public README alignment to current product story and launch paths.
+- Final wording/consistency pass across Streamlit and docs.
+- Validation of core demo flows and release-readiness checks.

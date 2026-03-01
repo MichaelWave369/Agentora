@@ -1,100 +1,90 @@
-# Agentora v0.9.6 — Operator Mode & One-Click Deployment
+# Agentora v1.0.0 — Local Agent Operating Studio
 
-Agentora is a **local-first, safety-first desktop/browser operator runtime** with team orchestration, Lattice Memory, approvals, workflows, and worker-assisted execution.
+Agentora is a **local-first, private-by-default, memory-aware agent operating studio** for chat, team orchestration, safe actions, and workflows.
 
-## Quickstart (recommended)
+## What Agentora does now
 
-### One-click launch (Windows)
-- `launch_agentora.bat`
-- `launch_agentora.ps1`
+- **Local runtime:** Streamlit + FastAPI with SQLite persistence.
+- **Memory-aware execution:** retrieval, contexts, lineage, duplicates/conflicts, maintenance visibility.
+- **Team-capable orchestration:** plans, subgoals, handoffs, collaboration traces.
+- **Safe action system:** approval-gated desktop/browser actions with policy/allowlist guardrails.
+- **Workflow + Operator Mode:** run, replay, pause/resume/advance/retry/skip.
+- **Optional worker assist:** offload path with graceful fallback when worker is unavailable.
 
-Both scripts:
-1. create `.venv` if needed,
-2. install Python dependencies,
-3. optionally install web dependencies,
-4. start FastAPI + Streamlit,
-5. print/open local URLs.
+## Quickstart (recommended one-PC path)
+
+1. Copy `.env.example` to `.env`.
+2. Keep mock defaults for first launch (`AGENTORA_USE_MOCK_OLLAMA=true`).
+3. Start Agentora:
+   - Windows: `launch_agentora.bat` or `launch_agentora.ps1`
+   - macOS/Linux: manual commands below
+4. Open Streamlit and verify `System Version` + `System Doctor` panels.
 
 ### Manual launch
 ```bash
 python -m pip install -r requirements.txt
 uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
 ```
-In another shell:
+Second terminal:
 ```bash
 AGENTORA_STREAMLIT_MODE=http AGENTORA_API_URL=http://127.0.0.1:8088 streamlit run app.py
 ```
 
-## First-run setup and doctor
-- API doctor: `GET /api/system/doctor`
-- bootstrap helper: `POST /api/system/bootstrap`
-- version endpoint: `GET /api/system/version`
-- health endpoint: `GET /api/system/health`
+## One PC vs Two PC
 
-Checks include Python dependencies, Node/npm availability, writable paths, DB directory writability, Ollama reachability, and worker URL DNS checks.
+- **One PC (recommended):** local API + local Streamlit.
+- **Two PC (optional):** add worker-assist node for distributed execution.
+  See [docs/two-pc-setup.md](docs/two-pc-setup.md).
 
-## Operator Mode (v0.9.6)
-- Stepwise and auto operator runs from workflow templates.
-- Pause/resume/advance/retry/skip controls.
-- Approval queue with reason + scope previews.
-- Operator traces for start/request/approve/execute/fail/pause/resume/complete.
-- Artifacts and action outputs tied to each run.
+## Stable vs experimental
 
-Primary APIs:
-- `GET /api/operator/runs`
-- `POST /api/operator/runs`
-- `GET /api/operator/runs/{id}`
-- `POST /api/operator/runs/{id}/pause`
-- `POST /api/operator/runs/{id}/resume`
-- `POST /api/operator/runs/{id}/advance`
-- `POST /api/operator/runs/{id}/retry-step`
-- `POST /api/operator/runs/{id}/skip-step`
-- `GET /api/operator/workflows`
-- `GET /api/operator/workflows/{id}/history`
+### Stable in v1.0.0
+- Core run lifecycle
+- Memory inspector + retrieval endpoints
+- Team planning/handoffs/collaboration traces
+- Action approvals/history
+- Workflow run/replay
+- Operator run control APIs
 
-## Deployment choices
+### Optional / experimental surfaces
+- Cosmos / Open Cosmos / Garden / World Garden remain optional and labeled accordingly.
 
-### Native local (default)
-Use the launcher scripts or manual commands above.
+## Core API groups
 
-### Docker single-PC
-```bash
-docker compose --profile single-pc up --build
-```
-
-### Docker two-node profile
-```bash
-docker compose --profile two-pc up --build
-```
-This starts `agentora-main` + `agentora-worker` with separate persistent volumes.
-
-## Approvals and guardrails
-- policy-aware desktop/browser actions
-- allowlisted paths/domains/apps
-- retry limits and workflow duration caps
-- worker fallback to local execution when unavailable
-- explicit trace/audit logs for operator actions
-
-## Release progression (v0.9.1 → v0.9.6)
-- **v0.9.1**: Cortex hardening + worker routing + trace visibility.
-- **v0.9.2**: Lattice Memory layers + retrieval introspection.
-- **v0.9.3**: Memory explainability, conflicts, dedupe, maintenance quality.
-- **v0.9.4**: Team planning + role handoffs + collaboration metrics.
-- **v0.9.5**: Desktop/browser actions, approvals, workflows, action artifacts.
-- **v0.9.6**: One-click launch, system doctor/bootstrap, Operator Mode control plane, operator center UX, Docker profile polish.
+- `system`: health/version/doctor/bootstrap
+- `runs`: run lifecycle, traces, team/collaboration views
+- `actions`: pending queue, approve/deny, history
+- `workflows`: create/run/replay history
+- `operator`: run controls and operator history
+- `memory`: retrieval, contexts, lineage, maintenance
+- `workers`: register/heartbeat/dispatch/job status
 
 ## Architecture summary
-- **Streamlit**: primary local operator UI
-- **FastAPI**: orchestration and operator APIs
-- **SQLModel/SQLite**: local persistence by default
-- **Ollama**: local model runtime (or mock mode)
-- **Worker queue**: optional LAN/offload for heavy tasks
+
+- **Streamlit:** primary operator UI
+- **FastAPI:** orchestration and runtime APIs
+- **SQLModel/SQLite:** local data storage by default
+- **Ollama:** optional local model runtime (mock-friendly startup)
+- **Worker queue:** optional offload/fallback execution
 
 ## Screenshots
-- Placeholder hero: `docs/hero-soul-arena.svg`
-- Add fresh Operator Center screenshots in a local run when available.
 
-## Docs
-- [CHANGELOG](CHANGELOG.md)
-- [RELEASE_NOTES](RELEASE_NOTES.md)
-- [DEPLOYMENT](DEPLOYMENT.md)
+- Placeholder hero asset: `docs/hero-soul-arena.svg`
+- Capture environment-specific local screenshots for release/demo artifacts.
+
+## Known limitations
+
+- Some advanced actions depend on local desktop/browser capability availability.
+- Worker mode requires configured/reachable worker URLs.
+- Optional modules (Cosmos/Garden family) are not required for core GA operation.
+
+## Documentation
+
+- [docs/quickstart.md](docs/quickstart.md)
+- [docs/operator-mode.md](docs/operator-mode.md)
+- [docs/two-pc-setup.md](docs/two-pc-setup.md)
+- [docs/troubleshooting.md](docs/troubleshooting.md)
+- [docs/release-history.md](docs/release-history.md)
+- [CHANGELOG.md](CHANGELOG.md)
+- [RELEASE_NOTES.md](RELEASE_NOTES.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)
