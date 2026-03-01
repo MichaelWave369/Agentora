@@ -1,19 +1,21 @@
-# Agentora v0.9.6 — Operator Mode & One-Click Deployment
+# Agentora v1.0.0-rc1 — Scope Freeze, Final Polish & Launch Readiness
 
-This release focuses on two practical outcomes:
-1. **One-click local usability** for installation, setup checks, and startup.
-2. **Safer and more useful Operator Mode** for supervised desktop/browser workflows.
+## Tag + title
+- `v1.0.0-rc1`
+- `Agentora v1.0.0-rc1 — Scope Freeze, Final Polish & Launch Readiness`
 
-## Highlights
-- Windows launchers (`launch_agentora.bat`, `launch_agentora.ps1`)
-- System doctor + bootstrap APIs
-- Operator run lifecycle APIs (start/list/detail/pause/resume/advance/retry/skip)
-- Approval decision logging improvements
-- Operator Center additions in Streamlit dashboard
-- Docker compose profiles for local single-PC and two-node modes
+## Release focus
+- Scope freeze before final `v1.0.0`.
+- Version and branding consistency across API, UI, docs, and package metadata.
+- Startup/doctor/install clarity with safer defaults and better next-step guidance.
+- Final UX wording and inspector readability polish.
+- Core demo flow validation for memory/team/actions/workflows/worker fallback.
 
-## Recommended tag
-- `v0.9.6`
+## Launch-candidate highlights
+- `/api/system/version` now exposes RC identity consistently.
+- Streamlit surfaces clearer run/approval/inspector guidance.
+- Launch script polish and docs alignment for one-PC and two-PC setups.
+- Release-readiness smoke coverage expanded for replay/fallback checks.
 
-## Recommended release title
-- `Agentora v0.9.6 — Operator Mode & One-Click Deployment`
+## Notes
+This release candidate intentionally avoids adding major subsystems.

@@ -28,5 +28,8 @@ if %errorlevel% equ 0 (
   echo [Agentora] npm not found. Skipping web dependency install.
 )
 
-echo [Agentora] Running bootstrap doctor...
-python -m uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
+echo [Agentora] Starting FastAPI on http://127.0.0.1:8088 ...
+start "Agentora API" cmd /c "call .venv\Scripts\activate.bat && python -m uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088"
+
+echo [Agentora] Starting Streamlit on http://127.0.0.1:8501 ...
+python -m streamlit run app.py

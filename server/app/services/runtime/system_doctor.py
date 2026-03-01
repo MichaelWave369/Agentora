@@ -100,9 +100,11 @@ def run_doctor() -> dict:
     elif any(not i.ok for i in items):
         summary = 'warn'
 
+    next_steps = [i.fix_hint for i in items if (not i.ok) and i.fix_hint]
     return {
         'status': summary,
         'items': [i.as_dict() for i in items],
+        'next_steps': next_steps[:6],
     }
 
 
