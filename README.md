@@ -1,4 +1,4 @@
-# Agentora v0.9 — The Infinite Bloom & The World Garden
+# Agentora v0.9.0-rc1 — The Infinite Bloom & The World Garden
 
 ![Agentora Soul & Arena Hero](docs/hero-soul-arena.svg)
 
@@ -8,7 +8,7 @@
 
 Agentora is now **Streamlit-first** for the complete product experience, while FastAPI remains the local orchestration/data backend.
 
-## What’s new in v0.9
+## What’s new in v0.9.0-rc1
 - **World Garden Map**: global bloom view for shared cosmos gardens with glow, location, and creator credits.
 - **Infinite Bloom**: new creations trigger bloom effects and constellation links.
 - **Safe Cross-Pollination**: previewable merge flows with intelligent conflict hints and co-creator credits.
@@ -29,10 +29,55 @@ All core surfaces (Dashboard, Studio, Band, Arena, Gathering, Legacy, Cosmos, Op
 
 ### Recommended one-command launch
 ```bash
+python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
 The Streamlit app auto-initializes SQLite tables on first run and keeps backend resources cached across reruns.
+
+### Runtime modes (Streamlit-first)
+- `AGENTORA_STREAMLIT_MODE=auto` (default): try HTTP backend first (`AGENTORA_API_URL` or `127.0.0.1:8088`), then fall back to embedded backend.
+- `AGENTORA_STREAMLIT_MODE=http`: force FastAPI HTTP mode.
+- `AGENTORA_STREAMLIT_MODE=embedded`: force in-process FastAPI + TestClient mode.
+
+### Required/important env vars
+- `AGENTORA_STREAMLIT_MODE` (`auto`, `http`, `embedded`)
+- `AGENTORA_API_URL` (only needed when using custom HTTP backend endpoint)
+- `AGENTORA_PORT` (HTTP mode default port, default `8088`)
+- `AGENTORA_DATABASE_URL` (defaults to local SQLite at `./agentora.db` from Streamlit mode)
+- `AGENTORA_USE_MOCK_OLLAMA=true` (recommended for smoke/demo without local model runtime)
+
+
+## Agentora Cortex (new runtime subsystem)
+Agentora Cortex upgrades runs into a local agent runtime with:
+- retrieval-backed **Capsule Memory** (chunked attachment text + embeddings)
+- structured action planning (`thought`, memory requests, tool calls, final/handoff)
+- iterative tool execution loop with persisted `ToolCall` history
+- optional worker-node offload for long tasks (embedding/PDF/sandbox/tool jobs)
+
+### Cortex defaults
+- local-first and offline-first are preserved
+- mock Ollama remains supported for smoke tests
+- no mandatory cloud dependencies
+
+### Single-PC smoke test
+```bash
+python -m pip install -r requirements.txt
+AGENTORA_USE_MOCK_OLLAMA=true streamlit run app.py
+```
+Then:
+1. create a run,
+2. upload a PDF/text attachment,
+3. verify capsule creation through `/api/capsules/search`.
+
+### Two-PC worker mode (optional)
+- Host A: run Agentora backend+Streamlit normally.
+- Host B: run a worker endpoint compatible with `POST /api/worker/execute`.
+- Set on Host A:
+```bash
+export AGENTORA_WORKER_URLS=http://<worker-ip>:<port>
+```
+- Register workers via `/api/workers/register` and dispatch via `/api/workers/dispatch`.
 
 ## Privacy-first defaults
 - 100% local-first and offline by default
@@ -52,19 +97,21 @@ The Streamlit app auto-initializes SQLite tables on first run and keeps backend 
 - `/api/open-cosmos/submit`
 
 ## Run locally
-### Backend
-```bash
-python -m pip install -r requirements.txt
-uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
-```
-
-### Streamlit (primary)
+### Streamlit (primary, preferred)
 ```bash
 python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
-The Streamlit app auto-initializes SQLite tables on first run and keeps backend resources cached across reruns.
+### Backend-first (advanced)
+```bash
+python -m pip install -r requirements.txt
+uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
+```
+Then in another shell:
+```bash
+AGENTORA_STREAMLIT_MODE=http AGENTORA_API_URL=http://127.0.0.1:8088 streamlit run app.py
+```
 
 ### Optional React web scaffold
 ```bash
@@ -73,6 +120,11 @@ npm ci
 npm run build
 npm run dev
 ```
+
+## Release docs
+- [CHANGELOG](CHANGELOG.md)
+- [RELEASE_NOTES](RELEASE_NOTES.md)
+- [DEPLOYMENT](DEPLOYMENT.md)
 
 ## Screenshot placeholders
 - `docs/hero-soul-arena.svg`

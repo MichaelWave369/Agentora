@@ -400,14 +400,14 @@ def _core_page():
 
 
 def render_dashboard() -> None:
-    st.set_page_config(page_title='Agentora v0.7', layout='wide', initial_sidebar_state='expanded')
+    st.set_page_config(page_title='Agentora v0.9.0-rc1', layout='wide', initial_sidebar_state='expanded')
     _theme_css()
 
     if 'db_url' not in st.session_state:
         st.session_state['db_url'] = _resolve_streamlit_db_url()
     initialize_database()
 
-    st.title('Agentora v0.9 — Infinite Bloom & The World Garden')
+    st.title('Agentora v0.9.0-rc1 — Infinite Bloom & The World Garden')
     st.caption('Primary Streamlit experience • local-first • private by default')
     st.info(f"API Mode: {ACTIVE_MODE.upper()} | DB: {st.session_state['db_url']}")
 

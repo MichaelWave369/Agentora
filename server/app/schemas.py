@@ -26,3 +26,9 @@ class RunIn(BaseModel):
     token_budget: int = 3000
     consensus_threshold: int = 1
     reflection: bool = False
+
+
+class WorkerIn(BaseModel):
+    name: str
+    url: str
+    capabilities: list[str] = []
