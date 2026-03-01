@@ -1,3 +1,10 @@
+## [0.9.7] - 2026-03-01
+
+### Changed
+- Unified release/version branding in API, Streamlit, config, and docs for `v0.9.7`.
+- Polished Streamlit dashboard labeling for first-run clarity, approvals, and inspector discoverability.
+- Refreshed README and added focused docs for quickstart, operator mode, two-PC setup, troubleshooting, and release history.
+
 # Changelog
 
 All notable changes to this project are documented in this file.

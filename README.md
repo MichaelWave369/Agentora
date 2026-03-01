@@ -1,100 +1,125 @@
-# Agentora v0.9.6 — Operator Mode & One-Click Deployment
+# Agentora v0.9.7 — Stability, UX Polish & Public Readiness
 
-Agentora is a **local-first, safety-first desktop/browser operator runtime** with team orchestration, Lattice Memory, approvals, workflows, and worker-assisted execution.
+Agentora is a **local-first operator runtime** for safe desktop/browser actions, memory-aware planning, and multi-agent execution.
+
+This release focuses on polish: consistency, reliability, startup clarity, and public-repo readiness.
+
+## What Agentora is today
+
+Agentora combines:
+- **Cortex runtime** for run execution and traces.
+- **Lattice Memory** with retrieval introspection, layer health, lineage, and maintenance.
+- **Team orchestration** with planning, handoffs, and collaboration traces.
+- **Action + approval system** for guarded desktop/browser operations.
+- **Workflows + Operator Mode** for stepwise and automatic automation.
 
 ## Quickstart (recommended)
 
 ### One-click launch (Windows)
+Use either launcher from repo root:
 - `launch_agentora.bat`
 - `launch_agentora.ps1`
 
-Both scripts:
-1. create `.venv` if needed,
-2. install Python dependencies,
-3. optionally install web dependencies,
-4. start FastAPI + Streamlit,
-5. print/open local URLs.
+The launchers create `.venv`, install dependencies, and start FastAPI + Streamlit.
 
-### Manual launch
+### Manual local launch (cross-platform)
 ```bash
 python -m pip install -r requirements.txt
 uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
 ```
-In another shell:
+In another terminal:
 ```bash
 AGENTORA_STREAMLIT_MODE=http AGENTORA_API_URL=http://127.0.0.1:8088 streamlit run app.py
 ```
 
-## First-run setup and doctor
-- API doctor: `GET /api/system/doctor`
-- bootstrap helper: `POST /api/system/bootstrap`
-- version endpoint: `GET /api/system/version`
-- health endpoint: `GET /api/system/health`
+### Easiest optional setup path
+1. Start local with mock mode enabled in `.env` (default in `.env.example`).
+2. Verify `/api/system/doctor` and `/api/system/version`.
+3. Add Ollama and workers later (optional).
 
-Checks include Python dependencies, Node/npm availability, writable paths, DB directory writability, Ollama reachability, and worker URL DNS checks.
+## First-run and troubleshooting endpoints
+- `GET /api/system/health`
+- `GET /api/system/version`
+- `GET /api/system/doctor`
+- `POST /api/system/bootstrap`
 
-## Operator Mode (v0.9.6)
-- Stepwise and auto operator runs from workflow templates.
+These report missing dependencies, model runtime availability, writable paths, and worker reachability.
+
+## Product surface overview
+
+### Operator Mode
+- Create operator runs from workflows.
 - Pause/resume/advance/retry/skip controls.
-- Approval queue with reason + scope previews.
-- Operator traces for start/request/approve/execute/fail/pause/resume/complete.
-- Artifacts and action outputs tied to each run.
+- Run history and trace visibility.
+- Artifact/result output per step.
 
-Primary APIs:
-- `GET /api/operator/runs`
-- `POST /api/operator/runs`
-- `GET /api/operator/runs/{id}`
-- `POST /api/operator/runs/{id}/pause`
-- `POST /api/operator/runs/{id}/resume`
-- `POST /api/operator/runs/{id}/advance`
-- `POST /api/operator/runs/{id}/retry-step`
-- `POST /api/operator/runs/{id}/skip-step`
-- `GET /api/operator/workflows`
-- `GET /api/operator/workflows/{id}/history`
+### Action & Workflow
+- Approval-gated desktop/browser actions.
+- Pending approval queue and history surfaces.
+- Reusable workflow definitions and run history.
 
-## Deployment choices
+### Memory & Team
+- Memory contexts, retrieval traces, duplicates/conflicts, lineage/neighbors.
+- Team plans, role handoffs, and collaboration traces.
 
-### Native local (default)
-Use the launcher scripts or manual commands above.
+### Optional/experimental modules
+- Cosmos / Open Cosmos / Garden / World Garden are available and treated as optional product surfaces.
 
-### Docker single-PC
+## Install and deployment options
+
+### Native local (recommended default)
+Use launcher scripts or manual local run above.
+
+### Docker single machine
 ```bash
 docker compose --profile single-pc up --build
 ```
 
-### Docker two-node profile
+### Docker two-PC profile
 ```bash
 docker compose --profile two-pc up --build
 ```
-This starts `agentora-main` + `agentora-worker` with separate persistent volumes.
+Runs `agentora-main` and `agentora-worker` with separate local volumes.
 
-## Approvals and guardrails
-- policy-aware desktop/browser actions
-- allowlisted paths/domains/apps
-- retry limits and workflow duration caps
-- worker fallback to local execution when unavailable
-- explicit trace/audit logs for operator actions
+## Two-PC guidance
+For LAN/offload usage and worker setup details, see:
+- [docs/two-pc-setup.md](docs/two-pc-setup.md)
 
-## Release progression (v0.9.1 → v0.9.6)
-- **v0.9.1**: Cortex hardening + worker routing + trace visibility.
-- **v0.9.2**: Lattice Memory layers + retrieval introspection.
-- **v0.9.3**: Memory explainability, conflicts, dedupe, maintenance quality.
-- **v0.9.4**: Team planning + role handoffs + collaboration metrics.
-- **v0.9.5**: Desktop/browser actions, approvals, workflows, action artifacts.
-- **v0.9.6**: One-click launch, system doctor/bootstrap, Operator Mode control plane, operator center UX, Docker profile polish.
+## API orientation
+Key endpoint groups:
+- `system`: health/version/doctor/bootstrap
+- `operator`: run control + workflow replay history
+- `actions`: pending/history/approve/deny
+- `workflows`: create/run/list
+- `memory`: retrieval/contexts/maintenance/introspection
+- `runs/team`: run traces, plan/handoff/collaboration
 
 ## Architecture summary
-- **Streamlit**: primary local operator UI
-- **FastAPI**: orchestration and operator APIs
-- **SQLModel/SQLite**: local persistence by default
-- **Ollama**: local model runtime (or mock mode)
-- **Worker queue**: optional LAN/offload for heavy tasks
+- **Streamlit**: primary local operator UX
+- **FastAPI**: API + orchestration runtime
+- **SQLModel/SQLite**: local persistence defaults
+- **Ollama**: local model runtime (optional/mock-friendly)
+- **Workers**: optional remote/offload execution
 
 ## Screenshots
-- Placeholder hero: `docs/hero-soul-arena.svg`
-- Add fresh Operator Center screenshots in a local run when available.
+- Current placeholder hero: `docs/hero-soul-arena.svg`
+- Add local screenshots for your environment as needed.
 
-## Docs
-- [CHANGELOG](CHANGELOG.md)
-- [RELEASE_NOTES](RELEASE_NOTES.md)
-- [DEPLOYMENT](DEPLOYMENT.md)
+## Release progression
+- **v0.9.1**: runtime hardening + worker routing
+- **v0.9.2**: layered memory retrieval foundations
+- **v0.9.3**: memory explainability and maintenance
+- **v0.9.4**: team planning + collaboration metrics
+- **v0.9.5**: desktop/browser actions + workflows + approvals
+- **v0.9.6**: Operator Mode + one-click deployment groundwork
+- **v0.9.7**: stability, UX polish, setup clarity, public readiness
+
+## Documentation
+- [docs/quickstart.md](docs/quickstart.md)
+- [docs/operator-mode.md](docs/operator-mode.md)
+- [docs/two-pc-setup.md](docs/two-pc-setup.md)
+- [docs/troubleshooting.md](docs/troubleshooting.md)
+- [docs/release-history.md](docs/release-history.md)
+- [CHANGELOG.md](CHANGELOG.md)
+- [RELEASE_NOTES.md](RELEASE_NOTES.md)
+- [DEPLOYMENT.md](DEPLOYMENT.md)

@@ -5,6 +5,7 @@ import json
 
 from sqlmodel import Session, select
 
+from app.core.config import settings
 from app.models import BootstrapState
 from app.services.runtime.system_doctor import run_doctor
 
@@ -13,7 +14,7 @@ def run_bootstrap(session: Session, auto_fix: bool = False) -> dict:
     report = run_doctor()
     state = session.exec(select(BootstrapState).order_by(BootstrapState.id.desc())).first()
     if not state:
-        state = BootstrapState(version='0.9.6')
+        state = BootstrapState(version=settings.agentora_version)
     state.doctor_status = report['status']
     state.report_json = json.dumps({'auto_fix': auto_fix, 'report': report})
     state.updated_at = datetime.utcnow()
