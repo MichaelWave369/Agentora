@@ -7,7 +7,7 @@ from app.routers import marketplace, multimodal, voice, analytics, integrations,
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title='Agentora v0.9.0-rc1')
+    app = FastAPI(title='Agentora v0.9.1')
     app.add_middleware(
         CORSMiddleware,
         allow_origins=['*'],
@@ -45,6 +45,7 @@ def create_app() -> FastAPI:
     app.include_router(world_garden.router)
     app.include_router(capsules.router)
     app.include_router(workers.router)
+    app.include_router(workers.worker_router)
     return app
 
 

@@ -56,9 +56,9 @@ def test_tool_loop_execution_and_persisted_toolcall(monkeypatch):
             }
 
         monkeypatch.setattr(runtime_loop.client, 'chat_structured', fake_chat_structured)
-        final, used_tools, *_ = asyncio.run(runtime_loop.run_agent(session, run_id=run_id, agent=agent, prompt='append note'))
-        assert 'tool done' in final
-        assert used_tools == 1
+        result = asyncio.run(runtime_loop.run_agent(session, run_id=run_id, agent=agent, prompt='append note'))
+        assert 'tool done' in result.final_text
+        assert result.tool_calls_count == 1
 
 
 def test_worker_fallback_local():

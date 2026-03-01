@@ -41,16 +41,18 @@ class OrchestrationEngine:
                 state.add('system', 'Timeout reached')
                 break
             prompt = state.prompt if i == 0 else state.messages[-1]['content']
-            reply, used_tools, seconds, model_used = await runtime_loop.run_agent(
+            rt = await runtime_loop.run_agent(
                 session=session,
                 run_id=state.run_id,
                 agent=a,
                 prompt=prompt,
                 image_paths=image_paths,
             )
+            reply = rt.final_text
+            used_tools = rt.tool_calls_count
             in_toks = max(1, len(prompt) // 4)
             out_toks = max(1, len(reply) // 4)
-            session.add(RunMetric(run_id=state.run_id, agent_id=a.id or 0, tokens_in=in_toks, tokens_out=out_toks, seconds=seconds, tool_calls=used_tools))
+            session.add(RunMetric(run_id=state.run_id, agent_id=a.id or 0, tokens_in=in_toks, tokens_out=out_toks, seconds=0.0, tool_calls=used_tools))
             if sum((m.get('meta', {}).get('tokens_out', 0) for m in state.messages)) + out_toks > state.token_budget:
                 state.add('system', 'Max cost guard reached; run paused')
                 break
@@ -59,7 +61,7 @@ class OrchestrationEngine:
                 break
             if 'agree' in reply.lower() or 'consensus' in reply.lower():
                 agreements += 1
-            state.add('assistant', reply, a.id, meta={'model_used': model_used, 'tokens_out': out_toks, 'tool_calls': used_tools})
+            state.add('assistant', reply, a.id, meta={'model_used': rt.model_used, 'tokens_out': out_toks, 'tool_calls': used_tools, 'stop_reason': rt.stop_reason, 'warnings': rt.warnings, 'worker_used': rt.worker_used})
             if state.reflection:
                 state.add('system', f'Reflection {a.name}: quality=0.8 uncertainty=0.2', a.id)
 

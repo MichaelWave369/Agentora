@@ -8,6 +8,7 @@ from app.db import get_session
 from app.models import Run, Team, Message, Agent, TeamAgent
 from app.schemas import RunIn
 from app.services.orchestration.engine import OrchestrationEngine
+from app.services.runtime.trace import get_run_trace
 
 router = APIRouter(prefix='/api/runs', tags=['runs'])
 engine = OrchestrationEngine()
@@ -73,6 +74,15 @@ def get_run(run_id: int, session: Session = Depends(get_session)):
     messages = list(session.exec(select(Message).where(Message.run_id == run_id)))
     return {'run': run, 'messages': messages}
 
+
+
+
+@router.get('/{run_id}/trace')
+def run_trace(run_id: int, session: Session = Depends(get_session)):
+    run = session.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, 'run not found')
+    return {'ok': True, 'run_id': run_id, 'trace': get_run_trace(session, run_id)}
 
 @router.get('/{run_id}/stream')
 def stream_run(run_id: int, session: Session = Depends(get_session)):

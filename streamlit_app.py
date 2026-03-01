@@ -238,6 +238,12 @@ def _dashboard_page():
             st.caption('No runs yet')
         else:
             st.json(runs_payload)
+
+    with st.expander('Runtime Trace Viewer', expanded=False):
+        run_id = st.text_input('Run ID for trace', value='')
+        if run_id.strip():
+            trace_payload = safe_api_get(f'/api/runs/{run_id.strip()}/trace', 'run trace')
+            st.json(trace_payload)
     with c3:
         st.markdown("<div class='agentora-card'><h4>Marketplace</h4></div>", unsafe_allow_html=True)
         market = safe_api_get('/api/marketplace/templates', 'marketplace')
@@ -400,14 +406,14 @@ def _core_page():
 
 
 def render_dashboard() -> None:
-    st.set_page_config(page_title='Agentora v0.9.0-rc1', layout='wide', initial_sidebar_state='expanded')
+    st.set_page_config(page_title='Agentora v0.9.1', layout='wide', initial_sidebar_state='expanded')
     _theme_css()
 
     if 'db_url' not in st.session_state:
         st.session_state['db_url'] = _resolve_streamlit_db_url()
     initialize_database()
 
-    st.title('Agentora v0.9.0-rc1 — Infinite Bloom & The World Garden')
+    st.title('Agentora v0.9.1 — Infinite Bloom & The World Garden')
     st.caption('Primary Streamlit experience • local-first • private by default')
     st.info(f"API Mode: {ACTIVE_MODE.upper()} | DB: {st.session_state['db_url']}")
 

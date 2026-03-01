@@ -36,8 +36,30 @@ class Settings(BaseSettings):
     agentora_capsule_top_k: int = Field(default=6, alias='AGENTORA_CAPSULE_TOP_K')
     agentora_max_tool_steps: int = Field(default=4, alias='AGENTORA_MAX_TOOL_STEPS')
 
+    agentora_vision_model: str = Field(default='', alias='AGENTORA_VISION_MODEL')
+    agentora_extraction_model: str = Field(default='', alias='AGENTORA_EXTRACTION_MODEL')
+    agentora_enable_model_role_routing: bool = Field(default=True, alias='AGENTORA_ENABLE_MODEL_ROLE_ROUTING')
+    agentora_allowed_tool_names: str = Field(default='', alias='AGENTORA_ALLOWED_TOOL_NAMES')
+    agentora_blocked_tool_names: str = Field(default='', alias='AGENTORA_BLOCKED_TOOL_NAMES')
+    agentora_http_allowlist: str = Field(default='', alias='AGENTORA_HTTP_ALLOWLIST')
+    agentora_file_write_root: str = Field(default='server/data/artifacts', alias='AGENTORA_FILE_WRITE_ROOT')
+    agentora_max_worker_retries: int = Field(default=2, alias='AGENTORA_MAX_WORKER_RETRIES')
+
     coevo_url: str = Field(default='', alias='COEVO_URL')
     coevo_api_key: str = Field(default='', alias='COEVO_API_KEY')
+
+
+    @property
+    def allowed_tool_names(self) -> set[str]:
+        return {x.strip() for x in self.agentora_allowed_tool_names.split(',') if x.strip()}
+
+    @property
+    def blocked_tool_names(self) -> set[str]:
+        return {x.strip() for x in self.agentora_blocked_tool_names.split(',') if x.strip()}
+
+    @property
+    def http_allowlist(self) -> list[str]:
+        return [x.strip() for x in self.agentora_http_allowlist.split(',') if x.strip()]
 
     @property
     def allowed_hosts(self) -> list[str]:

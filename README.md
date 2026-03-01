@@ -1,4 +1,4 @@
-# Agentora v0.9.0-rc1 — The Infinite Bloom & The World Garden
+# Agentora v0.9.1 — The Infinite Bloom & The World Garden
 
 ![Agentora Soul & Arena Hero](docs/hero-soul-arena.svg)
 
@@ -8,7 +8,7 @@
 
 Agentora is now **Streamlit-first** for the complete product experience, while FastAPI remains the local orchestration/data backend.
 
-## What’s new in v0.9.0-rc1
+## What’s new in v0.9.1
 - **World Garden Map**: global bloom view for shared cosmos gardens with glow, location, and creator credits.
 - **Infinite Bloom**: new creations trigger bloom effects and constellation links.
 - **Safe Cross-Pollination**: previewable merge flows with intelligent conflict hints and co-creator credits.
@@ -78,6 +78,48 @@ Then:
 export AGENTORA_WORKER_URLS=http://<worker-ip>:<port>
 ```
 - Register workers via `/api/workers/register` and dispatch via `/api/workers/dispatch`.
+
+
+## Cortex Hardening in v0.9.1
+- Runtime loop now has explicit stop reasons (`completed`, `max_steps`, `tool_error`, `invalid_action_payload`, `worker_timeout`, `no_progress`) and guarded fallback behavior.
+- Model-role routing is explicit for chat/tool-planning/embedding/vision/extraction roles.
+- Worker dispatch now supports registration + heartbeat + retries + timeout fallback + persisted job lifecycle.
+- Capsule retrieval improves with dedupe, source metadata, summary-capsules for large docs, and recency-aware scoring.
+- Run trace inspection is available at `/api/runs/{run_id}/trace` and in Streamlit via **Runtime Trace Viewer** on Dashboard.
+
+### One-PC mode (recommended)
+```bash
+python -m pip install -r requirements.txt
+AGENTORA_USE_MOCK_OLLAMA=true streamlit run app.py
+```
+
+### Two-PC worker mode
+Main node env:
+```bash
+export AGENTORA_WORKER_URLS=http://<worker-host>:8088
+```
+Worker contract endpoints:
+- `POST /api/worker/register`
+- `POST /api/worker/heartbeat`
+- `POST /api/worker/execute`
+- `GET /api/worker/jobs/{id}`
+
+### Routing model recommendations
+- `AGENTORA_CHAT_MODEL` for normal answers
+- `AGENTORA_TOOL_MODEL` for structured planning
+- `AGENTORA_EMBED_MODEL` for retrieval
+- `AGENTORA_VISION_MODEL` for image-heavy runs
+- `AGENTORA_EXTRACTION_MODEL` for extraction-focused turns
+
+### Guardrails
+- `AGENTORA_ALLOWED_TOOL_NAMES` / `AGENTORA_BLOCKED_TOOL_NAMES`
+- `AGENTORA_HTTP_ALLOWLIST` for `http_fetch`
+- `AGENTORA_FILE_WRITE_ROOT` for write sandbox root
+- `AGENTORA_MAX_TOOL_STEPS`, `AGENTORA_MAX_WORKER_RETRIES`
+
+### Known limitations
+- Worker endpoints are intentionally simple and optimized for trusted LAN/local setups.
+- Capability metadata for external workers depends on worker registration correctness.
 
 ## Privacy-first defaults
 - 100% local-first and offline by default

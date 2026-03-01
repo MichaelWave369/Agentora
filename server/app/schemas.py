@@ -32,3 +32,14 @@ class WorkerIn(BaseModel):
     name: str
     url: str
     capabilities: list[str] = []
+
+
+class WorkerHeartbeatIn(BaseModel):
+    worker_id: int
+    status: str = "idle"
+
+
+class WorkerDispatchIn(BaseModel):
+    job_type: str
+    payload: dict = {}
+    priority: int = 5

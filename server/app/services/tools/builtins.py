@@ -1,4 +1,5 @@
 from pathlib import Path
+from urllib.parse import urlparse
 import requests
 
 from app.core.config import settings
@@ -7,7 +8,8 @@ from .sandbox import run_python_sandboxed
 
 
 def _run_dir(run_id: int) -> Path:
-    d = Path('server/data/artifacts') / f'run_{run_id}'
+    root = Path(settings.agentora_file_write_root or 'server/data/artifacts')
+    d = root / f'run_{run_id}'
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -52,6 +54,10 @@ def capsule_search(query: str, run_id: int | None = None, session=None) -> dict:
 def http_fetch(url: str) -> dict:
     if not settings.agentora_enable_http_fetch:
         return {'ok': False, 'error': 'http_fetch disabled'}
+    parsed = urlparse(url)
+    host = parsed.hostname or ''
+    if settings.http_allowlist and host not in settings.http_allowlist:
+        return {'ok': False, 'error': f'host not allowed: {host}'}
     ensure_url_allowed(url)
     r = requests.get(url, timeout=10)
     return {'ok': True, 'status': r.status_code, 'text': r.text[:1000]}
