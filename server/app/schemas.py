@@ -43,3 +43,47 @@ class WorkerDispatchIn(BaseModel):
     job_type: str
     payload: dict = {}
     priority: int = 5
+
+
+
+class MemoryMaintenanceIn(BaseModel):
+    run_id: int | None = None
+    try_worker: bool = True
+
+
+class CapsuleLayerUpdateIn(BaseModel):
+    reason: str = 'manual'
+
+
+
+class MemoryFeedbackIn(BaseModel):
+    run_id: int
+    retrieved_capsule_ids: list[int] = []
+    used_capsule_ids: list[int] = []
+    helped_final_answer: bool = False
+    helped_tool_execution: bool = False
+
+
+
+class AgentCapabilityIn(BaseModel):
+    preferred_model_role: str = 'chat'
+    allowed_tools: list[str] = []
+    max_tool_steps: int = 4
+    can_critique: bool = False
+    can_verify: bool = False
+    can_delegate: bool = True
+    can_use_workers: bool = True
+    memory_scope: str = 'project'
+    preferred_team_mode: str = 'careful'
+    confidence_weight: float = 0.5
+
+
+class TeamPlanPreviewIn(BaseModel):
+    prompt: str
+    mode: str = 'careful'
+
+
+class TeamPlanRequestIn(BaseModel):
+    run_id: int
+    prompt: str
+    mode: str = 'careful'

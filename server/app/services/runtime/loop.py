@@ -4,10 +4,10 @@ import json
 from datetime import datetime
 
 from pydantic import ValidationError
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.models import ToolCall
+from app.models import AgentCapabilityProfile, ToolCall
 from app.services.ollama_client import OllamaClient
 from app.services.tools.registry import registry
 
@@ -15,6 +15,7 @@ from .capsules import search_capsules
 from .router import choose_model_for_role, route_worker_job
 from .schemas import RuntimeAction, RuntimeResult
 from .trace import add_trace
+from .quality import update_usefulness
 
 
 WORKER_TOOL_TYPES = {'python_exec': 'python_exec'}
@@ -45,10 +46,22 @@ class RuntimeLoop:
         prev_observations_len = 0
 
         allowed = []
+        profile = session.exec(select(AgentCapabilityProfile).where(AgentCapabilityProfile.agent_id == (agent.id or 0))).first()
         try:
             allowed = json.loads(agent.tools_json or '[]')
         except Exception:
             warnings.append('invalid_agent_tools_json')
+        if profile:
+            max_steps = min(max_steps, max(1, profile.max_tool_steps))
+            if profile.allowed_tools_json:
+                try:
+                    profile_tools = set(json.loads(profile.allowed_tools_json or '[]'))
+                    allowed = [x for x in allowed if x in profile_tools]
+                except Exception:
+                    warnings.append('invalid_capability_allowed_tools_json')
+
+        if profile:
+            add_trace(session, run_id, 'capability_profile', {'agent_id': agent.id, 'can_critique': profile.can_critique, 'can_verify': profile.can_verify, 'can_delegate': profile.can_delegate, 'can_use_workers': profile.can_use_workers}, agent_id=agent.id or 0)
 
         for step in range(max_steps):
             subgoal = observations[-1] if observations else prompt
@@ -58,7 +71,16 @@ class RuntimeLoop:
                 run_id=run_id,
                 top_k=settings.agentora_capsule_top_k,
             )
-            add_trace(session, run_id, 'memory_retrieval', {'step': step, 'subgoal': subgoal, 'hits': memory[:4]}, agent_id=agent.id or 0)
+            add_trace(session, run_id, 'memory_layer_query', {'step': step, 'subgoal': subgoal, 'hits': memory[:4], 'layers': sorted({m.get('layer', 'unknown') for m in memory})}, agent_id=agent.id or 0)
+            add_trace(session, run_id, 'context_admission', {'step': step, 'admitted': memory[: settings.agentora_max_active_contexts]}, agent_id=agent.id or 0)
+            add_trace(session, run_id, 'retrieval_score_breakdown', {'step': step, 'items': [{'capsule_id': m.get('capsule_id'), 'layer': m.get('layer'), 'score_breakdown': m.get('score_breakdown', {})} for m in memory[:4]]}, agent_id=agent.id or 0)
+            add_trace(session, run_id, 'context_admission_reason', {'step': step, 'items': [{'capsule_id': m.get('capsule_id'), 'admission_reason': m.get('admission_reason', {}), 'conflict_flag': m.get('conflict_flag', False)} for m in memory[: settings.agentora_max_active_contexts]]}, agent_id=agent.id or 0)
+            if any(m.get('conflict_flag') for m in memory[: settings.agentora_max_active_contexts]):
+                add_trace(session, run_id, 'memory_conflict_admitted', {'step': step, 'capsule_ids': [m.get('capsule_id') for m in memory if m.get('conflict_flag')]}, agent_id=agent.id or 0)
+            if any(m.get('duplicate_cluster_id') for m in memory[: settings.agentora_max_active_contexts]):
+                add_trace(session, run_id, 'duplicate_capsule_detected', {'step': step, 'clusters': [m.get('duplicate_cluster_id') for m in memory if m.get('duplicate_cluster_id')]}, agent_id=agent.id or 0)
+            if any(m.get('conflict_flag') for m in memory[: settings.agentora_max_active_contexts]):
+                add_trace(session, run_id, 'memory_conflict_detected', {'step': step, 'capsule_ids': [m.get('capsule_id') for m in memory if m.get('conflict_flag')]}, agent_id=agent.id or 0)
             memory_text = '\n'.join([f"[{i+1}] {m['text']}" for i, m in enumerate(memory)])
             planning_model, route_warnings = choose_model_for_role(session, role='tool_planning', has_images=bool(image_paths))
             warnings.extend(route_warnings)
@@ -159,6 +181,12 @@ class RuntimeLoop:
             final_text = 'No final answer generated.'
             if stop_reason == 'max_steps':
                 warnings.append('max_steps_reached_without_final')
+
+
+        retrieved_ids = [m.get('capsule_id') for m in memory if m.get('capsule_id')] if 'memory' in locals() else []
+        used_ids = [m.get('capsule_id') for m in memory[:2] if m.get('capsule_id')] if 'memory' in locals() else []
+        metrics = update_usefulness(session, run_id=run_id, retrieved_capsule_ids=retrieved_ids, used_capsule_ids=used_ids, helped_final_answer=bool(final_text and final_text != 'No final answer generated.'), helped_tool_execution=tool_calls > 0)
+        add_trace(session, run_id, 'memory_usefulness_update', {'metrics_updated': len(metrics), 'retrieved_ids': retrieved_ids[:8], 'used_ids': used_ids[:8]}, agent_id=agent.id or 0)
 
         add_trace(session, run_id, 'final_answer', {'final_text': final_text[:1000], 'stop_reason': stop_reason, 'warnings': warnings, 'models_used': models_used}, agent_id=agent.id or 0)
         return RuntimeResult(
