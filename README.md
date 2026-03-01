@@ -20,7 +20,7 @@ Agentora is a **local-first, private-by-default, memory-aware agent operating st
    - macOS/Linux: manual commands below
 4. Open Streamlit and verify `System Version` + `System Doctor` panels.
 
-### Manual launch
+### Manual launch (cross-platform)
 ```bash
 python -m pip install -r requirements.txt
 uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
