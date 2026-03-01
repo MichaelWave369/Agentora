@@ -3,7 +3,7 @@ import asyncio
 from sqlmodel import Session, select
 
 from app.db import engine
-from app.models import Agent, AgentCapabilityProfile, AgentHandoff, CollaborationMetric, Run, Team, TeamAgent, TeamPlan, TeamSubgoal
+from app.models import ActionRequest, Agent, AgentCapabilityProfile, AgentHandoff, CollaborationMetric, Run, Team, TeamAgent, TeamPlan, TeamSubgoal
 from app.services.orchestration.engine import OrchestrationEngine
 from app.services.runtime.loop import runtime_loop
 from app.services.runtime.team import collaboration_trace
@@ -49,7 +49,7 @@ def test_team_plan_and_handoffs(monkeypatch):
             return R()
 
         monkeypatch.setattr(runtime_loop, 'run_agent', fake_run_agent)
-        state = asyncio.run(OrchestrationEngine().execute(session, run, 'Plan and build then verify this feature', False))
+        state = asyncio.run(OrchestrationEngine().execute(session, run, 'Plan and build then verify this feature and inspect files', False))
         assert state.messages
 
         plan = session.exec(select(TeamPlan).where(TeamPlan.run_id == run.id).order_by(TeamPlan.id.desc())).first()
@@ -58,6 +58,8 @@ def test_team_plan_and_handoffs(monkeypatch):
         assert len(subgoals) >= 2
         handoffs = list(session.exec(select(AgentHandoff).where(AgentHandoff.run_id == run.id)))
         assert handoffs
+        actions = list(session.exec(select(ActionRequest).where(ActionRequest.run_id == run.id)))
+        assert actions
         metric = session.exec(select(CollaborationMetric).where(CollaborationMetric.run_id == run.id)).first()
         assert metric is not None
         trace = collaboration_trace(session, run.id)

@@ -5,7 +5,7 @@ from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 
 from app.db import get_session
-from app.models import Run, Team, Message, Agent, TeamAgent, AgentHandoff, CollaborationMetric, TeamPlan, TeamSubgoal
+from app.models import Run, Team, Message, Agent, TeamAgent, AgentHandoff, CollaborationMetric, TeamPlan, TeamSubgoal, ActionRequest, ActionExecution, ActionArtifact
 from app.schemas import RunIn
 from app.services.orchestration.engine import OrchestrationEngine
 from app.services.runtime.trace import get_run_trace
@@ -135,3 +135,16 @@ def run_team(run_id: int, session: Session = Depends(get_session)):
     metric = session.exec(select(CollaborationMetric).where(CollaborationMetric.run_id == run_id)).first()
     handoffs = list(session.exec(select(AgentHandoff).where(AgentHandoff.run_id == run_id).order_by(AgentHandoff.id)))
     return {'ok': True, 'plan': plan, 'subgoals': subgoals, 'handoffs': handoffs, 'metric': metric}
+
+
+@router.get('/{run_id}/actions')
+def run_actions(run_id: int, session: Session = Depends(get_session)):
+    run = session.get(Run, run_id)
+    if not run:
+        raise HTTPException(404, 'run not found')
+    requests = list(session.exec(select(ActionRequest).where(ActionRequest.run_id == run_id).order_by(ActionRequest.id.desc())))
+    req_ids = [r.id for r in requests if r.id]
+    executions = list(session.exec(select(ActionExecution).where(ActionExecution.action_request_id.in_(req_ids)).order_by(ActionExecution.id.desc()))) if req_ids else []
+    exec_ids = [e.id for e in executions if e.id]
+    artifacts = list(session.exec(select(ActionArtifact).where(ActionArtifact.action_execution_id.in_(exec_ids)).order_by(ActionArtifact.id.desc()))) if exec_ids else []
+    return {'ok': True, 'requests': requests, 'executions': executions, 'artifacts': artifacts}

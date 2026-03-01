@@ -511,6 +511,102 @@ class CollaborationMetric(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+
+
+class PolicyRule(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    action_class: str = 'desktop'
+    tool_name: str = ''
+    agent_role: str = ''
+    path_scope: str = ''
+    domain_scope: str = ''
+    approval_level: str = 'ask_once'
+    worker_eligible: bool = False
+    enabled: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ActionRequest(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int
+    agent_id: int = 0
+    subgoal_id: Optional[int] = None
+    action_class: str = 'desktop'
+    tool_name: str
+    params_json: str = '{}'
+    policy_rule_id: Optional[int] = None
+    policy_decision: str = 'ask_once'
+    status: str = 'pending'
+    requires_approval: bool = True
+    requested_worker: bool = False
+    requested_at: datetime = Field(default_factory=datetime.utcnow)
+    decided_at: Optional[datetime] = None
+
+
+class ActionApproval(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    action_request_id: int
+    decision: str = 'pending'
+    decided_by: str = 'user'
+    reason: str = ''
+    decided_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ActionExecution(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    action_request_id: int
+    run_id: int
+    status: str = 'queued'
+    execution_mode: str = 'local'
+    worker_job_id: Optional[int] = None
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    finished_at: Optional[datetime] = None
+    result_json: str = '{}'
+    error: str = ''
+
+
+class ActionArtifact(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int
+    action_execution_id: int
+    kind: str = 'text'
+    path: str = ''
+    content_preview: str = ''
+    meta_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Workflow(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    description: str = ''
+    params_schema_json: str = '{}'
+    enabled: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkflowStep(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workflow_id: int
+    position: int = 0
+    step_type: str = 'desktop'
+    tool_name: str
+    params_json: str = '{}'
+    requires_approval: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkflowRun(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workflow_id: int
+    run_id: int = 0
+    status: str = 'running'
+    input_json: str = '{}'
+    output_json: str = '{}'
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    finished_at: Optional[datetime] = None
+
 class CosmosWorld(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str

@@ -28,12 +28,15 @@ TASK_CAPABILITY = {
     'python_exec': 'python_exec',
     'long_tool_job': 'long_tool_job',
     'web_fetch': 'web_fetch',
+    'desktop_action': 'desktop_action',
+    'browser_action': 'browser_action',
+    'workflow_run': 'workflow_run',
 }
 
 
 HEAVY_TASKS = {
     'embed_batch', 'capsule_ingest', 'summary_generation', 'archive_compaction', 'edge_recompute',
-    'memory_maintenance', 'maintenance', 'large_attachment_processing',
+    'memory_maintenance', 'maintenance', 'large_attachment_processing', 'browser_action', 'workflow_run',
 }
 
 

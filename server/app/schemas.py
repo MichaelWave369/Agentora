@@ -87,3 +87,37 @@ class TeamPlanRequestIn(BaseModel):
     run_id: int
     prompt: str
     mode: str = 'careful'
+
+
+class ActionRequestIn(BaseModel):
+    run_id: int
+    agent_id: int = 0
+    subgoal_id: int | None = None
+    action_class: str
+    tool_name: str
+    params: dict = {}
+    requested_worker: bool = False
+
+
+class ActionDecisionIn(BaseModel):
+    reason: str = ''
+
+
+class WorkflowStepIn(BaseModel):
+    position: int
+    step_type: str
+    tool_name: str
+    params: dict = {}
+    requires_approval: bool = True
+
+
+class WorkflowIn(BaseModel):
+    name: str
+    description: str = ''
+    params_schema: dict = {}
+    steps: list[WorkflowStepIn] = []
+
+
+class WorkflowRunIn(BaseModel):
+    run_id: int = 0
+    inputs: dict = {}

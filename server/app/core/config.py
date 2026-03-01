@@ -71,6 +71,16 @@ class Settings(BaseSettings):
     agentora_max_handoffs: int = Field(default=8, alias='AGENTORA_MAX_HANDOFFS')
     agentora_enable_single_agent_fallback: bool = Field(default=True, alias='AGENTORA_ENABLE_SINGLE_AGENT_FALLBACK')
     agentora_force_synthesis_on_budget_exhaust: bool = Field(default=True, alias='AGENTORA_FORCE_SYNTHESIS_ON_BUDGET_EXHAUST')
+    agentora_enable_desktop_actions: bool = Field(default=True, alias='AGENTORA_ENABLE_DESKTOP_ACTIONS')
+    agentora_enable_browser_actions: bool = Field(default=True, alias='AGENTORA_ENABLE_BROWSER_ACTIONS')
+    agentora_action_require_approval_default: str = Field(default='ask_once', alias='AGENTORA_ACTION_REQUIRE_APPROVAL_DEFAULT')
+    agentora_allowed_path_roots: str = Field(default='.', alias='AGENTORA_ALLOWED_PATH_ROOTS')
+    agentora_blocked_path_roots: str = Field(default='', alias='AGENTORA_BLOCKED_PATH_ROOTS')
+    agentora_allowed_domains: str = Field(default='localhost,127.0.0.1', alias='AGENTORA_ALLOWED_DOMAINS')
+    agentora_blocked_domains: str = Field(default='', alias='AGENTORA_BLOCKED_DOMAINS')
+    agentora_allowed_apps: str = Field(default='', alias='AGENTORA_ALLOWED_APPS')
+    agentora_max_action_steps: int = Field(default=12, alias='AGENTORA_MAX_ACTION_STEPS')
+    agentora_max_workflow_duration_seconds: int = Field(default=300, alias='AGENTORA_MAX_WORKFLOW_DURATION_SECONDS')
 
     coevo_url: str = Field(default='', alias='COEVO_URL')
     coevo_api_key: str = Field(default='', alias='COEVO_API_KEY')
@@ -107,6 +117,26 @@ class Settings(BaseSettings):
             return {str(k): int(v) for k, v in raw.items()}
         except Exception:
             return {}
+
+    @property
+    def allowed_path_roots(self) -> list[str]:
+        return [x.strip() for x in self.agentora_allowed_path_roots.split(',') if x.strip()]
+
+    @property
+    def blocked_path_roots(self) -> list[str]:
+        return [x.strip() for x in self.agentora_blocked_path_roots.split(',') if x.strip()]
+
+    @property
+    def allowed_domains(self) -> list[str]:
+        return [x.strip() for x in self.agentora_allowed_domains.split(',') if x.strip()]
+
+    @property
+    def blocked_domains(self) -> list[str]:
+        return [x.strip() for x in self.agentora_blocked_domains.split(',') if x.strip()]
+
+    @property
+    def allowed_apps(self) -> list[str]:
+        return [x.strip() for x in self.agentora_allowed_apps.split(',') if x.strip()]
 
 
 settings = Settings()

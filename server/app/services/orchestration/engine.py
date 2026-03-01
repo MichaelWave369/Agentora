@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.models import Agent, Attachment, Message, Run, RunMetric, TeamAgent, TemplateUsage, TeamSubgoal
 from app.services.runtime.loop import runtime_loop
+from app.services.runtime.actions import create_action_request, execute_action_request
 from app.services.runtime.team import complete_handoff, create_handoff, create_team_plan, ensure_capability_profile, record_collaboration_metrics
 from app.services.runtime.trace import add_trace
 from .state import RunState
@@ -63,6 +64,16 @@ class OrchestrationEngine:
             if settings.agentora_enable_team_debate and 'critic' in (agent.role or '').lower() and debate_turns == 0:
                 add_trace(session, run.id, 'debate_started', {'subgoal_id': sg.id, 'mode': plan.mode}, agent_id=agent.id or 0)
                 debate_turns += 1
+
+            sg_lower = (sg.detail or '').lower()
+            if any(k in sg_lower for k in ['inspect files', 'scan folder', 'list files']):
+                req = create_action_request(session, run_id=run.id, agent_id=agent.id or 0, subgoal_id=sg.id, action_class='desktop', tool_name='desktop_list_dir', params={'path': '.'}, requested_worker=False, agent_role=agent.role)
+                if req.status == 'approved':
+                    execute_action_request(session, req.id)
+            if any(k in sg_lower for k in ['browse', 'search docs', 'open url']):
+                req = create_action_request(session, run_id=run.id, agent_id=agent.id or 0, subgoal_id=sg.id, action_class='browser', tool_name='browser_page_summary', params={'url': 'http://localhost:8088/api/health'}, requested_worker=True, agent_role=agent.role)
+                if req.status == 'approved':
+                    execute_action_request(session, req.id)
 
             rt = await runtime_loop.run_agent(
                 session=session,
