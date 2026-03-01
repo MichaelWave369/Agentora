@@ -244,6 +244,15 @@ def _dashboard_page():
         if run_id.strip():
             trace_payload = safe_api_get(f'/api/runs/{run_id.strip()}/trace', 'run trace')
             st.json(trace_payload)
+
+    with st.expander('Lattice Memory Inspector', expanded=False):
+        st.json(safe_api_get('/api/memory/layers', 'memory layers'))
+        mem_run_id = st.text_input('Run ID for memory contexts', value='', key='mem_run_id')
+        if mem_run_id.strip():
+            st.json(safe_api_get(f'/api/memory/runs/{mem_run_id.strip()}/contexts', 'memory contexts'))
+            st.json(safe_api_get(f'/api/memory/runs/{mem_run_id.strip()}/trace', 'memory trace'))
+        if st.button('Run memory maintenance now'):
+            st.json(safe_api_post('/api/memory/maintenance/run', {'try_worker': True}, 'memory maintenance'))
     with c3:
         st.markdown("<div class='agentora-card'><h4>Marketplace</h4></div>", unsafe_allow_html=True)
         market = safe_api_get('/api/marketplace/templates', 'marketplace')

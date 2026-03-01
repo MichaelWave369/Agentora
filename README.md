@@ -1,4 +1,4 @@
-# Agentora v0.9.1 — The Infinite Bloom & The World Garden
+# Agentora v0.9.2 — Lattice Memory & Sparse Context
 
 ![Agentora Soul & Arena Hero](docs/hero-soul-arena.svg)
 
@@ -7,6 +7,16 @@
 [📖 Share Your First Cosmos](http://localhost:8501)
 
 Agentora is now **Streamlit-first** for the complete product experience, while FastAPI remains the local orchestration/data backend.
+
+
+## What’s new in v0.9.2
+- Introduces **Agentora Lattice Memory**: layered memory tiers (L0–L5) with sparse context activation and bounded admission budgets.
+- Adds multi-timescale retrieval (short/medium/long decay classes), trust/consolidation signals, and layer-aware ranking.
+- Adds graph-aware reranking with SQLite-native `MemoryEdge` reinforcement for neighborhood recall.
+- Adds promotion/demotion lifecycle and cold archive controls with maintenance jobs and local fallback.
+- Adds adaptive refinement (split + summary + lineage tracking) for dense/ambiguous capsules.
+- Adds memory introspection APIs (`/api/memory/*`) and Streamlit **Lattice Memory Inspector** panel.
+- Extends worker-capable operations for memory-heavy tasks: summaries, maintenance, compaction, edge recompute, conflict detection.
 
 ## What’s new in v0.9.1
 - **World Garden Map**: global bloom view for shared cosmos gardens with glow, location, and creator credits.

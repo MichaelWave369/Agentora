@@ -14,6 +14,12 @@ from app.models import WorkerNode, WorkerJob
 TASK_CAPABILITY = {
     'embed_batch': 'embed_batch',
     'capsule_ingest': 'capsule_ingest',
+    'summary_generation': 'summary_generation',
+    'archive_compaction': 'archive_compaction',
+    'edge_recompute': 'edge_recompute',
+    'memory_maintenance': 'memory_maintenance',
+    'conflict_detection': 'conflict_detection',
+    'large_attachment_processing': 'large_attachment_processing',
     'python_exec': 'python_exec',
     'long_tool_job': 'long_tool_job',
 }
