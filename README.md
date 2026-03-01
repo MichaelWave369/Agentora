@@ -1,4 +1,4 @@
-# Agentora v0.9.3 — Memory Quality & Observability
+# Agentora v0.9.4 — Team Orchestration & Worker Intelligence
 
 ![Agentora Soul & Arena Hero](docs/hero-soul-arena.svg)
 
@@ -8,6 +8,14 @@
 
 Agentora is now **Streamlit-first** for the complete product experience, while FastAPI remains the local orchestration/data backend.
 
+
+## What’s new in v0.9.4
+- Adds team planning with subgoal decomposition, dependencies, role assignments, deliverable types, and plan traces.
+- Adds explicit role-based handoffs with bounded metadata and persisted handoff history.
+- Adds bounded collaboration modes with critique/debate/synthesis traces and guardrails.
+- Adds smarter worker routing for heavy vs interactive task classes with route-selection/fallback traces.
+- Adds agent capability profiles and APIs to inspect/update role constraints and collaboration preferences.
+- Adds run collaboration inspection endpoints and a Streamlit Team Collaboration Inspector panel.
 
 ## What’s new in v0.9.3
 - Adds retrieval explainability with per-capsule score breakdowns (semantic, decay, trust, consolidation, project/session, layer and graph contributions).

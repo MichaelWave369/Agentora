@@ -427,6 +427,90 @@ class GatheringEvent(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+
+
+class TeamPlan(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int
+    goal: str
+    mode: str = 'careful'
+    status: str = 'active'
+    confidence: float = 0.6
+    urgency: float = 0.5
+    priority: float = 0.5
+    revision: int = 1
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TeamSubgoal(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    plan_id: int
+    run_id: int
+    parent_subgoal_id: Optional[int] = None
+    title: str
+    detail: str = ''
+    assigned_agent_id: Optional[int] = None
+    assigned_agent_role: str = ''
+    dependency_subgoal_ids_json: str = '[]'
+    status: str = 'pending'
+    needs_worker: bool = False
+    deliverable_type: str = 'answer'
+    confidence: float = 0.5
+    urgency: float = 0.5
+    priority: float = 0.5
+    max_steps: int = 3
+    output_text: str = ''
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AgentHandoff(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int
+    from_agent_id: int
+    to_agent_id: int
+    reason: str
+    context_json: str = '{}'
+    expected_output: str = 'answer'
+    allow_tools: bool = True
+    allow_memory: bool = True
+    max_steps: int = 3
+    status: str = 'open'
+    deadline_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AgentCapabilityProfile(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    agent_id: int
+    preferred_model_role: str = 'chat'
+    allowed_tools_json: str = '[]'
+    max_tool_steps: int = 4
+    can_critique: bool = False
+    can_verify: bool = False
+    can_delegate: bool = True
+    can_use_workers: bool = True
+    memory_scope: str = 'project'
+    preferred_team_mode: str = 'careful'
+    confidence_weight: float = 0.5
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CollaborationMetric(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int
+    handoff_success_rate: float = 1.0
+    critique_usefulness_rate: float = 0.0
+    worker_route_success_rate: float = 1.0
+    final_synthesis_completeness: float = 0.0
+    plan_execution_consistency: float = 1.0
+    no_progress_terminations: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
 class CosmosWorld(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str

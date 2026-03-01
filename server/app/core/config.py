@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     agentora_cross_project_memory_enabled: bool = Field(default=False, alias='AGENTORA_CROSS_PROJECT_MEMORY_ENABLED')
     agentora_global_memory_fallback_enabled: bool = Field(default=True, alias='AGENTORA_GLOBAL_MEMORY_FALLBACK_ENABLED')
     agentora_duplicate_suppression_enabled: bool = Field(default=True, alias='AGENTORA_DUPLICATE_SUPPRESSION_ENABLED')
+    agentora_enable_team_debate: bool = Field(default=True, alias='AGENTORA_ENABLE_TEAM_DEBATE')
+    agentora_default_team_mode: str = Field(default='careful', alias='AGENTORA_DEFAULT_TEAM_MODE')
+    agentora_max_team_turns: int = Field(default=6, alias='AGENTORA_MAX_TEAM_TURNS')
+    agentora_max_handoffs: int = Field(default=8, alias='AGENTORA_MAX_HANDOFFS')
+    agentora_enable_single_agent_fallback: bool = Field(default=True, alias='AGENTORA_ENABLE_SINGLE_AGENT_FALLBACK')
+    agentora_force_synthesis_on_budget_exhaust: bool = Field(default=True, alias='AGENTORA_FORCE_SYNTHESIS_ON_BUDGET_EXHAUST')
 
     coevo_url: str = Field(default='', alias='COEVO_URL')
     coevo_api_key: str = Field(default='', alias='COEVO_API_KEY')

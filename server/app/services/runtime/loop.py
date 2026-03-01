@@ -4,10 +4,10 @@ import json
 from datetime import datetime
 
 from pydantic import ValidationError
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.core.config import settings
-from app.models import ToolCall
+from app.models import AgentCapabilityProfile, ToolCall
 from app.services.ollama_client import OllamaClient
 from app.services.tools.registry import registry
 
@@ -46,10 +46,22 @@ class RuntimeLoop:
         prev_observations_len = 0
 
         allowed = []
+        profile = session.exec(select(AgentCapabilityProfile).where(AgentCapabilityProfile.agent_id == (agent.id or 0))).first()
         try:
             allowed = json.loads(agent.tools_json or '[]')
         except Exception:
             warnings.append('invalid_agent_tools_json')
+        if profile:
+            max_steps = min(max_steps, max(1, profile.max_tool_steps))
+            if profile.allowed_tools_json:
+                try:
+                    profile_tools = set(json.loads(profile.allowed_tools_json or '[]'))
+                    allowed = [x for x in allowed if x in profile_tools]
+                except Exception:
+                    warnings.append('invalid_capability_allowed_tools_json')
+
+        if profile:
+            add_trace(session, run_id, 'capability_profile', {'agent_id': agent.id, 'can_critique': profile.can_critique, 'can_verify': profile.can_verify, 'can_delegate': profile.can_delegate, 'can_use_workers': profile.can_use_workers}, agent_id=agent.id or 0)
 
         for step in range(max_steps):
             subgoal = observations[-1] if observations else prompt

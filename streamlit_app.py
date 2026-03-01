@@ -245,6 +245,16 @@ def _dashboard_page():
             trace_payload = safe_api_get(f'/api/runs/{run_id.strip()}/trace', 'run trace')
             st.json(trace_payload)
 
+
+    with st.expander('Team Collaboration Inspector', expanded=False):
+        collab_run_id = st.text_input('Run ID for team collaboration', value='', key='collab_run_id')
+        if collab_run_id.strip():
+            st.json(safe_api_get(f'/api/runs/{collab_run_id.strip()}/plan', 'team plan'))
+            st.json(safe_api_get(f'/api/runs/{collab_run_id.strip()}/team', 'team overview'))
+            st.json(safe_api_get(f'/api/runs/{collab_run_id.strip()}/handoffs', 'handoffs'))
+            st.json(safe_api_get(f'/api/runs/{collab_run_id.strip()}/collaboration-trace', 'collaboration trace'))
+        st.json(safe_api_get('/api/agents/capabilities', 'agent capabilities'))
+
     with st.expander('Lattice Memory Inspector', expanded=False):
         st.json(safe_api_get('/api/memory/health', 'memory health'))
         st.json(safe_api_get('/api/memory/layers', 'memory layers'))
