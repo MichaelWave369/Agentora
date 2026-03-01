@@ -244,9 +244,11 @@ def _dashboard_page():
         st.markdown("<div class='agentora-card'><h4>Runs</h4></div>", unsafe_allow_html=True)
         runs_payload = safe_api_get('/api/runs', 'runs')
         if isinstance(runs_payload, list) and not runs_payload:
-            st.caption('No runs yet')
+            st.caption('No runs yet — start a run from Studio or create one through the API.')
         else:
             st.json(runs_payload)
+
+    st.caption('Tip: Use Operator Center for controlled automation, Action Center for approvals, and inspectors for memory/team diagnostics.')
 
     with st.expander('Runtime Trace Viewer', expanded=False):
         run_id = st.text_input('Run ID for trace', value='')
@@ -256,7 +258,7 @@ def _dashboard_page():
 
 
 
-    with st.expander('Operator Center (runs, controls, replay)', expanded=False):
+    with st.expander('Operator Center (run controls, replay, status)', expanded=False):
         st.json(safe_api_get('/api/system/version', 'system version'))
         st.json(safe_api_get('/api/system/doctor', 'system doctor'))
         st.json(safe_api_get('/api/operator/runs', 'operator runs'))
@@ -274,7 +276,7 @@ def _dashboard_page():
                 if st.button('Advance Operator Run'):
                     st.json(safe_api_post(f'/api/operator/runs/{op_run.strip()}/advance', {}, 'advance operator run'))
 
-    with st.expander('Action Center (pending approvals + history)', expanded=False):
+    with st.expander('Action Center (approval queue, history, artifacts)', expanded=False):
         st.json(safe_api_get('/api/actions/pending', 'pending actions'))
         st.json(safe_api_get('/api/actions/history', 'action history'))
         st.json(safe_api_get('/api/workflows', 'workflows'))
@@ -304,7 +306,7 @@ def _dashboard_page():
         if st.button('Run workflow') and wf_id.strip():
             st.json(safe_api_post(f'/api/workflows/{wf_id.strip()}/run', {'run_id': int(wf_run_id or 0), 'inputs': {}}, 'run workflow'))
 
-    with st.expander('Team Inspector (plan, handoffs, collaboration trace)', expanded=False):
+    with st.expander('Team Inspector (plan, subgoals, handoffs, trace)', expanded=False):
         collab_run_id = st.text_input('Run ID for team collaboration', value='', key='collab_run_id')
         if collab_run_id.strip():
             st.json(safe_api_get(f'/api/runs/{collab_run_id.strip()}/plan', 'team plan'))
@@ -313,7 +315,7 @@ def _dashboard_page():
             st.json(safe_api_get(f'/api/runs/{collab_run_id.strip()}/collaboration-trace', 'collaboration trace'))
         st.json(safe_api_get('/api/agents/capabilities', 'agent capabilities'))
 
-    with st.expander('Lattice Memory Inspector (health, retrieval, lineage)', expanded=False):
+    with st.expander('Lattice Memory Inspector (retrieval, score context, lineage)', expanded=False):
         st.json(safe_api_get('/api/memory/health', 'memory health'))
         st.json(safe_api_get('/api/memory/layers', 'memory layers'))
         st.json(safe_api_get('/api/memory/conflicts', 'memory conflicts'))
@@ -334,7 +336,7 @@ def _dashboard_page():
         market = safe_api_get('/api/marketplace/templates', 'marketplace')
         templates = market.get('templates') if isinstance(market, dict) else None
         if isinstance(templates, list) and not templates:
-            st.caption('Marketplace empty — install your first template')
+            st.caption('Marketplace empty — import a team template to begin.')
         else:
             st.json(market)
 
@@ -491,15 +493,15 @@ def _core_page():
 
 
 def render_dashboard() -> None:
-    st.set_page_config(page_title='Agentora v0.9.7', layout='wide', initial_sidebar_state='expanded')
+    st.set_page_config(page_title='Agentora v1.0.0-rc1', layout='wide', initial_sidebar_state='expanded')
     _theme_css()
 
     if 'db_url' not in st.session_state:
         st.session_state['db_url'] = _resolve_streamlit_db_url()
     initialize_database()
 
-    st.title('Agentora v0.9.7 — Stability, UX Polish & Public Readiness')
-    st.caption('Primary local experience • offline-friendly defaults • private by default')
+    st.title('Agentora v1.0.0-rc1 — Scope Freeze, Final Polish & Launch Readiness')
+    st.caption('Local-first operating studio • private by default • launch-candidate build')
     st.info(f"API Mode: {ACTIVE_MODE.upper()} | DB: {st.session_state['db_url']}")
 
     page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'World Garden (experimental)', 'Core'])

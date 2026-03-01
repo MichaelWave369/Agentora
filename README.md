@@ -1,120 +1,99 @@
-# Agentora v0.9.7 — Stability, UX Polish & Public Readiness
+# Agentora v1.0.0-rc1 — Scope Freeze, Final Polish & Launch Readiness
 
-Agentora is a **local-first operator runtime** for safe desktop/browser actions, memory-aware planning, and multi-agent execution.
+Agentora is a **local-first, private-by-default, memory-aware operating studio** for agent teams, safe actions, and repeatable workflows.
 
-This release focuses on polish: consistency, reliability, startup clarity, and public-repo readiness.
+This release candidate is a stabilization pass before `v1.0.0`: consistency, reliability, setup clarity, and launch readiness.
 
-## What Agentora is today
+## What Agentora can do today
 
-Agentora combines:
-- **Cortex runtime** for run execution and traces.
-- **Lattice Memory** with retrieval introspection, layer health, lineage, and maintenance.
-- **Team orchestration** with planning, handoffs, and collaboration traces.
-- **Action + approval system** for guarded desktop/browser operations.
-- **Workflows + Operator Mode** for stepwise and automatic automation.
+- **Local chat + memory inspection** (retrieval, contexts, lineage, duplicates/conflicts).
+- **Team collaboration** (plan/subgoals/handoffs/collaboration trace).
+- **Safe action approvals** for desktop/browser actions with allowlists and policy controls.
+- **Workflow execution and replay** with history surfaces.
+- **Operator Mode** with pause/resume/advance/retry/skip controls.
+- **Optional worker assist** with fallback to local execution.
 
 ## Quickstart (recommended)
 
-### One-click launch (Windows)
-Use either launcher from repo root:
-- `launch_agentora.bat`
-- `launch_agentora.ps1`
+### Easiest one-PC path
+1. Copy `.env.example` to `.env`.
+2. Keep mock defaults for first run (`AGENTORA_USE_MOCK_OLLAMA=true`).
+3. Start with:
+   - Windows: `launch_agentora.bat` or `launch_agentora.ps1`
+   - macOS/Linux: manual commands below
+4. In UI, open `System Version` and `System Doctor` to verify readiness.
 
-The launchers create `.venv`, install dependencies, and start FastAPI + Streamlit.
-
-### Manual local launch (cross-platform)
+### Manual launch (cross-platform)
 ```bash
 python -m pip install -r requirements.txt
 uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
 ```
-In another terminal:
+Second terminal:
 ```bash
 AGENTORA_STREAMLIT_MODE=http AGENTORA_API_URL=http://127.0.0.1:8088 streamlit run app.py
 ```
 
-### Easiest optional setup path
-1. Start local with mock mode enabled in `.env` (default in `.env.example`).
-2. Verify `/api/system/doctor` and `/api/system/version`.
-3. Add Ollama and workers later (optional).
+## One PC vs Two PC guidance
 
-## First-run and troubleshooting endpoints
+- **One PC (recommended default):** local API + local Streamlit.
+- **Two PC (optional):** control plane + worker node for heavy/remote assist.
+  See [docs/two-pc-setup.md](docs/two-pc-setup.md).
+
+## First-run endpoints
+
 - `GET /api/system/health`
 - `GET /api/system/version`
 - `GET /api/system/doctor`
 - `POST /api/system/bootstrap`
 
-These report missing dependencies, model runtime availability, writable paths, and worker reachability.
+## Core demo flows (v1.0 RC)
 
-## Product surface overview
+1. **Flow A — Local chat + memory:** run request, inspect `/api/memory/runs/{id}/retrieval` and contexts.
+2. **Flow B — Team collaboration:** inspect `/api/runs/{id}/plan`, `/handoffs`, `/collaboration-trace`.
+3. **Flow C — Safe approvals:** create action, approve/deny via `/api/actions/{id}/approve|deny`, inspect `/api/actions/history`.
+4. **Flow D — Workflow replay:** create workflow, run it, inspect `/api/workflows/{id}/runs`, run again for replay history.
+5. **Flow E — Worker assist/fallback:** dispatch worker-eligible job and verify fallback behavior if worker unavailable.
 
-### Operator Mode
-- Create operator runs from workflows.
-- Pause/resume/advance/retry/skip controls.
-- Run history and trace visibility.
-- Artifact/result output per step.
+## API overview
 
-### Action & Workflow
-- Approval-gated desktop/browser actions.
-- Pending approval queue and history surfaces.
-- Reusable workflow definitions and run history.
-
-### Memory & Team
-- Memory contexts, retrieval traces, duplicates/conflicts, lineage/neighbors.
-- Team plans, role handoffs, and collaboration traces.
-
-### Optional/experimental modules
-- Cosmos / Open Cosmos / Garden / World Garden are available and treated as optional product surfaces.
-
-## Install and deployment options
-
-### Native local (recommended default)
-Use launcher scripts or manual local run above.
-
-### Docker single machine
-```bash
-docker compose --profile single-pc up --build
-```
-
-### Docker two-PC profile
-```bash
-docker compose --profile two-pc up --build
-```
-Runs `agentora-main` and `agentora-worker` with separate local volumes.
-
-## Two-PC guidance
-For LAN/offload usage and worker setup details, see:
-- [docs/two-pc-setup.md](docs/two-pc-setup.md)
-
-## API orientation
-Key endpoint groups:
 - `system`: health/version/doctor/bootstrap
-- `operator`: run control + workflow replay history
-- `actions`: pending/history/approve/deny
-- `workflows`: create/run/list
-- `memory`: retrieval/contexts/maintenance/introspection
-- `runs/team`: run traces, plan/handoff/collaboration
+- `runs`: run lifecycle + trace + team/collaboration surfaces
+- `actions`: pending queue, approvals, execution history
+- `workflows`: create/run/clone/history
+- `operator`: run controls + workflow history
+- `memory`: retrieval, trace, lineage, maintenance
+- `workers`: register/heartbeat/dispatch/job status
 
-## Architecture summary
-- **Streamlit**: primary local operator UX
+## Architecture
+
+- **Streamlit**: primary local UX and inspectors
 - **FastAPI**: API + orchestration runtime
 - **SQLModel/SQLite**: local persistence defaults
-- **Ollama**: local model runtime (optional/mock-friendly)
-- **Workers**: optional remote/offload execution
+- **Ollama**: optional local model runtime (mock-friendly startup)
+- **Worker queue**: optional assist/offload routing
+
+## Optional and experimental surfaces
+
+- Cosmos / Open Cosmos / Garden / World Garden remain optional and labeled experimental where applicable.
+
+## Known limitations (RC)
+
+- FastAPI startup currently uses legacy startup event hooks (deprecation warning only).
+- Some advanced flows depend on optional local capabilities (Ollama, workers, desktop/browser tooling).
+- Web UI build is supported; Streamlit is still the primary operator surface.
 
 ## Screenshots
-- Current placeholder hero: `docs/hero-soul-arena.svg`
-- Add local screenshots for your environment as needed.
+
+- Placeholder hero: `docs/hero-soul-arena.svg`
+- Current Streamlit dashboard screenshot can be captured locally for your environment.
 
 ## Release progression
-- **v0.9.1**: runtime hardening + worker routing
-- **v0.9.2**: layered memory retrieval foundations
-- **v0.9.3**: memory explainability and maintenance
-- **v0.9.4**: team planning + collaboration metrics
-- **v0.9.5**: desktop/browser actions + workflows + approvals
-- **v0.9.6**: Operator Mode + one-click deployment groundwork
-- **v0.9.7**: stability, UX polish, setup clarity, public readiness
 
-## Documentation
+- `v0.9.1` → `v0.9.7`: runtime, memory, team, action, workflow, operator, and polish groundwork.
+- `v1.0.0-rc1`: scope freeze, consistency pass, core flow hardening, launch-candidate readiness.
+
+## Docs
+
 - [docs/quickstart.md](docs/quickstart.md)
 - [docs/operator-mode.md](docs/operator-mode.md)
 - [docs/two-pc-setup.md](docs/two-pc-setup.md)

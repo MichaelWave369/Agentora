@@ -8,7 +8,7 @@ from app.routers import marketplace, multimodal, voice, analytics, integrations,
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title=settings.agentora_release_title)
+    app = FastAPI(title=settings.agentora_release_title, version=settings.agentora_version)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=['*'],

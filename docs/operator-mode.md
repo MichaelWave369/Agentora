@@ -1,19 +1,18 @@
-# Operator Mode
+# Operator Mode (v1.0 RC)
 
-Operator Mode executes workflows with visibility and control.
+Operator Mode is the control plane for workflow automation with safety and trace visibility.
 
-## Core controls
-- Start runs from workflow templates.
-- Pause/resume/advance runs.
+## Primary controls
+- Start run from workflow.
+- Pause / resume / advance.
 - Retry step / skip step for recoverable failures.
 
-## Visibility surfaces
-- Pending approvals and action history.
-- Operator run status and step details.
-- Trace timeline with failure reasons.
-- Artifacts/results generated per step.
+## Operator clarity goals
+- Clear distinction between **pending approvals** and **executed steps**.
+- Visible status transitions for failed/paused/completed states.
+- Replay via workflow history and run inspection.
 
-## Safety behavior
+## Safety defaults
 - Approval policy defaults to `ask_once`.
-- Path/domain/app allowlists are enforced for actions.
-- Unsafe or unavailable capabilities fail with explicit messages.
+- Path/domain/app guardrails apply to actions.
+- Worker unavailability falls back to local path when allowed, otherwise returns readable failure details.

@@ -18,8 +18,11 @@ def health():
 def version():
     return {
         'ok': True,
+        'service': settings.app_name,
         'version': settings.agentora_version,
         'title': settings.agentora_release_title,
+        'network_mode': settings.agentora_network_mode,
+        'offline_friendly': True,
     }
 
 

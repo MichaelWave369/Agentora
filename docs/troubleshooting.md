@@ -1,17 +1,20 @@
 # Troubleshooting
 
-## App starts but data is missing
-- Check `/api/system/health` and `/api/system/doctor`.
-- Confirm database path is writable.
+## Startup issues
+- Run `GET /api/system/doctor` and review `next_steps`.
+- Confirm DB and artifact directories are writable.
 
-## Models unavailable
-- Enable mock mode (`AGENTORA_USE_MOCK_OLLAMA=true`) for local/offline startup.
-- Verify `OLLAMA_URL` and local model pull status.
+## Version mismatch
+- Check `AGENTORA_VERSION` in `.env` and `GET /api/system/version` output.
 
-## Action failures
-- Inspect path/domain/app allowlists.
-- Review action approval status and denial reasons in `/api/actions/history`.
+## Memory/team inspector looks empty
+- Use a known run ID and inspect `/api/runs/{id}` first.
+- Validate retrieval at `/api/memory/runs/{id}/retrieval`.
 
-## Worker issues
-- Verify worker URLs and connectivity.
-- Review doctor output and retry local fallback path.
+## Approval/action failures
+- Verify allowlists for path/domain/app.
+- Inspect `/api/actions/history` for policy decisions and execution errors.
+
+## Worker failures
+- Verify `AGENTORA_WORKER_URLS` and DNS reachability.
+- Confirm fallback behavior through `/api/workers/dispatch` and `/api/workers/jobs/{id}`.

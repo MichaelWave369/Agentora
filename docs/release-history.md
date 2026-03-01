@@ -1,22 +1,25 @@
 # Release History
 
+## v1.0.0-rc1
+Scope freeze, final polish, launch-candidate hardening, and documentation finalization.
+
 ## v0.9.7
-Stability, UX polish, startup/install clarity, and public repo readiness.
+Stability and UX polish with public-repo readiness work.
 
 ## v0.9.6
-Operator Mode controls and one-click deployment foundation.
+Operator Mode controls and one-click deployment groundwork.
 
 ## v0.9.5
-Approval-gated desktop/browser actions and workflows.
+Approval-gated actions and workflows.
 
 ## v0.9.4
 Team orchestration and collaboration traces.
 
 ## v0.9.3
-Memory explainability and quality maintenance.
+Memory explainability and maintenance quality.
 
 ## v0.9.2
 Layered memory retrieval.
 
 ## v0.9.1
-Runtime hardening and routing groundwork.
+Runtime hardening and worker-routing groundwork.

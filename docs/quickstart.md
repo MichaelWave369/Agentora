@@ -1,9 +1,10 @@
-# Quickstart (v0.9.7)
+# Quickstart (v1.0.0-rc1)
 
-## Recommended path
+## Recommended first run
 1. Copy `.env.example` to `.env`.
-2. Run `launch_agentora.bat` or `launch_agentora.ps1` on Windows, or manual commands on macOS/Linux.
-3. Open Streamlit UI and verify `System Version` + `System Doctor` panels.
+2. Keep `AGENTORA_USE_MOCK_OLLAMA=true` for first launch.
+3. Start Agentora (launcher on Windows, manual commands elsewhere).
+4. Validate `System Version` and `System Doctor` in Streamlit.
 
 ## Manual commands
 ```bash
@@ -13,11 +14,6 @@ AGENTORA_STREAMLIT_MODE=http AGENTORA_API_URL=http://127.0.0.1:8088 streamlit ru
 ```
 
 ## First checks
-- `GET /api/system/health`
-- `GET /api/system/version`
-- `GET /api/system/doctor`
-
-## Optional after first successful launch
-- Configure Ollama models.
-- Add worker URLs for offload.
-- Tune approvals and allowlists.
+- `GET /api/system/version` should return `1.0.0-rc1`.
+- `GET /api/system/doctor` should include actionable `next_steps` when something is missing.
+- `GET /api/actions/pending` and `GET /api/workflows` should be reachable.

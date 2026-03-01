@@ -1,14 +1,13 @@
-# Two-PC Setup
+# Two-PC Setup (optional)
 
-Use this mode when you want one machine as control plane and another as worker.
+Use two-PC mode when you want one node for UI/API and another node as worker assist.
 
 ## Docker profile
 ```bash
 docker compose --profile two-pc up --build
 ```
 
-## Notes
-- Main node runs API + UI.
-- Worker node handles eligible jobs.
-- Configure `AGENTORA_WORKER_URLS` and verify `/api/system/doctor` worker checks.
-- If workers are unavailable, Agentora falls back to local execution when policy allows.
+## Recommended checks
+- Configure `AGENTORA_WORKER_URLS` on control-plane node.
+- Validate worker reachability in `GET /api/system/doctor`.
+- Verify fallback by dispatching a worker job and confirming local fallback behavior if worker is unavailable.

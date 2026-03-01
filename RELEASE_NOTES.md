@@ -1,15 +1,21 @@
-# Agentora v0.9.7 — Stability, UX Polish & Public Readiness
+# Agentora v1.0.0-rc1 — Scope Freeze, Final Polish & Launch Readiness
 
 ## Tag + title
-- `v0.9.7`
-- `Agentora v0.9.7 — Stability, UX Polish & Public Readiness`
+- `v1.0.0-rc1`
+- `Agentora v1.0.0-rc1 — Scope Freeze, Final Polish & Launch Readiness`
 
-## Highlights
-- Public repo alignment and docs cleanup.
-- Version and branding consistency across API, UI, and env surfaces.
-- Streamlit UX polish for operator, approval, memory, and team inspector visibility.
-- Startup/install messaging improvements and safer defaults.
-- Reliability pass for missing optional components and clearer error reporting.
+## Release focus
+- Scope freeze before final `v1.0.0`.
+- Version and branding consistency across API, UI, docs, and package metadata.
+- Startup/doctor/install clarity with safer defaults and better next-step guidance.
+- Final UX wording and inspector readability polish.
+- Core demo flow validation for memory/team/actions/workflows/worker fallback.
+
+## Launch-candidate highlights
+- `/api/system/version` now exposes RC identity consistently.
+- Streamlit surfaces clearer run/approval/inspector guidance.
+- Launch script polish and docs alignment for one-PC and two-PC setups.
+- Release-readiness smoke coverage expanded for replay/fallback checks.
 
 ## Notes
-This is a polish-focused release and intentionally avoids introducing a major subsystem.
+This release candidate intentionally avoids adding major subsystems.
