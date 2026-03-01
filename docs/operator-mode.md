@@ -1,18 +1,18 @@
-# Operator Mode (v1.0 RC)
+# Operator Mode (v1.0.0)
 
-Operator Mode is the control plane for workflow automation with safety and trace visibility.
+Operator Mode is Agentora’s controlled workflow automation plane.
 
-## Primary controls
-- Start run from workflow.
-- Pause / resume / advance.
-- Retry step / skip step for recoverable failures.
+## Core controls
+- Start operator runs from workflows.
+- Pause / resume / advance execution.
+- Retry / skip step for recoverable failures.
 
-## Operator clarity goals
-- Clear distinction between **pending approvals** and **executed steps**.
-- Visible status transitions for failed/paused/completed states.
-- Replay via workflow history and run inspection.
+## Visibility
+- Pending approvals and action history.
+- Operator run status and step outcomes.
+- Replay via workflow history.
 
-## Safety defaults
+## Safety behavior
 - Approval policy defaults to `ask_once`.
-- Path/domain/app guardrails apply to actions.
-- Worker unavailability falls back to local path when allowed, otherwise returns readable failure details.
+- Path/domain/app guardrails are enforced.
+- Worker unavailability falls back to local execution when allowed.

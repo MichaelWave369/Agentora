@@ -7,9 +7,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_prefix='', extra='ignore')
 
     app_name: str = 'Agentora'
-    agentora_version: str = Field(default='1.0.0-rc1', alias='AGENTORA_VERSION')
+    agentora_version: str = Field(default='1.0.0', alias='AGENTORA_VERSION')
     agentora_release_title: str = Field(
-        default='Agentora v1.0.0-rc1 — Scope Freeze, Final Polish & Launch Readiness',
+        default='Agentora v1.0.0 — Local Agent Operating Studio',
         alias='AGENTORA_RELEASE_TITLE',
     )
     database_url: str = Field(default='sqlite:///server/data/agentora.db', alias='AGENTORA_DATABASE_URL')

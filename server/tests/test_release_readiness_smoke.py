@@ -12,11 +12,11 @@ def test_release_readiness_happy_path_smoke(tmp_path):
 
     version = client.get('/api/system/version')
     assert version.status_code == 200
-    assert version.json()['version'] == '1.0.0-rc1'
+    assert version.json()['version'] == '1.0.0'
 
     workflow = client.post('/api/workflows', json={
         'name': 'release-smoke-workflow',
-        'description': 'workflow smoke for v1.0.0-rc1',
+        'description': 'workflow smoke for v1.0.0',
         'params_schema': {},
         'steps': [
             {'position': 0, 'step_type': 'desktop', 'tool_name': 'desktop_list_dir', 'params': {'path': '.'}, 'requires_approval': False},

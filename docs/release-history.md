@@ -1,10 +1,13 @@
 # Release History
 
+## v1.0.0
+General availability release: Local Agent Operating Studio.
+
 ## v1.0.0-rc1
-Scope freeze, final polish, launch-candidate hardening, and documentation finalization.
+Scope freeze and final pre-GA polish.
 
 ## v0.9.7
-Stability and UX polish with public-repo readiness work.
+Stability and UX polish with public-repo readiness.
 
 ## v0.9.6
 Operator Mode controls and one-click deployment groundwork.

@@ -493,15 +493,15 @@ def _core_page():
 
 
 def render_dashboard() -> None:
-    st.set_page_config(page_title='Agentora v1.0.0-rc1', layout='wide', initial_sidebar_state='expanded')
+    st.set_page_config(page_title='Agentora v1.0.0', layout='wide', initial_sidebar_state='expanded')
     _theme_css()
 
     if 'db_url' not in st.session_state:
         st.session_state['db_url'] = _resolve_streamlit_db_url()
     initialize_database()
 
-    st.title('Agentora v1.0.0-rc1 — Scope Freeze, Final Polish & Launch Readiness')
-    st.caption('Local-first operating studio • private by default • launch-candidate build')
+    st.title('Agentora v1.0.0 — Local Agent Operating Studio')
+    st.caption('Local-first operating studio • private by default • general-availability build')
     st.info(f"API Mode: {ACTIVE_MODE.upper()} | DB: {st.session_state['db_url']}")
 
     page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'World Garden (experimental)', 'Core'])

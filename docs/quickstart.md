@@ -1,10 +1,10 @@
-# Quickstart (v1.0.0-rc1)
+# Quickstart (v1.0.0)
 
 ## Recommended first run
 1. Copy `.env.example` to `.env`.
-2. Keep `AGENTORA_USE_MOCK_OLLAMA=true` for first launch.
-3. Start Agentora (launcher on Windows, manual commands elsewhere).
-4. Validate `System Version` and `System Doctor` in Streamlit.
+2. Keep `AGENTORA_USE_MOCK_OLLAMA=true` for first startup.
+3. Start Agentora (Windows launchers or manual commands).
+4. In Streamlit, verify `System Version` and `System Doctor`.
 
 ## Manual commands
 ```bash
@@ -14,6 +14,6 @@ AGENTORA_STREAMLIT_MODE=http AGENTORA_API_URL=http://127.0.0.1:8088 streamlit ru
 ```
 
 ## First checks
-- `GET /api/system/version` should return `1.0.0-rc1`.
-- `GET /api/system/doctor` should include actionable `next_steps` when something is missing.
-- `GET /api/actions/pending` and `GET /api/workflows` should be reachable.
+- `GET /api/system/version` returns `1.0.0`.
+- `GET /api/system/doctor` provides readiness details.
+- `GET /api/actions/pending` and `GET /api/workflows` are reachable.

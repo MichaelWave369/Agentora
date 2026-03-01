@@ -1,3 +1,10 @@
+## [1.0.0] - 2026-03-01
+
+### Changed
+- Promoted release identity from `v1.0.0-rc1` to `v1.0.0` across API, UI, docs, env defaults, and package metadata.
+- Finalized README/repo presentation for GA with clear one-PC quickstart, optional two-PC guidance, and stable vs experimental framing.
+- Completed final launch-readiness validation for memory, team collaboration, approvals, workflow replay, and worker fallback flows.
+
 ## [1.0.0-rc1] - 2026-03-01
 
 ### Changed
