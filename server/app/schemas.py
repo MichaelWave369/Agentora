@@ -43,3 +43,22 @@ class WorkerDispatchIn(BaseModel):
     job_type: str
     payload: dict = {}
     priority: int = 5
+
+
+
+class MemoryMaintenanceIn(BaseModel):
+    run_id: int | None = None
+    try_worker: bool = True
+
+
+class CapsuleLayerUpdateIn(BaseModel):
+    reason: str = 'manual'
+
+
+
+class MemoryFeedbackIn(BaseModel):
+    run_id: int
+    retrieved_capsule_ids: list[int] = []
+    used_capsule_ids: list[int] = []
+    helped_final_answer: bool = False
+    helped_tool_execution: bool = False
