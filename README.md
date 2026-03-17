@@ -88,3 +88,120 @@ AGENTORA_STREAMLIT_MODE=http AGENTORA_API_URL=http://127.0.0.1:8088 streamlit ru
 - [CHANGELOG.md](CHANGELOG.md)
 - [RELEASE_NOTES.md](RELEASE_NOTES.md)
 - [DEPLOYMENT.md](DEPLOYMENT.md)
+
+## PhiOS + AgentCeption integration (Phase 1)
+
+Agentora now includes an **optional thin integration bridge**:
+- **PhiOS** owns identity/persona + memory context packs and writeback.
+- **Agentora** owns the operator workflow and observability surface.
+- **AgentCeption** owns software execution (dispatch/job/worktree/PR path).
+
+### Environment flags
+
+```bash
+AGENTORA_PHIOS_ENABLED=false
+AGENTORA_PHIOS_URL=http://127.0.0.1:8090
+AGENTORA_PHIOS_API_KEY=
+AGENTORA_PHIOS_TIMEOUT_SECONDS=20
+
+AGENTORA_AGENTCEPTION_ENABLED=false
+AGENTORA_AGENTCEPTION_URL=http://127.0.0.1:1337
+AGENTORA_AGENTCEPTION_API_KEY=
+AGENTORA_AGENTCEPTION_TIMEOUT_SECONDS=45
+
+AGENTORA_INTEGRATIONS_MOCK=false
+```
+
+### Mock mode (no external services required)
+
+Set `AGENTORA_INTEGRATIONS_MOCK=true` to test full operator flow without PhiOS/AgentCeption running.
+
+### Local service mode
+
+Point Agentora to local services:
+
+```bash
+AGENTORA_PHIOS_ENABLED=true
+AGENTORA_PHIOS_URL=http://127.0.0.1:8090
+AGENTORA_AGENTCEPTION_ENABLED=true
+AGENTORA_AGENTCEPTION_URL=http://127.0.0.1:1337
+```
+
+If external systems require keys, set `AGENTORA_PHIOS_API_KEY` and/or `AGENTORA_AGENTCEPTION_API_KEY`.
+
+### Minimal flow
+
+```mermaid
+sequenceDiagram
+  participant Op as Operator (Streamlit)
+  participant A as Agentora API
+  participant P as PhiOS
+  participant C as AgentCeption
+
+  Op->>A: Launch Software Mission
+  A->>P: context-pack(persona, task, repo, objective)
+  P-->>A: persona + memory snippets + session_id
+  A->>C: launch(job payload)
+  C-->>A: job_id + queued status
+  Op->>A: refresh run status
+  A->>C: get job status
+  C-->>A: phase/status/summary/PR
+  Op->>A: writeback run outcome
+  A->>P: memory/write(summary, details)
+```
+
+### Known Phase-1 limitations
+
+- Endpoint contracts are intentionally thin and may need alignment with final PhiOS/AgentCeption schemas.
+- Polling is operator-triggered (`refresh`) rather than full background workers.
+- Writeback currently stores concise summary + raw payload snapshot for traceability.
+
+## PhiOS + AgentCeption integration (Phase C)
+
+Phase C upgrades the bridge into a structured mission loop:
+
+1. **Pre-run PhiOS injection** via mission context packet preparation.
+2. **Structured AgentCeption launch enrichment** mapped from PhiOS packet fields.
+3. **Structured post-run outcome normalization** in Agentora.
+4. **Structured PhiOS writeback** with status, branch, PR/issues/artifacts, and follow-ups.
+5. **Mission history visibility** in Streamlit and integration run APIs.
+
+### Mission lifecycle
+
+```mermaid
+sequenceDiagram
+  participant Op as Operator
+  participant A as Agentora
+  participant P as PhiOS
+  participant C as AgentCeption
+
+  Op->>A: Prepare Mission Context
+  A->>P: mission/context-pack (or context/pack)
+  P-->>A: MissionContextPacket
+  Op->>A: Launch Mission
+  A->>C: dispatch/launch (enriched payload)
+  C-->>A: job_id + launch status
+  Op->>A: Refresh Mission
+  A->>C: jobs/{job_id}
+  C-->>A: status/phase/branch/pr/issues/artifacts
+  Op->>A: Write Back to PhiOS
+  A->>P: mission/writeback (or memory/write)
+```
+
+### Phase C demo (mock mode)
+
+```bash
+AGENTORA_INTEGRATIONS_MOCK=true
+AGENTORA_PHIOS_ENABLED=false
+AGENTORA_AGENTCEPTION_ENABLED=false
+uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
+AGENTORA_STREAMLIT_MODE=http AGENTORA_API_URL=http://127.0.0.1:8088 streamlit run app.py
+```
+
+Then open **Software Missions** and use: Prepare Mission Context → Launch Mission → Refresh Status → Write Back to PhiOS.
+
+### Known limitations (Phase C)
+
+- AgentCeption and PhiOS endpoint fields are normalized defensively and may require schema alignment with live deployments.
+- Refresh is operator-triggered (no background poll worker yet).
+- Writeback is manual by default to avoid repeated auto-writeback spam.

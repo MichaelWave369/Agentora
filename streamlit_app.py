@@ -487,6 +487,125 @@ def _world_garden_page():
         st.balloons()
         st.json(safe_api_post('/api/world-garden/festival/harvest', {}, 'harvest festival'))
 
+
+
+def _software_missions_page():
+    st.subheader('Phi x Ception — Software Missions')
+
+    phios_health = safe_api_get('/api/integrations/phios/health', 'phios health')
+    ac_health = safe_api_get('/api/integrations/agentception/health', 'agentception health')
+    if phios_health.get('mode') == 'mock' or ac_health.get('mode') == 'mock':
+        st.warning('Mock mode is active. Results are deterministic fakes for operator workflow testing.')
+    if phios_health.get('detail') == 'disabled' or ac_health.get('detail') == 'disabled':
+        st.warning('One or more integrations are disabled. Enable env flags or use mock mode.')
+
+    st.markdown('### Mission Setup')
+    st.markdown('PhiOS and AgentCeption connectivity')
+    st.json({'phios': phios_health, 'agentception': ac_health})
+
+    persona_id = st.text_input('persona_id', value='operator-default')
+    repo = st.text_input('repo', value='owner/repo')
+    mission_title = st.text_input('mission title', value='Bridge hardening mission')
+    objective = st.text_area('objective', value='Execute a structured mission loop with context injection, launch, refresh, and writeback.')
+    operator_intent = st.text_area('operator intent', value='Ship safely with clear telemetry and recoverable operator actions.')
+    acceptance = st.text_area('acceptance criteria (one per line)', value='Prepare returns structured mission packet\nLaunch persists run linkage\nRefresh updates normalized outcome\nWriteback stores structured result')
+    constraints = st.text_area('constraints (one per line)', value='Do not vendor AgentCeption\nDo not break existing Agentora startup')
+    dry_run = st.checkbox('dry_run', value=True)
+
+    if st.button('Prepare Mission Context'):
+        prepare_payload = {
+            'persona_id': persona_id,
+            'repo': repo,
+            'mission_title': mission_title,
+            'objective': objective,
+            'operator_intent': operator_intent,
+            'constraints': [line.strip() for line in constraints.splitlines() if line.strip()],
+        }
+        packet = safe_api_post('/api/integrations/runs/prepare', prepare_payload, 'prepare mission')
+        st.session_state['mission_packet'] = packet
+
+    packet = st.session_state.get('mission_packet', {})
+    st.markdown('### PhiOS Mission Packet Preview')
+    if packet:
+        st.markdown('**Persona summary**')
+        st.json(packet.get('persona', {}))
+        st.markdown('**Context summary**')
+        st.write(packet.get('summary', ''))
+        st.markdown('**Memory snippets**')
+        st.json(packet.get('memory_snippets', []))
+        st.markdown('**Coding style preferences**')
+        st.json(packet.get('coding_style_preferences', []))
+        st.markdown('**Architectural principles**')
+        st.json(packet.get('architectural_principles', []))
+        st.markdown('**Risk flags**')
+        st.json(packet.get('risk_flags', []))
+        st.markdown('**Recommended next actions**')
+        st.json(packet.get('recommended_next_actions', []))
+        st.markdown('**Success criteria**')
+        st.json(packet.get('success_criteria', []))
+        st.markdown('**Dispatch brief**')
+        st.json(packet.get('dispatch_brief', {}))
+    else:
+        st.info('Prepare mission context to preview PhiOS packet details.')
+
+    if st.button('Launch Mission'):
+        launch_payload = {
+            'persona_id': persona_id,
+            'repo': repo,
+            'mission_title': mission_title,
+            'objective': objective,
+            'operator_intent': operator_intent,
+            'acceptance_criteria': [line.strip() for line in acceptance.splitlines() if line.strip()],
+            'constraints': [line.strip() for line in constraints.splitlines() if line.strip()],
+            'dry_run': dry_run,
+            'prepared_packet': packet or None,
+        }
+        run_record = safe_api_post('/api/integrations/runs/launch', launch_payload, 'launch mission')
+        st.session_state['integration_run'] = run_record
+
+    st.markdown('### Mission Status')
+    run = st.session_state.get('integration_run', {})
+    if run:
+        st.json(run)
+        run_id = run.get('id')
+        if run_id:
+            if st.button('Refresh Status'):
+                refreshed = safe_api_post(f'/api/integrations/runs/{run_id}/refresh', {}, 'refresh run')
+                st.session_state['integration_run'] = refreshed
+                run = refreshed
+            if st.button('Write Back to PhiOS'):
+                payload = {'operator_notes': 'manual writeback from Software Missions UI', 'tags': ['phase-c', 'manual']}
+                st.json(safe_api_post(f'/api/integrations/runs/{run_id}/writeback', payload, 'writeback'))
+
+            st.markdown(f"- **Run ID:** {run.get('id', '')}")
+            st.markdown(f"- **AgentCeption Job ID:** {run.get('agentception_job_id', '')}")
+            st.markdown(f"- **Status:** {run.get('agentception_status', run.get('status', ''))}")
+            st.markdown(f"- **Phase:** {run.get('agentception_result_json', '')[:140]}")
+            st.markdown(f"- **Branch:** {run.get('branch', '')}")
+            st.markdown(f"- **PR URL:** {run.get('pr_url', '')}")
+            st.markdown(f"- **Summary:** {run.get('summary', '')}")
+    else:
+        st.info('No mission launched in this session yet.')
+
+    st.markdown('### Mission History')
+    history = safe_api_get('/api/integrations/runs', 'mission history')
+    if isinstance(history, list) and history:
+        compact = [
+            {
+                'created_at': item.get('created_at'),
+                'mission_title': item.get('mission_title'),
+                'repo': item.get('repo'),
+                'status': item.get('status'),
+                'pr_url': item.get('pr_url'),
+                'writeback_status': item.get('writeback_status'),
+            }
+            for item in history[:15]
+        ]
+        st.table(compact)
+    else:
+        st.caption('No mission history yet.')
+
+
 def _core_page():
     _panel_json('Health', '/api/health')
     _panel_json('Runs', '/api/runs')
@@ -504,7 +623,7 @@ def render_dashboard() -> None:
     st.caption('Local-first operating studio • private by default • general-availability build')
     st.info(f"API Mode: {ACTIVE_MODE.upper()} | DB: {st.session_state['db_url']}")
 
-    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'World Garden (experimental)', 'Core'])
+    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'World Garden (experimental)', 'Software Missions', 'Core'])
     st.sidebar.markdown("<span class='agentora-pill'>NO CLOUD REQUIRED</span>", unsafe_allow_html=True)
 
     if page == 'Dashboard':
@@ -527,6 +646,8 @@ def render_dashboard() -> None:
         _garden_page()
     elif page == 'World Garden (experimental)':
         _world_garden_page()
+    elif page == 'Software Missions':
+        _software_missions_page()
     else:
         _core_page()
 
