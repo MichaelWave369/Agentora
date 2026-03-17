@@ -373,7 +373,25 @@ class IntegrationRun(SQLModel, table=True):
     watch_enabled: bool = True
     last_refreshed_at: Optional[datetime] = None
     watch_error: str = ''
+    refresh_count: int = 0
+    mission_score: int = 0
+    confidence_level: str = 'low'
+    completion_signal: str = 'unknown'
+    result_quality_signal: str = 'low'
+    writeback_readiness_signal: str = 'low'
+    risk_signal: str = 'high'
     error_message: str = ''
+
+
+
+class WatcherEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: Optional[int] = None
+    event_type: str
+    status: str = ''
+    latency_ms: float = 0.0
+    detail_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class IntegrationSetting(SQLModel, table=True):
     name: str = Field(primary_key=True)

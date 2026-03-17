@@ -108,6 +108,9 @@ class Settings(BaseSettings):
     agentora_missions_auto_writeback: bool = Field(default=False, alias='AGENTORA_MISSIONS_AUTO_WRITEBACK')
     agentora_missions_writeback_debounce_seconds: int = Field(default=300, alias='AGENTORA_MISSIONS_WRITEBACK_DEBOUNCE_SECONDS')
     agentora_missions_mcp_enabled: bool = Field(default=False, alias='AGENTORA_MISSIONS_MCP_ENABLED')
+    agentora_missions_mcp_api_key: str = Field(default='', alias='AGENTORA_MISSIONS_MCP_API_KEY')
+    agentora_missions_mcp_read_only: bool = Field(default=False, alias='AGENTORA_MISSIONS_MCP_READ_ONLY')
+    agentora_missions_mcp_allowed_tools: str = Field(default='', alias='AGENTORA_MISSIONS_MCP_ALLOWED_TOOLS')
 
 
     @property
@@ -161,6 +164,10 @@ class Settings(BaseSettings):
     @property
     def allowed_apps(self) -> list[str]:
         return [x.strip() for x in self.agentora_allowed_apps.split(',') if x.strip()]
+
+    @property
+    def missions_mcp_allowed_tools(self) -> set[str]:
+        return {x.strip() for x in self.agentora_missions_mcp_allowed_tools.split(',') if x.strip()}
 
 
 settings = Settings()

@@ -53,6 +53,13 @@ def _ensure_integrationrun_columns() -> None:
         'watch_enabled': 'BOOLEAN NOT NULL DEFAULT 1',
         'last_refreshed_at': 'DATETIME',
         'watch_error': "TEXT NOT NULL DEFAULT ''",
+        'refresh_count': 'INTEGER NOT NULL DEFAULT 0',
+        'mission_score': 'INTEGER NOT NULL DEFAULT 0',
+        'confidence_level': "TEXT NOT NULL DEFAULT 'low'",
+        'completion_signal': "TEXT NOT NULL DEFAULT 'unknown'",
+        'result_quality_signal': "TEXT NOT NULL DEFAULT 'low'",
+        'writeback_readiness_signal': "TEXT NOT NULL DEFAULT 'low'",
+        'risk_signal': "TEXT NOT NULL DEFAULT 'high'",
     }
     with engine.connect() as conn:
         try:

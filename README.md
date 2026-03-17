@@ -253,3 +253,45 @@ Supported MCP tool names:
 - Watcher is intentionally lightweight for single-process local use.
 - Auto-writeback is conservative and debounced; manual writeback remains primary for operator control.
 - MCP exposure is an HTTP-backed extension point (not a full separate MCP server runtime yet).
+
+## PhiOS + AgentCeption integration (Phase E)
+
+Phase E adds observability, trust, and mission intelligence to the existing mission loop.
+
+### New Phase E capabilities
+
+- Watcher telemetry and recent watcher event inspection.
+- Structured run compare diffs with interpretation and delta sections.
+- Heuristic mission evaluation signals (score/confidence/readiness/risk) persisted on each run.
+- Richer timeline events including watcher refresh and writeback lifecycle events.
+- MCP policy hardening with optional API key, read-only mode, and allowed-tool filtering.
+- Aggregate mission insights for operators.
+
+### New routes
+
+- `GET /api/integrations/metrics`
+- `GET /api/integrations/watcher/events`
+- `GET /api/integrations/insights`
+- `GET /api/integrations/runs/compare?left_run_id=...&right_run_id=...` (structured diff)
+
+### MCP hardening env flags
+
+```bash
+AGENTORA_MISSIONS_MCP_API_KEY=
+AGENTORA_MISSIONS_MCP_READ_ONLY=false
+AGENTORA_MISSIONS_MCP_ALLOWED_TOOLS=
+```
+
+### Heuristic evaluation note
+
+Mission score and confidence fields are **heuristic operator aids**, not objective truth. They summarize observable mission artifacts and state transitions to help triage and decision-making.
+
+### Local demo (mock, with watcher + insights)
+
+```bash
+AGENTORA_INTEGRATIONS_MOCK=true
+AGENTORA_MISSIONS_WATCHER_ENABLED=true
+AGENTORA_MISSIONS_AUTO_WRITEBACK=true
+uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
+AGENTORA_STREAMLIT_MODE=http AGENTORA_API_URL=http://127.0.0.1:8088 streamlit run app.py
+```

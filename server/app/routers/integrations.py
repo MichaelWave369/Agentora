@@ -1,25 +1,34 @@
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlmodel import Session
 
 from app.core.config import settings
 from app.db import get_session
 from app.integrations.agentception_client import AgentCeptionClient
 from app.integrations.phios_client import IntegrationClientError, PhiOSClient
-from app.integrations.schemas import (
-    ContextPackRequest,
-    LaunchMissionRequest,
-    PrepareMissionRequest,
-    SoftwareTaskRequest,
-    WritebackRequest,
-)
+from app.integrations.schemas import ContextPackRequest, LaunchMissionRequest, PrepareMissionRequest, SoftwareTaskRequest, WritebackRequest
 from app.models import IntegrationSetting, Message, Run
 from app.services.adapters.integrations import statuses
 from app.services.integration_orchestrator import IntegrationOrchestrator
 
 router = APIRouter(tags=['integrations'])
+
+MCP_MUTATING_TOOLS = {'launch_mission', 'refresh_mission', 'writeback_mission'}
+
+
+def _enforce_mcp_policy(tool: str, x_api_key: str | None):
+    if not settings.agentora_missions_mcp_enabled:
+        return {'ok': False, 'detail': 'MCP mission exposure disabled (set AGENTORA_MISSIONS_MCP_ENABLED=true).'}
+    if settings.agentora_missions_mcp_api_key and x_api_key != settings.agentora_missions_mcp_api_key:
+        return {'ok': False, 'detail': 'Invalid or missing MCP API key.'}
+    allowed = settings.missions_mcp_allowed_tools
+    if allowed and tool and tool not in allowed:
+        return {'ok': False, 'detail': f'Tool not allowed by policy: {tool}'}
+    if settings.agentora_missions_mcp_read_only and tool in MCP_MUTATING_TOOLS:
+        return {'ok': False, 'detail': f'MCP is read-only; tool blocked: {tool}'}
+    return None
 
 
 @router.get('/api/integrations/status')
@@ -43,10 +52,7 @@ def integration_enable(payload: dict, session: Session = Depends(get_session)):
 def export_growora(payload: dict, session: Session = Depends(get_session)):
     run = session.get(Run, payload['run_id'])
     msgs = session.query(Message).filter(Message.run_id == payload['run_id']).all()
-    return {
-        'skill_graph': {'nodes': [{'id': 'skill-1', 'label': run.mode if run else 'unknown'}]},
-        'micro_drills': [m.content[:80] for m in msgs[:3]],
-    }
+    return {'skill_graph': {'nodes': [{'id': 'skill-1', 'label': run.mode if run else 'unknown'}]}, 'micro_drills': [m.content[:80] for m in msgs[:3]]}
 
 
 @router.get('/api/integrations/phios/health')
@@ -92,16 +98,14 @@ def integration_job(job_id: str):
 @router.post('/api/integrations/runs/prepare')
 def integration_prepare(payload: PrepareMissionRequest, session: Session = Depends(get_session)):
     try:
-        packet = IntegrationOrchestrator(session).prepare_mission_context(payload)
-        return packet.model_dump(mode='json')
+        return IntegrationOrchestrator(session).prepare_mission_context(payload).model_dump(mode='json')
     except IntegrationClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post('/api/integrations/runs/launch')
 def integration_launch(payload: LaunchMissionRequest, session: Session = Depends(get_session)):
-    record = IntegrationOrchestrator(session).launch_software_mission(payload)
-    return record.model_dump(mode='json')
+    return IntegrationOrchestrator(session).launch_software_mission(payload).model_dump(mode='json')
 
 
 @router.get('/api/integrations/runs')
@@ -120,20 +124,8 @@ def integration_runs(
     orchestrator = IntegrationOrchestrator(session)
     start_dt = datetime.fromisoformat(start_date) if start_date else None
     end_dt = datetime.fromisoformat(end_date) if end_date else None
-    return [
-        r.model_dump(mode='json')
-        for r in orchestrator.list_runs(
-            status=status,
-            repo=repo,
-            persona_id=persona_id,
-            writeback_status=writeback_status,
-            start_date=start_dt,
-            end_date=end_dt,
-            search=search,
-            limit=limit,
-            offset=offset,
-        )
-    ]
+    rows = orchestrator.list_runs(status=status, repo=repo, persona_id=persona_id, writeback_status=writeback_status, start_date=start_dt, end_date=end_dt, search=search, limit=limit, offset=offset)
+    return [r.model_dump(mode='json') for r in rows]
 
 
 @router.get('/api/integrations/runs/compare')
@@ -155,8 +147,7 @@ def integration_run(run_id: int, session: Session = Depends(get_session)):
 @router.post('/api/integrations/runs/{run_id}/refresh')
 def integration_refresh(run_id: int, session: Session = Depends(get_session)):
     try:
-        item = IntegrationOrchestrator(session).refresh_run(run_id)
-        return item.model_dump(mode='json')
+        return IntegrationOrchestrator(session).refresh_run(run_id).model_dump(mode='json')
     except IntegrationClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -193,29 +184,39 @@ def integration_timeline(run_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get('/api/integrations/metrics')
+def integration_metrics(session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).get_metrics()
+
+
+@router.get('/api/integrations/watcher/events')
+def integration_watcher_events(limit: int = 100, session: Session = Depends(get_session)):
+    return {'events': IntegrationOrchestrator(session).list_watcher_events(limit=limit)}
+
+
+@router.get('/api/integrations/insights')
+def integration_insights(session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).get_insights()
+
+
 @router.get('/api/integrations/mcp/capabilities')
-def integration_mcp_capabilities():
-    if not settings.agentora_missions_mcp_enabled:
-        return {'ok': False, 'detail': 'MCP mission exposure disabled (set AGENTORA_MISSIONS_MCP_ENABLED=true).'}
-    return {
-        'ok': True,
-        'tools': [
-            'prepare_mission',
-            'launch_mission',
-            'refresh_mission',
-            'writeback_mission',
-            'get_mission',
-            'list_missions',
-            'get_mission_timeline',
-        ],
-    }
+def integration_mcp_capabilities(x_api_key: str | None = Header(default=None, alias='X-API-Key')):
+    policy = _enforce_mcp_policy('', x_api_key)
+    if policy:
+        return policy
+    tools = ['prepare_mission', 'launch_mission', 'refresh_mission', 'writeback_mission', 'get_mission', 'list_missions', 'get_mission_timeline']
+    allowed = settings.missions_mcp_allowed_tools
+    if allowed:
+        tools = [t for t in tools if t in allowed]
+    return {'ok': True, 'read_only': settings.agentora_missions_mcp_read_only, 'tools': tools}
 
 
 @router.post('/api/integrations/mcp/call')
-def integration_mcp_call(payload: dict, session: Session = Depends(get_session)):
-    if not settings.agentora_missions_mcp_enabled:
-        return {'ok': False, 'detail': 'MCP mission exposure disabled (set AGENTORA_MISSIONS_MCP_ENABLED=true).'}
+def integration_mcp_call(payload: dict, session: Session = Depends(get_session), x_api_key: str | None = Header(default=None, alias='X-API-Key')):
     tool = payload.get('tool', '')
+    policy = _enforce_mcp_policy(tool, x_api_key)
+    if policy:
+        return policy
     args = payload.get('args', {})
     orchestrator = IntegrationOrchestrator(session)
     try:

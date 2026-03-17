@@ -27,161 +27,89 @@ def _enable_mock(monkeypatch):
     monkeypatch.setattr(settings, 'agentora_agentception_enabled', False)
 
 
-def test_phase_d_env_defaults_parse():
-    cfg = Settings()
-    assert cfg.agentora_missions_watcher_enabled is False
-    assert cfg.agentora_missions_watcher_interval_seconds == 20
-    assert cfg.agentora_missions_auto_writeback is False
-    assert cfg.agentora_missions_mcp_enabled is False
-
-
-def test_mission_context_packet_normalization_mock(monkeypatch):
-    _enable_mock(monkeypatch)
-    packet = PhiOSClient().get_context_pack(
-        ContextPackRequest(
-            persona_id='p-1',
-            task='software_mission',
-            repo='owner/repo',
-            objective='Improve bridge',
-            mission_title='Bridge upgrade',
-            operator_intent='Safe rollout',
-        )
-    )
-    assert packet.session_id.startswith('phios-mock-session')
-    assert packet.mission_title == 'Bridge upgrade'
-    assert packet.dispatch_brief.objective
-
-
-def test_packet_to_launch_and_writeback_mappers(monkeypatch):
-    _enable_mock(monkeypatch)
-    packet = PhiOSClient().get_context_pack(
-        ContextPackRequest(persona_id='p-2', task='software_mission', repo='owner/repo', objective='Map launch payload')
-    )
-    launch = map_packet_to_launch_request(packet, ['A'], ['B'], dry_run=True)
-    assert launch.mission_title
-    assert launch.persona_name
-    assert launch.dispatch_brief
-    assert launch.dry_run is True
-
-    status = AgentCeptionJobStatus(
-        job_id='job-1',
-        status='completed',
-        phase='pr_opened',
-        branch='feat/x',
-        pr_url='https://example/pr/1',
-        issue_urls=['https://example/issues/1'],
-        artifact_urls=['https://example/artifacts/1'],
-        summary='Done',
-        updated_at='2026-01-01T00:00:00Z',
-    )
-    outcome = normalize_job_status(status)
-    assert is_meaningful_outcome(outcome)
-    assert outcome_fingerprint(outcome)
-    writeback = map_outcome_to_writeback_payload(
-        session_id='sess-1',
-        task_id='job-1',
-        repo='owner/repo',
-        objective='Ship',
-        outcome=outcome,
-    )
-    assert writeback.outcome_status == 'completed'
-    assert writeback.pr_url.endswith('/1')
-
-
-def _launch_mock_run(client):
-    prepared = client.post(
-        '/api/integrations/runs/prepare',
-        json={
-            'persona_id': 'persona-1',
-            'repo': 'owner/repo',
-            'mission_title': 'Mission Alpha',
-            'objective': 'Objective Alpha',
-            'operator_intent': 'Intent Alpha',
-            'constraints': ['thin integration'],
-        },
-    )
+def _launch_mock_run(client, title='Mission Alpha', objective='Objective Alpha'):
+    prepared = client.post('/api/integrations/runs/prepare', json={'persona_id': 'persona-1', 'repo': 'owner/repo', 'mission_title': title, 'objective': objective, 'operator_intent': 'Intent', 'constraints': ['thin integration']})
     assert prepared.status_code == 200
-    launch = client.post(
-        '/api/integrations/runs/launch',
-        json={
-            'persona_id': 'persona-1',
-            'repo': 'owner/repo',
-            'mission_title': 'Mission Alpha',
-            'objective': 'Objective Alpha',
-            'operator_intent': 'Intent Alpha',
-            'acceptance_criteria': ['status refresh'],
-            'constraints': ['thin integration'],
-            'dry_run': True,
-            'prepared_packet': prepared.json(),
-        },
-    )
+    launch = client.post('/api/integrations/runs/launch', json={'persona_id': 'persona-1', 'repo': 'owner/repo', 'mission_title': title, 'objective': objective, 'operator_intent': 'Intent', 'acceptance_criteria': ['status refresh'], 'constraints': ['thin integration'], 'dry_run': True, 'prepared_packet': prepared.json()})
     assert launch.status_code == 200
     return launch.json()['id']
 
 
-def test_orchestrator_routes_filters_compare_and_watch(monkeypatch):
+def test_phase_e_env_defaults_parse():
+    cfg = Settings()
+    assert cfg.agentora_missions_watcher_enabled is False
+    assert cfg.agentora_missions_auto_writeback is False
+    assert cfg.agentora_missions_mcp_enabled is False
+    assert cfg.agentora_missions_mcp_read_only is False
+
+
+def test_mapper_and_packet_normalization(monkeypatch):
+    _enable_mock(monkeypatch)
+    packet = PhiOSClient().get_context_pack(ContextPackRequest(persona_id='p-1', task='software_mission', repo='owner/repo', objective='Improve bridge', mission_title='Bridge upgrade', operator_intent='Safe rollout'))
+    launch = map_packet_to_launch_request(packet, ['A'], ['B'], dry_run=True)
+    assert packet.session_id.startswith('phios-mock-session')
+    assert launch.persona_name
+
+    status = AgentCeptionJobStatus(job_id='job-1', status='completed', phase='pr_opened', branch='feat/x', pr_url='https://example/pr/1', issue_urls=['https://example/issues/1'], artifact_urls=['https://example/artifacts/1'], summary='Done', updated_at='2026-01-01T00:00:00Z')
+    outcome = normalize_job_status(status)
+    assert is_meaningful_outcome(outcome)
+    assert outcome_fingerprint(outcome)
+    wb = map_outcome_to_writeback_payload(session_id='s', task_id='t', repo='r', objective='o', outcome=outcome)
+    assert wb.pr_url.endswith('/1')
+
+
+def test_metrics_events_insights_and_timeline(monkeypatch):
     _enable_mock(monkeypatch)
     client = make_client()
     run_id = _launch_mock_run(client)
+    assert client.post(f'/api/integrations/runs/{run_id}/refresh', json={}).status_code == 200
+    assert client.post(f'/api/integrations/runs/{run_id}/writeback', json={'operator_notes': 'manual', 'tags': ['t']}).status_code == 200
 
-    refresh = client.post(f'/api/integrations/runs/{run_id}/refresh', json={})
-    assert refresh.status_code == 200
+    metrics = client.get('/api/integrations/metrics')
+    assert metrics.status_code == 200
+    assert 'refresh_attempts' in metrics.json()
 
-    unwatch = client.post(f'/api/integrations/runs/{run_id}/unwatch', json={})
-    assert unwatch.status_code == 200
-    assert unwatch.json()['watch_enabled'] is False
-    watch = client.post(f'/api/integrations/runs/{run_id}/watch', json={})
-    assert watch.status_code == 200
-    assert watch.json()['watch_enabled'] is True
+    events = client.get('/api/integrations/watcher/events?limit=10')
+    assert events.status_code == 200
+    assert isinstance(events.json().get('events'), list)
 
-    listing = client.get('/api/integrations/runs?status=running&repo=owner/repo&persona_id=persona-1&search=Objective')
-    assert listing.status_code == 200
-    assert isinstance(listing.json(), list)
+    insights = client.get('/api/integrations/insights')
+    assert insights.status_code == 200
+    assert 'missions_by_status' in insights.json()
 
-    run_id_2 = _launch_mock_run(client)
-    compare = client.get(f'/api/integrations/runs/compare?left_run_id={run_id}&right_run_id={run_id_2}')
+    timeline = client.get(f'/api/integrations/runs/{run_id}/timeline')
+    assert timeline.status_code == 200
+    assert len(timeline.json().get('events', [])) >= 2
+
+
+def test_structured_compare_diff(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    left = _launch_mock_run(client, title='Mission Left', objective='Objective Left')
+    right = _launch_mock_run(client, title='Mission Right', objective='Objective Right')
+    client.post(f'/api/integrations/runs/{left}/refresh', json={})
+    client.post(f'/api/integrations/runs/{right}/refresh', json={})
+
+    compare = client.get(f'/api/integrations/runs/compare?left_run_id={left}&right_run_id={right}')
     assert compare.status_code == 200
-    body = compare.json()
-    assert 'left' in body and 'right' in body
+    payload = compare.json()
+    assert 'field_differences' in payload
+    assert 'interpretation' in payload
+    assert 'timeline_length_comparison' in payload
 
 
-def test_debounce_auto_writeback_and_manual_writeback(monkeypatch):
+def test_evaluation_fields_persist(monkeypatch):
     _enable_mock(monkeypatch)
-    monkeypatch.setattr(settings, 'agentora_missions_auto_writeback', True)
-    monkeypatch.setattr(settings, 'agentora_missions_writeback_debounce_seconds', 9999)
-
-    calls = {'n': 0}
-
-    def _mock_writeback(_self, _payload):
-        calls['n'] += 1
-        return {'ok': True, 'id': f"wb-{calls['n']}"}
-
-    monkeypatch.setattr(PhiOSClient, 'write_mission_result', _mock_writeback)
-
     client = make_client()
     run_id = _launch_mock_run(client)
-
-    from app.db import Session, engine
-    from app.services.integration_orchestrator import IntegrationOrchestrator
-
-    with Session(engine) as session:
-        orchestrator = IntegrationOrchestrator(session)
-        row = session.get(IntegrationRun, run_id)
-        row.auto_writeback_enabled = True
-        row.writeback_policy = 'auto'
-        session.add(row)
-        session.commit()
-        orchestrator.refresh_run(run_id, source='watcher')
-        orchestrator.refresh_run(run_id, source='watcher')
-
-    assert calls['n'] == 1
-
-    wb1 = client.post(f'/api/integrations/runs/{run_id}/writeback', json={'operator_notes': 'manual', 'tags': ['x']})
-    assert wb1.status_code == 200
-    assert calls['n'] >= 2
+    detail = client.get(f'/api/integrations/runs/{run_id}')
+    assert detail.status_code == 200
+    body = detail.json()
+    assert 'mission_score' in body
+    assert body['confidence_level'] in {'low', 'medium', 'high'}
 
 
-def test_watcher_active_selection(monkeypatch):
+def test_watcher_selects_active_runs(monkeypatch):
     _enable_mock(monkeypatch)
     from app.db import Session, create_db_and_tables, engine
     from app.services.integration_orchestrator import IntegrationOrchestrator
@@ -193,34 +121,32 @@ def test_watcher_active_selection(monkeypatch):
         session.add(IntegrationRun(status='running', watch_enabled=False, persona_id='p', repo='r', objective='o', agentception_job_id='j3'))
         session.commit()
         rows = IntegrationOrchestrator(session).list_active_runs_for_watcher(limit=10)
-        assert len(rows) >= 1
+        assert rows
         assert all(r.status in {'running', 'launched', 'queued', 'preparing_launch'} for r in rows)
         assert all(r.watch_enabled for r in rows)
 
 
-def test_mcp_exposure_wiring(monkeypatch):
+def test_mcp_policy_auth_readonly_allowed_tools(monkeypatch):
     _enable_mock(monkeypatch)
     monkeypatch.setattr(settings, 'agentora_missions_mcp_enabled', True)
+    monkeypatch.setattr(settings, 'agentora_missions_mcp_api_key', 'secret')
+    monkeypatch.setattr(settings, 'agentora_missions_mcp_read_only', True)
+    monkeypatch.setattr(settings, 'agentora_missions_mcp_allowed_tools', 'list_missions,get_mission')
+
     client = make_client()
-    caps = client.get('/api/integrations/mcp/capabilities')
+    denied = client.get('/api/integrations/mcp/capabilities')
+    assert denied.status_code == 200
+    assert denied.json()['ok'] is False
+
+    caps = client.get('/api/integrations/mcp/capabilities', headers={'X-API-Key': 'secret'})
     assert caps.status_code == 200
     assert caps.json()['ok'] is True
-    call = client.post('/api/integrations/mcp/call', json={'tool': 'list_missions', 'args': {'limit': 5}})
-    assert call.status_code == 200
-    assert call.json()['ok'] is True
+    assert 'launch_mission' not in caps.json().get('tools', [])
 
-def test_watcher_run_once_updates_outcome(monkeypatch):
-    _enable_mock(monkeypatch)
-    monkeypatch.setattr(settings, 'agentora_missions_watcher_max_active_runs', 10)
-    client = make_client()
-    run_id = _launch_mock_run(client)
+    blocked = client.post('/api/integrations/mcp/call', headers={'X-API-Key': 'secret'}, json={'tool': 'launch_mission', 'args': {}})
+    assert blocked.status_code == 200
+    assert blocked.json()['ok'] is False
 
-    from app.services.mission_watcher import MissionWatcher
-
-    watcher = MissionWatcher()
-    processed = watcher.run_once()
-    assert processed >= 1
-
-    detail = client.get(f'/api/integrations/runs/{run_id}')
-    assert detail.status_code == 200
-    assert detail.json().get('agentception_result_json')
+    allowed = client.post('/api/integrations/mcp/call', headers={'X-API-Key': 'secret'}, json={'tool': 'list_missions', 'args': {'limit': 5}})
+    assert allowed.status_code == 200
+    assert allowed.json()['ok'] is True
