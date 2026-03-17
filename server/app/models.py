@@ -333,6 +333,94 @@ class TemplateUsage(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
 
 
+
+
+class IntegrationRun(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    status: str = 'created'
+    persona_id: str = ''
+    repo: str = ''
+    mission_title: str = ''
+    objective: str = ''
+    operator_intent: str = ''
+    context_summary: str = ''
+    dispatch_brief: str = ''
+    acceptance_criteria_json: str = '[]'
+    constraints_json: str = '[]'
+    success_criteria_json: str = '[]'
+    recommended_actions_json: str = '[]'
+    phios_session_id: str = ''
+    agentception_job_id: str = ''
+    agentception_status: str = ''
+    branch: str = ''
+    pr_url: str = ''
+    issue_urls_json: str = '[]'
+    artifact_urls_json: str = '[]'
+    summary: str = ''
+    raw_payload_json: str = '{}'
+    phios_packet_json: str = '{}'
+    agentception_result_json: str = '{}'
+    writeback_status: str = 'not_written'
+    writeback_at: Optional[datetime] = None
+    writeback_error: str = ''
+    last_outcome_hash: str = ''
+    last_writeback_hash: str = ''
+    last_writeback_attempt_at: Optional[datetime] = None
+    writeback_policy: str = 'manual'
+    auto_writeback_enabled: bool = False
+    watch_enabled: bool = True
+    last_refreshed_at: Optional[datetime] = None
+    watch_error: str = ''
+    refresh_count: int = 0
+    mission_score: int = 0
+    confidence_level: str = 'low'
+    completion_signal: str = 'unknown'
+    result_quality_signal: str = 'low'
+    writeback_readiness_signal: str = 'low'
+    risk_signal: str = 'high'
+    mission_snapshot_json: str = '{}'
+    snapshot_hash: str = ''
+    parent_run_id: Optional[int] = None
+    root_run_id: Optional[int] = None
+    lineage_depth: int = 0
+    replay_source_snapshot_hash: str = ''
+    replay_kind: str = ''
+    provenance_note: str = ''
+    fork_reason: str = ''
+    immutable_origin_created_at: Optional[datetime] = None
+    branch_set_id: str = ''
+    branch_label: str = ''
+    branch_strategy: str = ''
+    decision_status: str = 'undecided'
+    shortlisted: bool = False
+    eliminated: bool = False
+    branch_order: int = 0
+    decision_note: str = ''
+    error_message: str = ''
+
+
+
+class WatcherEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: Optional[int] = None
+    event_type: str
+    status: str = ''
+    latency_ms: float = 0.0
+    detail_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class AlertEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: Optional[int] = None
+    alert_type: str
+    severity: str = 'info'
+    delivery_status: str = 'logged'
+    detail_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class IntegrationSetting(SQLModel, table=True):
     name: str = Field(primary_key=True)
     enabled: bool = False

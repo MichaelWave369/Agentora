@@ -1,6 +1,8 @@
+import json
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlencode
 
 import requests
 
@@ -35,6 +37,7 @@ except Exception:
         def sidebar(self): return self
         def radio(self, _l, options): return options[0] if options else ''
         def selectbox(self, *_a, **_k): return ''
+        def multiselect(self, _l, options, default=None): return default or []
         def text_input(self, *_a, **_k): return ''
         def text_area(self, *_a, **_k): return ''
         def slider(self, *_a, **_k): return 60
@@ -487,6 +490,209 @@ def _world_garden_page():
         st.balloons()
         st.json(safe_api_post('/api/world-garden/festival/harvest', {}, 'harvest festival'))
 
+
+
+def _software_missions_page():
+    st.subheader('Phi x Ception — Software Missions')
+
+    phios_health = safe_api_get('/api/integrations/phios/health', 'phios health')
+    ac_health = safe_api_get('/api/integrations/agentception/health', 'agentception health')
+    metrics = safe_api_get('/api/integrations/metrics', 'mission metrics')
+    insights = safe_api_get('/api/integrations/insights', 'mission insights')
+    retention = safe_api_get('/api/integrations/retention', 'retention')
+    watcher_events = safe_api_get('/api/integrations/watcher/events?limit=20', 'watcher events')
+    alert_events = safe_api_get('/api/integrations/alerts/events?limit=20', 'alert events')
+
+    mock_active = phios_health.get('mode') == 'mock' or ac_health.get('mode') == 'mock'
+    if mock_active:
+        st.info('🧪 Mock mode active: mission intelligence and telemetry values use deterministic test data.')
+    elif phios_health.get('detail') == 'disabled' or ac_health.get('detail') == 'disabled':
+        st.warning('One or more integrations are disabled. Enable env flags or use AGENTORA_INTEGRATIONS_MOCK=true.')
+
+    st.markdown('### Retention / Telemetry')
+    st.json({'retention': retention, 'metrics': metrics, 'recent_events': watcher_events.get('events', [])[:8]})
+    if st.button('Run Event Compaction Now'):
+        st.json(safe_api_post('/api/integrations/retention/compact', {}, 'compact events'))
+
+    st.markdown('### Alerts')
+    st.json({'alerts_enabled': os.getenv('AGENTORA_MISSIONS_ALERTS_ENABLED', 'false'), 'recent_alert_events': alert_events.get('events', [])[:8]})
+
+    st.markdown('### Mission Insights / Cohorts')
+    cohort_group = st.selectbox('cohort group by', options=['repo', 'persona_id', 'status', 'writeback_status', 'confidence_level'])
+    cohort_payload = safe_api_get(f'/api/integrations/cohorts?group_by={cohort_group}', 'cohorts')
+    cohort_summary = safe_api_get(f'/api/integrations/cohorts/summary?group_by={cohort_group}', 'cohort summary')
+    st.json({'insights': insights, 'cohorts': cohort_payload, 'cohort_summary': cohort_summary})
+
+    st.markdown('### Export / Import')
+    ex1, ex2, ex3 = st.columns(3)
+    with ex1:
+        export_repo = st.text_input('export repo filter', value='')
+    with ex2:
+        export_persona = st.text_input('export persona filter', value='')
+    with ex3:
+        export_status = st.selectbox('export status filter', options=['', 'preparing_launch', 'launched', 'running', 'completed', 'failed', 'cancelled', 'error'])
+    if st.button('Export Mission History JSON'):
+        query = urlencode({k: v for k, v in {'repo': export_repo, 'persona_id': export_persona, 'status': export_status}.items() if v})
+        export_payload = safe_api_get(f'/api/integrations/export?{query}' if query else '/api/integrations/export', 'export missions')
+        st.session_state['mission_export_payload'] = export_payload
+        st.json(export_payload)
+    import_json_text = st.text_area('Import JSON payload', value='')
+    if st.button('Import Mission History JSON') and import_json_text.strip():
+        try:
+            payload = json.loads(import_json_text)
+            st.json(safe_api_post('/api/integrations/import', payload, 'import missions'))
+        except Exception as exc:
+            st.error(f'Invalid import JSON: {exc}')
+
+    st.markdown('### Mission Setup')
+    persona_id = st.text_input('persona_id', value='operator-default')
+    repo = st.text_input('repo', value='owner/repo')
+    mission_title = st.text_input('mission title', value='Bridge intelligence mission')
+    objective = st.text_area('objective', value='Run a durable mission with retention, export/import, alerts, cohorts, and weighted compare severity.')
+    operator_intent = st.text_area('operator intent', value='Improve observability and portability while preserving local-first operator control.')
+    acceptance = st.text_area('acceptance criteria (one per line)', value='Retention and compaction are visible\nExport/import round-trip works\nCompare returns severity\nSnapshot endpoint returns replay-prep state')
+    constraints = st.text_area('constraints (one per line)', value='No heavy infra\nNo destructive imports by default')
+    dry_run = st.checkbox('dry_run', value=True)
+
+    cbtn1, cbtn2 = st.columns(2)
+    with cbtn1:
+        if st.button('Prepare Mission Context'):
+            payload = {'persona_id': persona_id, 'repo': repo, 'mission_title': mission_title, 'objective': objective, 'operator_intent': operator_intent, 'constraints': [line.strip() for line in constraints.splitlines() if line.strip()]}
+            st.session_state['mission_packet'] = safe_api_post('/api/integrations/runs/prepare', payload, 'prepare mission')
+    with cbtn2:
+        if st.button('Launch Mission'):
+            payload = {'persona_id': persona_id, 'repo': repo, 'mission_title': mission_title, 'objective': objective, 'operator_intent': operator_intent, 'acceptance_criteria': [line.strip() for line in acceptance.splitlines() if line.strip()], 'constraints': [line.strip() for line in constraints.splitlines() if line.strip()], 'dry_run': dry_run, 'prepared_packet': st.session_state.get('mission_packet') or None}
+            st.session_state['integration_run'] = safe_api_post('/api/integrations/runs/launch', payload, 'launch mission')
+
+    st.markdown('### Active Mission Status')
+    run = st.session_state.get('integration_run', {})
+    if run:
+        st.markdown(f"### 🔎 {run.get('mission_title', '(untitled)')} • Score {run.get('mission_score', 0)} • Confidence {run.get('confidence_level', 'low')}")
+        st.markdown(f"**Status:** {run.get('status')} | **AgentCeption:** {run.get('agentception_status')} | **Writeback:** {run.get('writeback_status')}")
+        st.markdown(f"**Signals:** completion={run.get('completion_signal')} quality={run.get('result_quality_signal')} readiness={run.get('writeback_readiness_signal')} risk={run.get('risk_signal')}")
+        run_id = run.get('id')
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            if run_id and st.button('Refresh Status'):
+                st.session_state['integration_run'] = safe_api_post(f'/api/integrations/runs/{run_id}/refresh', {}, 'refresh run')
+        with c2:
+            if run_id and st.button('Write Back to PhiOS'):
+                st.json(safe_api_post(f'/api/integrations/runs/{run_id}/writeback', {'operator_notes': 'manual writeback from UI', 'tags': ['phase-f', 'manual']}, 'writeback'))
+        with c3:
+            if run_id and st.button('Watch Run'):
+                st.session_state['integration_run'] = safe_api_post(f'/api/integrations/runs/{run_id}/watch', {}, 'watch run')
+        with c4:
+            if run_id and st.button('Unwatch Run'):
+                st.session_state['integration_run'] = safe_api_post(f'/api/integrations/runs/{run_id}/unwatch', {}, 'unwatch run')
+
+        if run_id:
+            st.markdown('#### Timeline')
+            timeline = safe_api_get(f'/api/integrations/runs/{run_id}/timeline', 'timeline')
+            for evt in timeline.get('events', []):
+                st.markdown(f"- `{evt.get('event','event')}` • {evt.get('status','')} • {evt.get('at','')}")
+            st.markdown('#### Snapshot Preview')
+            st.json(safe_api_get(f'/api/integrations/runs/{run_id}/snapshot', 'snapshot'))
+
+    st.markdown('### Mission History')
+    filter_status = st.selectbox('status filter', options=['', 'preparing_launch', 'launched', 'running', 'completed', 'failed', 'cancelled', 'error'])
+    filter_repo = st.text_input('repo filter', value='')
+    filter_persona = st.text_input('persona filter', value='')
+    filter_writeback = st.selectbox('writeback filter', options=['', 'not_written', 'written', 'failed'])
+    filter_conf = st.selectbox('confidence filter', options=['', 'low', 'medium', 'high'])
+    query = urlencode({k: v for k, v in {'status': filter_status, 'repo': filter_repo, 'persona_id': filter_persona, 'writeback_status': filter_writeback, 'confidence_level': filter_conf, 'limit': 25}.items() if v not in ('', None)})
+    history = safe_api_get(f"/api/integrations/runs?{query}" if query else '/api/integrations/runs', 'mission history')
+
+    if isinstance(history, list) and history:
+        rows = []
+        for item in history:
+            phase = ''
+            try:
+                phase = json.loads(item.get('agentception_result_json', '{}') or '{}').get('phase', '')
+            except Exception:
+                pass
+            rows.append({'id': item.get('id'), 'created_at': item.get('created_at'), 'mission_title': item.get('mission_title'), 'repo': item.get('repo'), 'persona_id': item.get('persona_id'), 'status': item.get('status'), 'phase': phase, 'writeback_status': item.get('writeback_status'), 'mission_score': item.get('mission_score'), 'confidence': item.get('confidence_level')})
+        st.table(rows)
+
+        selected_id = st.selectbox('recent mission detail', options=[x['id'] for x in rows], index=0)
+        if selected_id:
+            st.json(safe_api_get(f'/api/integrations/runs/{selected_id}', 'mission detail'))
+
+        st.markdown('### Compare Missions (Weighted Severity)')
+        left_id = st.selectbox('left run', options=[x['id'] for x in rows], key='compare_left_f')
+        right_id = st.selectbox('right run', options=[x['id'] for x in rows], key='compare_right_f')
+        if left_id and right_id:
+            diff = safe_api_get(f'/api/integrations/runs/compare?left_run_id={left_id}&right_run_id={right_id}', 'compare missions')
+            st.markdown(f"**Overall Severity:** `{diff.get('overall_severity', 'none')}`")
+            st.markdown(f"**Interpretation:** {diff.get('interpretation', '')}")
+            st.json({'field_differences': diff.get('field_differences', {}), 'field_severity': diff.get('field_severity', {}), 'recommended_followups_delta': diff.get('recommended_followups_delta', {}), 'success_criteria_delta': diff.get('success_criteria_delta', {}), 'risk_flags_delta': diff.get('risk_flags_delta', {})})
+
+        st.markdown('### Replay / Fork')
+        source_id = st.selectbox('source run for replay', options=[x['id'] for x in rows], key='replay_source')
+        replay_kind = st.selectbox('replay kind', options=['exact_replay', 'branch_with_new_objective', 'branch_with_new_constraints', 'branch_with_new_persona', 'recovery_replay'])
+        new_title = st.text_input('replay mission title', value='')
+        new_objective = st.text_area('replay objective override', value='')
+        new_constraints = st.text_area('replay constraints override (one per line)', value='')
+        new_persona = st.text_input('replay persona override', value='')
+        provenance_note = st.text_input('provenance note', value='')
+        fork_reason = st.text_input('fork reason', value='')
+        if st.button('Create Replay Draft') and source_id:
+            payload = {
+                'replay_kind': replay_kind,
+                'mission_title': new_title or None,
+                'objective': new_objective or None,
+                'constraints': [x.strip() for x in new_constraints.splitlines() if x.strip()] or None,
+                'persona_id': new_persona or None,
+                'provenance_note': provenance_note,
+                'fork_reason': fork_reason,
+                'dry_run': True,
+            }
+            st.session_state['replay_draft'] = safe_api_post(f'/api/integrations/runs/{source_id}/fork', payload, 'create replay draft')
+        draft = st.session_state.get('replay_draft', {})
+        if draft:
+            st.json(draft)
+            if st.button('Launch Replay Draft') and draft.get('id'):
+                launched = safe_api_post(f"/api/integrations/runs/{draft['id']}/launch-from-draft", {'dry_run': True}, 'launch replay draft')
+                st.session_state['integration_run'] = launched
+
+        st.markdown('### Branch Set Planning (Phase H)')
+        presets_payload = safe_api_get('/api/integrations/branch-strategies', 'branch presets')
+        preset_names = sorted((presets_payload.get('presets') or {}).keys())
+        selected_presets = st.multiselect('strategy presets', options=preset_names, default=preset_names[:2] if preset_names else [])
+        launch_selected = st.checkbox('launch selected branches after draft creation', value=False)
+        if st.button('Create Branch Set') and source_id and selected_presets:
+            specs = [{'preset': p, 'branch_label': p.replace('_', '-'), 'launch': launch_selected} for p in selected_presets]
+            branch_resp = safe_api_post(f'/api/integrations/runs/{source_id}/branch-set', {'specs': specs, 'dry_run': True, 'auto_launch_selected': launch_selected}, 'create branch set')
+            st.session_state['branch_set'] = branch_resp
+        branch_set = st.session_state.get('branch_set', {})
+        if branch_set:
+            st.json(branch_set)
+
+        if source_id:
+            st.markdown('### Portfolio / Decision Summary')
+            root_guess = source_id
+            run_detail = safe_api_get(f'/api/integrations/runs/{source_id}', 'run detail')
+            if isinstance(run_detail, dict):
+                root_guess = run_detail.get('root_run_id') or run_detail.get('parent_run_id') or source_id
+            portfolio = safe_api_get(f'/api/integrations/lineage/{root_guess}/portfolio', 'root portfolio')
+            decision = safe_api_get(f'/api/integrations/lineage/{root_guess}/decision-summary', 'decision summary')
+            st.json({'portfolio': portfolio, 'decision_summary': decision})
+            branches = portfolio.get('branches', []) if isinstance(portfolio, dict) else []
+            options = [b.get('run_id') for b in branches if b.get('run_id') and b.get('run_id') != root_guess]
+            target = st.selectbox('branch decision target', options=options) if options else None
+            note = st.text_input('decision note', value='')
+            c1, c2 = st.columns(2)
+            with c1:
+                if target and st.button('Shortlist Branch'):
+                    st.json(safe_api_post(f'/api/integrations/runs/{target}/shortlist', {'decision_note': note}, 'shortlist branch'))
+            with c2:
+                if target and st.button('Eliminate Branch'):
+                    st.json(safe_api_post(f'/api/integrations/runs/{target}/eliminate', {'decision_note': note}, 'eliminate branch'))
+
+        if source_id:
+            st.markdown('### Provenance / Lineage')
+            st.json(safe_api_get(f'/api/integrations/runs/{source_id}/provenance', 'provenance'))
+            st.json(safe_api_get(f'/api/integrations/runs/{source_id}/lineage', 'lineage'))
+
 def _core_page():
     _panel_json('Health', '/api/health')
     _panel_json('Runs', '/api/runs')
@@ -504,7 +710,7 @@ def render_dashboard() -> None:
     st.caption('Local-first operating studio • private by default • general-availability build')
     st.info(f"API Mode: {ACTIVE_MODE.upper()} | DB: {st.session_state['db_url']}")
 
-    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'World Garden (experimental)', 'Core'])
+    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'World Garden (experimental)', 'Software Missions', 'Core'])
     st.sidebar.markdown("<span class='agentora-pill'>NO CLOUD REQUIRED</span>", unsafe_allow_html=True)
 
     if page == 'Dashboard':
@@ -527,6 +733,8 @@ def render_dashboard() -> None:
         _garden_page()
     elif page == 'World Garden (experimental)':
         _world_garden_page()
+    elif page == 'Software Missions':
+        _software_missions_page()
     else:
         _core_page()
 
