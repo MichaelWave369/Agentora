@@ -146,6 +146,10 @@ class Settings(BaseSettings):
     agentora_persona_policy_require_override_reason: bool = Field(default=True, alias='AGENTORA_PERSONA_POLICY_REQUIRE_OVERRIDE_REASON')
     agentora_persona_policy_require_conservative_branch_on_high_risk: bool = Field(default=False, alias='AGENTORA_PERSONA_POLICY_REQUIRE_CONSERVATIVE_BRANCH_ON_HIGH_RISK')
 
+    agentora_analytics_cache_enabled: bool = Field(default=True, alias='AGENTORA_ANALYTICS_CACHE_ENABLED')
+    agentora_analytics_cache_ttl_seconds: int = Field(default=120, alias='AGENTORA_ANALYTICS_CACHE_TTL_SECONDS')
+    agentora_analytics_cache_max_entries: int = Field(default=100, alias='AGENTORA_ANALYTICS_CACHE_MAX_ENTRIES')
+
 
     @property
     def allowed_tool_names(self) -> set[str]:

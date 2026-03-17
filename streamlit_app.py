@@ -704,6 +704,24 @@ def _software_missions_page():
                 st.json({'7d': trends_7d, '30d': trends_30d})
             with st.expander('Persona × Strategy Matrix', expanded=False):
                 st.json(matrix)
+            with st.expander('Analytics Cache (Phase K)', expanded=False):
+                cache_status = safe_api_get('/api/integrations/analytics/cache', 'analytics cache status')
+                st.json(cache_status)
+                if st.button('Invalidate Analytics Cache'):
+                    st.json(safe_api_post('/api/integrations/analytics/cache/invalidate', {}, 'invalidate analytics cache'))
+            with st.expander('Policy Templates (Phase K)', expanded=False):
+                templates = safe_api_get('/api/integrations/policy-templates', 'policy templates')
+                st.json(templates)
+                template_names = sorted((templates.get('templates') or {}).keys()) if isinstance(templates, dict) else []
+                selected_template = st.selectbox('policy template', options=template_names) if template_names else None
+                if selected_template:
+                    st.json(safe_api_get(f'/api/integrations/policy-templates/{selected_template}', 'policy template detail'))
+                    if st.button('Apply Policy Template'):
+                        st.json(safe_api_post(f'/api/integrations/runs/{source_id}/apply-policy-template', {'template_name': selected_template}, 'apply policy template'))
+            with st.expander('Export Analytics (Phase K)', expanded=False):
+                st.json({'persona_trends_export': safe_api_get('/api/integrations/exports/persona-trends?window=30d', 'export trends'), 'persona_matrix_export': safe_api_get('/api/integrations/exports/persona-matrix?window=30d', 'export matrix'), 'audit_export': safe_api_get(f'/api/integrations/exports/audit-summary?root_run_id={root_guess}', 'export audit summary')})
+            with st.expander('Drill-down Analytics (Phase K)', expanded=False):
+                st.json({'matrix_cell_runs': safe_api_get('/api/integrations/drilldown/persona-matrix?window=30d', 'drilldown matrix'), 'trend_runs': safe_api_get('/api/integrations/drilldown/persona-trends?window=30d', 'drilldown trends'), 'policy_blocks': safe_api_get('/api/integrations/drilldown/policy-blocks', 'drilldown policy blocks')})
             branches = portfolio.get('branches', []) if isinstance(portfolio, dict) else []
             options = [b.get('run_id') for b in branches if b.get('run_id') and b.get('run_id') != root_guess]
             target = st.selectbox('branch decision target', options=options) if options else None

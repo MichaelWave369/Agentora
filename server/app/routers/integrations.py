@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.db import get_session
 from app.integrations.agentception_client import AgentCeptionClient
 from app.integrations.phios_client import IntegrationClientError, PhiOSClient
-from app.integrations.schemas import BranchSetCreateRequest, ContextPackRequest, DecisionStateRequest, LaunchMissionRequest, PersonaBranchSetCreateRequest, PersonaPolicyCheckRequest, PortfolioDecisionRequest, PrepareMissionRequest, ReplayDraftRequest, ReplayLaunchRequest, SoftwareTaskRequest, WritebackRequest
+from app.integrations.schemas import ApplyPolicyTemplateRequest, BranchSetCreateRequest, ContextPackRequest, DecisionStateRequest, LaunchMissionRequest, PersonaBranchSetCreateRequest, PersonaPolicyCheckRequest, PortfolioDecisionRequest, PrepareMissionRequest, ReplayDraftRequest, ReplayLaunchRequest, SoftwareTaskRequest, WritebackRequest
 from app.models import IntegrationRun, IntegrationSetting, Message, Run
 from app.services.adapters.integrations import statuses
 from app.services.integration_orchestrator import IntegrationOrchestrator
@@ -225,6 +225,19 @@ def integration_persona_overlays(session: Session = Depends(get_session)):
     return {'overlays': IntegrationOrchestrator(session).get_persona_strategy_overlays()}
 
 
+@router.get('/api/integrations/policy-templates')
+def integration_policy_templates(session: Session = Depends(get_session)):
+    return {'templates': IntegrationOrchestrator(session).list_policy_templates()}
+
+
+@router.get('/api/integrations/policy-templates/{template_name}')
+def integration_policy_template(template_name: str, session: Session = Depends(get_session)):
+    try:
+        return {'template_name': template_name, 'template': IntegrationOrchestrator(session).get_policy_template(template_name)}
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post('/api/integrations/runs/{run_id}/persona-branch-set')
 def integration_persona_branch_set(run_id: int, payload: PersonaBranchSetCreateRequest, session: Session = Depends(get_session)):
     try:
@@ -281,6 +294,14 @@ def integration_persona_summary(root_run_id: int, session: Session = Depends(get
 def integration_override(run_id: int, payload: PortfolioDecisionRequest, session: Session = Depends(get_session)):
     try:
         return IntegrationOrchestrator(session).apply_operator_override(run_id, payload.model_dump(mode='json')).model_dump(mode='json')
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/api/integrations/runs/{run_id}/apply-policy-template')
+def integration_apply_policy_template(run_id: int, payload: ApplyPolicyTemplateRequest, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).apply_policy_template(run_id, payload.template_name)
     except IntegrationClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -424,6 +445,16 @@ def integration_compact(session: Session = Depends(get_session)):
     return IntegrationOrchestrator(session).compact_events()
 
 
+@router.get('/api/integrations/analytics/cache')
+def integration_analytics_cache(session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).analytics_cache_status()
+
+
+@router.post('/api/integrations/analytics/cache/invalidate')
+def integration_analytics_cache_invalidate(payload: dict, session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).invalidate_analytics_cache(payload.get('prefix'))
+
+
 @router.get('/api/integrations/insights')
 def integration_insights(session: Session = Depends(get_session)):
     return IntegrationOrchestrator(session).get_insights()
@@ -442,6 +473,41 @@ def integration_persona_trends(window: str = '30d', repo: str | None = None, str
 @router.get('/api/integrations/persona-trends/matrix')
 def integration_persona_matrix(window: str = '30d', repo: str | None = None, status: str | None = None, session: Session = Depends(get_session)):
     return IntegrationOrchestrator(session).get_persona_strategy_matrix(window=window, repo=repo, status=status)
+
+
+@router.get('/api/integrations/exports/persona-trends')
+def integration_export_persona_trends(window: str = '30d', repo: str | None = None, strategy: str | None = None, status: str | None = None, session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).export_persona_trends(window=window, repo=repo, strategy=strategy, status=status)
+
+
+@router.get('/api/integrations/exports/persona-matrix')
+def integration_export_persona_matrix(window: str = '30d', repo: str | None = None, status: str | None = None, session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).export_persona_matrix(window=window, repo=repo, status=status)
+
+
+@router.get('/api/integrations/exports/audit-summary')
+def integration_export_audit_summary(root_run_id: int | None = None, session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).export_audit_summary(root_run_id=root_run_id)
+
+
+@router.get('/api/integrations/drilldown/persona-matrix')
+def integration_drilldown_persona_matrix(persona_id: str | None = None, strategy: str | None = None, window: str = '30d', status: str | None = None, limit: int = 100, offset: int = 0, session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).get_drilldown_runs(persona_id=persona_id, strategy=strategy, window=window, status=status, limit=limit, offset=offset)
+
+
+@router.get('/api/integrations/drilldown/persona-trends')
+def integration_drilldown_persona_trends(persona_id: str | None = None, window: str = '30d', status: str | None = None, limit: int = 100, offset: int = 0, session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).get_drilldown_runs(persona_id=persona_id, window=window, status=status, limit=limit, offset=offset)
+
+
+@router.get('/api/integrations/drilldown/recommendations')
+def integration_drilldown_recommendations(persona_id: str | None = None, strategy: str | None = None, limit: int = 100, offset: int = 0, session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).get_drilldown_runs(persona_id=persona_id, strategy=strategy, window='all', limit=limit, offset=offset)
+
+
+@router.get('/api/integrations/drilldown/policy-blocks')
+def integration_drilldown_policy_blocks(persona_id: str | None = None, limit: int = 200, offset: int = 0, session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).get_drilldown_audit(event_type='policy_blocked_action', persona_id=persona_id, limit=limit, offset=offset)
 
 
 @router.get('/api/integrations/cohorts')

@@ -422,6 +422,7 @@ class PersonaPortfolioBranch(BaseModel):
     eliminated: bool = False
     operator_override_status: str = 'none'
     recommendation_state: str = 'pending'
+    recommendation_explanation: dict[str, Any] = Field(default_factory=dict)
 
 
 class PersonaPortfolioSummary(BaseModel):
@@ -433,6 +434,7 @@ class PersonaPortfolioSummary(BaseModel):
     persona_branches_with_successful_writeback: list[int] = Field(default_factory=list)
     persona_divergence_interpretation: str = ''
     recommended_next_persona_branch: int | None = None
+    explanation_note: str = ''
 
 
 class PortfolioDecisionRequest(BaseModel):
@@ -444,6 +446,10 @@ class PortfolioDecisionRequest(BaseModel):
 
 class PersonaPolicyCheckRequest(BaseModel):
     action: str = 'writeback'
+
+
+class ApplyPolicyTemplateRequest(BaseModel):
+    template_name: str
 
 
 class LineageNode(BaseModel):

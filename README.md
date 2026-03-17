@@ -549,3 +549,46 @@ Persona analytics, compare notes, and recommendations are operator aids only and
 3. Review decision events and audit summary.
 4. Run persona compare and policy-check panels.
 5. Inspect persona trends and persona×strategy matrix panels.
+
+## PhiOS + AgentCeption integration (Phase K)
+
+Phase K adds explainable recommendation intelligence, drill-down analytics, lightweight caching, and policy templates.
+
+### Phase K capabilities
+
+- Lightweight analytics caching for persona trends/matrix and related summaries.
+- Recommendation explainability metadata (`reason_codes`, signals, supporting metrics, confidence basis, policy-block indicators).
+- Optional policy templates (`default`, `high_risk_repo`, `recovery_mode`, `strict_review`, `exploratory_lab`) with audit event recording on apply.
+- Dashboard export endpoints for persona trends, persona matrix, and audit rollups.
+- Drill-down analytics routes from aggregate cells to concrete runs and policy-block events.
+
+### Phase K routes
+
+- `GET /api/integrations/analytics/cache`
+- `POST /api/integrations/analytics/cache/invalidate`
+- `GET /api/integrations/policy-templates`
+- `GET /api/integrations/policy-templates/{template_name}`
+- `POST /api/integrations/runs/{run_id}/apply-policy-template`
+- `GET /api/integrations/exports/persona-trends`
+- `GET /api/integrations/exports/persona-matrix`
+- `GET /api/integrations/exports/audit-summary`
+- `GET /api/integrations/drilldown/persona-matrix`
+- `GET /api/integrations/drilldown/persona-trends`
+- `GET /api/integrations/drilldown/recommendations`
+- `GET /api/integrations/drilldown/policy-blocks`
+
+### Analytics cache flags
+
+```bash
+AGENTORA_ANALYTICS_CACHE_ENABLED=true
+AGENTORA_ANALYTICS_CACHE_TTL_SECONDS=120
+AGENTORA_ANALYTICS_CACHE_MAX_ENTRIES=100
+```
+
+### Lifecycle
+
+Analytics Summary -> Explanation -> Drill-down Runs -> Audit Trail -> Operator Decision
+
+### Heuristic caveat
+
+Recommendations and explanations remain heuristic operator aids and must not be treated as objective truth.

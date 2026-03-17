@@ -407,3 +407,80 @@ def test_export_import_preserves_operator_decision_events(monkeypatch):
     imported = client.post('/api/integrations/import', json=payload)
     assert imported.status_code == 200
     assert 'imported_operator_decision_events' in imported.json()
+
+
+def test_analytics_cache_hit_and_invalidate(monkeypatch):
+    _enable_mock(monkeypatch)
+    monkeypatch.setattr(settings, 'agentora_analytics_cache_enabled', True)
+    monkeypatch.setattr(settings, 'agentora_analytics_cache_ttl_seconds', 999)
+    client = make_client()
+    _launch_mock_run(client, title='CacheRoot', objective='cache trends')
+
+    first = client.get('/api/integrations/persona-trends?window=30d')
+    assert first.status_code == 200
+    assert first.json().get('cache_metadata', {}).get('cache_key')
+
+    status = client.get('/api/integrations/analytics/cache')
+    assert status.status_code == 200
+    assert status.json()['entries']
+
+    inv = client.post('/api/integrations/analytics/cache/invalidate', json={})
+    assert inv.status_code == 200
+    assert inv.json()['ok'] is True
+
+
+def test_recommendation_explanation_metadata(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='ExplainRoot', objective='explain recommendation')
+    created = client.post(f'/api/integrations/runs/{source}/persona-branch-set', json={'specs': [{'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer'}]})
+    branch_id = created.json()['created_drafts'][0]['id']
+    portfolio = client.get(f'/api/integrations/lineage/{source}/persona-portfolio')
+    assert portfolio.status_code == 200
+    rows = [r for r in portfolio.json()['branches'] if r['run_id'] == branch_id]
+    assert rows
+    assert 'recommendation_explanation' in rows[0]
+
+
+def test_policy_template_apply_creates_audit_event(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='TemplateRoot', objective='apply template')
+    listing = client.get('/api/integrations/policy-templates')
+    assert listing.status_code == 200
+    assert 'default' in listing.json()['templates']
+
+    applied = client.post(f'/api/integrations/runs/{source}/apply-policy-template', json={'template_name': 'strict_review'})
+    assert applied.status_code == 200
+    assert applied.json()['template_name'] == 'strict_review'
+
+    events = client.get(f'/api/integrations/runs/{source}/decision-events')
+    assert events.status_code == 200
+    assert any('Applied policy template' in (e.get('rationale') or '') for e in events.json()['events'])
+
+
+def test_export_and_drilldown_routes(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='DrillRoot', objective='drilldown')
+    client.post(f'/api/integrations/runs/{source}/persona-branch-set', json={'specs': [{'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer', 'preset': 'conservative_fix'}]})
+
+    exp_t = client.get('/api/integrations/exports/persona-trends?window=30d')
+    assert exp_t.status_code == 200
+    assert exp_t.json()['kind'] == 'persona_trends'
+
+    exp_m = client.get('/api/integrations/exports/persona-matrix?window=30d')
+    assert exp_m.status_code == 200
+    assert exp_m.json()['kind'] == 'persona_matrix'
+
+    exp_a = client.get(f'/api/integrations/exports/audit-summary?root_run_id={source}')
+    assert exp_a.status_code == 200
+    assert exp_a.json()['kind'] == 'audit_summary'
+
+    drill_matrix = client.get('/api/integrations/drilldown/persona-matrix?persona_id=skeptic&strategy=conservative_fix&window=30d')
+    assert drill_matrix.status_code == 200
+    assert 'runs' in drill_matrix.json()
+
+    blocks = client.get('/api/integrations/drilldown/policy-blocks')
+    assert blocks.status_code == 200
+    assert 'events' in blocks.json()
