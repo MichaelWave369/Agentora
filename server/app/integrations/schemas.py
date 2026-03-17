@@ -281,6 +281,21 @@ class AlertEventRecord(BaseModel):
     created_at: datetime
 
 
+class OperatorDecisionEventRecord(BaseModel):
+    id: int
+    run_id: int
+    root_run_id: int
+    created_at: datetime
+    event_type: str
+    actor_type: str = 'operator'
+    previous_state_json: str = '{}'
+    new_state_json: str = '{}'
+    rationale: str = ''
+    related_persona_id: str = ''
+    related_strategy: str = ''
+    metadata_json: str = '{}'
+
+
 class ReplayDraftRequest(BaseModel):
     replay_kind: str = 'exact_replay'
     mission_title: str | None = None
@@ -425,6 +440,10 @@ class PortfolioDecisionRequest(BaseModel):
     shortlisted: bool | None = None
     eliminated: bool | None = None
     note: str = ''
+
+
+class PersonaPolicyCheckRequest(BaseModel):
+    action: str = 'writeback'
 
 
 class LineageNode(BaseModel):

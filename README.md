@@ -500,3 +500,52 @@ Persona recommendations are heuristic operator aids. They are not objective trut
 3. Open persona portfolio + persona summary panels.
 4. Apply override actions (`accept`, `reject`, `manual`) with rationale.
 5. Use persona insights to inspect score/risk/PR/writeback trends.
+
+## PhiOS + AgentCeption integration (Phase J)
+
+Phase J adds cross-root persona intelligence and first-class operator decision auditability.
+
+### Phase J capabilities
+
+- Persisted operator decision events (`recommendation_accepted`, `recommendation_rejected`, `shortlist_applied`, `eliminate_applied`, `override_applied`, `override_removed`, `persona_assignment_changed`, `policy_blocked_action`).
+- Persona-delta compare view with compact field deltas and heuristic interpretation notes.
+- Cross-root persona trends (7d/30d/all) with filters and metrics.
+- Persona × strategy matrix analytics for score/risk/shortlist/PR/override behavior.
+- Optional persona policy hooks (dual review, exploratory block on high risk, override rationale requirement, conservative-branch requirement).
+- Audit-focused timeline integration so operator-vs-system decisions are visible.
+
+### Phase J routes
+
+- `GET /api/integrations/runs/{run_id}/decision-events`
+- `GET /api/integrations/runs/{run_id}/persona-compare`
+- `GET /api/integrations/persona-trends`
+- `GET /api/integrations/persona-trends/matrix`
+- `POST /api/integrations/runs/{run_id}/policy-check`
+- `GET /api/integrations/runs/{run_id}/audit-summary`
+- `GET /api/integrations/lineage/{root_run_id}/decision-audit`
+
+### Persona policy flags
+
+```bash
+AGENTORA_PERSONA_POLICY_ENABLED=false
+AGENTORA_PERSONA_POLICY_REQUIRE_DUAL_REVIEW_ON_HIGH_RISK=false
+AGENTORA_PERSONA_POLICY_BLOCK_EXPLORATORY_ON_HIGH_RISK=false
+AGENTORA_PERSONA_POLICY_REQUIRE_OVERRIDE_REASON=true
+AGENTORA_PERSONA_POLICY_REQUIRE_CONSERVATIVE_BRANCH_ON_HIGH_RISK=false
+```
+
+### Lifecycle
+
+Root Mission -> Persona Branches -> Recommendation -> Operator Decision -> Audit Trail -> Cross-Root Trends
+
+### Heuristic caveat
+
+Persona analytics, compare notes, and recommendations are operator aids only and are not objective truth.
+
+### Local demo steps
+
+1. Create persona branches from a root run.
+2. Apply shortlist/eliminate/override actions.
+3. Review decision events and audit summary.
+4. Run persona compare and policy-check panels.
+5. Inspect persona trends and persona×strategy matrix panels.

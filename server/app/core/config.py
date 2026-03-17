@@ -140,6 +140,12 @@ class Settings(BaseSettings):
     agentora_missions_sign_exports: bool = Field(default=False, alias='AGENTORA_MISSIONS_SIGN_EXPORTS')
     agentora_missions_export_signing_key: str = Field(default='', alias='AGENTORA_MISSIONS_EXPORT_SIGNING_KEY')
 
+    agentora_persona_policy_enabled: bool = Field(default=False, alias='AGENTORA_PERSONA_POLICY_ENABLED')
+    agentora_persona_policy_require_dual_review_on_high_risk: bool = Field(default=False, alias='AGENTORA_PERSONA_POLICY_REQUIRE_DUAL_REVIEW_ON_HIGH_RISK')
+    agentora_persona_policy_block_exploratory_on_high_risk: bool = Field(default=False, alias='AGENTORA_PERSONA_POLICY_BLOCK_EXPLORATORY_ON_HIGH_RISK')
+    agentora_persona_policy_require_override_reason: bool = Field(default=True, alias='AGENTORA_PERSONA_POLICY_REQUIRE_OVERRIDE_REASON')
+    agentora_persona_policy_require_conservative_branch_on_high_risk: bool = Field(default=False, alias='AGENTORA_PERSONA_POLICY_REQUIRE_CONSERVATIVE_BRANCH_ON_HIGH_RISK')
+
 
     @property
     def allowed_tool_names(self) -> set[str]:

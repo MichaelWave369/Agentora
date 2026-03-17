@@ -693,7 +693,17 @@ def _software_missions_page():
             decision = safe_api_get(f'/api/integrations/lineage/{root_guess}/decision-summary', 'decision summary')
             persona_portfolio = safe_api_get(f'/api/integrations/lineage/{root_guess}/persona-portfolio', 'persona portfolio')
             persona_summary = safe_api_get(f'/api/integrations/lineage/{root_guess}/persona-summary', 'persona summary')
+            decision_audit = safe_api_get(f'/api/integrations/lineage/{root_guess}/decision-audit', 'decision audit')
+            trends_7d = safe_api_get('/api/integrations/persona-trends?window=7d', 'persona trends 7d')
+            trends_30d = safe_api_get('/api/integrations/persona-trends?window=30d', 'persona trends 30d')
+            matrix = safe_api_get('/api/integrations/persona-trends/matrix?window=30d', 'persona matrix')
             st.json({'portfolio': portfolio, 'persona_portfolio': persona_portfolio, 'decision_summary': decision, 'persona_summary': persona_summary})
+            with st.expander('Decision Audit (Phase J)', expanded=False):
+                st.json(decision_audit)
+            with st.expander('Persona Trends (7d / 30d)', expanded=False):
+                st.json({'7d': trends_7d, '30d': trends_30d})
+            with st.expander('Persona × Strategy Matrix', expanded=False):
+                st.json(matrix)
             branches = portfolio.get('branches', []) if isinstance(portfolio, dict) else []
             options = [b.get('run_id') for b in branches if b.get('run_id') and b.get('run_id') != root_guess]
             target = st.selectbox('branch decision target', options=options) if options else None
@@ -709,6 +719,15 @@ def _software_missions_page():
                 override_decision = st.selectbox('override decision', options=['accept_recommendation', 'reject_recommendation', 'manual_override'])
                 if target and st.button('Apply Override'):
                     st.json(safe_api_post(f'/api/integrations/runs/{target}/override', {'decision': override_decision, 'note': note}, 'apply override'))
+            if target:
+                with st.expander('Persona Delta Compare (Phase J)', expanded=False):
+                    other_opts = [x for x in options if x != target]
+                    other = st.selectbox('compare against branch', options=other_opts) if other_opts else None
+                    if other:
+                        st.json(safe_api_get(f'/api/integrations/runs/{target}/persona-compare?other_run_id={other}', 'persona compare'))
+                with st.expander('Policy Status (Phase J)', expanded=False):
+                    st.json(safe_api_post(f'/api/integrations/runs/{target}/policy-check', {'action': 'writeback'}, 'policy check'))
+                    st.json(safe_api_get(f'/api/integrations/runs/{target}/audit-summary', 'audit summary'))
 
         if source_id:
             st.markdown('### Provenance / Lineage')

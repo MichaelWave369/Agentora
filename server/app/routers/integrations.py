@@ -8,8 +8,8 @@ from app.core.config import settings
 from app.db import get_session
 from app.integrations.agentception_client import AgentCeptionClient
 from app.integrations.phios_client import IntegrationClientError, PhiOSClient
-from app.integrations.schemas import BranchSetCreateRequest, ContextPackRequest, DecisionStateRequest, LaunchMissionRequest, PersonaBranchSetCreateRequest, PortfolioDecisionRequest, PrepareMissionRequest, ReplayDraftRequest, ReplayLaunchRequest, SoftwareTaskRequest, WritebackRequest
-from app.models import IntegrationSetting, Message, Run
+from app.integrations.schemas import BranchSetCreateRequest, ContextPackRequest, DecisionStateRequest, LaunchMissionRequest, PersonaBranchSetCreateRequest, PersonaPolicyCheckRequest, PortfolioDecisionRequest, PrepareMissionRequest, ReplayDraftRequest, ReplayLaunchRequest, SoftwareTaskRequest, WritebackRequest
+from app.models import IntegrationRun, IntegrationSetting, Message, Run
 from app.services.adapters.integrations import statuses
 from app.services.integration_orchestrator import IntegrationOrchestrator
 
@@ -301,10 +301,60 @@ def integration_eliminate(run_id: int, payload: DecisionStateRequest, session: S
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+
+@router.get('/api/integrations/lineage/{root_run_id}/decision-audit')
+def integration_lineage_decision_audit(root_run_id: int, session: Session = Depends(get_session)):
+    try:
+        descendants = IntegrationOrchestrator(session).get_descendants(root_run_id)
+        run_ids = [root_run_id] + [d['id'] for d in descendants]
+        events = []
+        for rid in run_ids:
+            events.extend(IntegrationOrchestrator(session).list_operator_decision_events(rid, limit=50))
+        events = sorted(events, key=lambda x: x.get('created_at', ''), reverse=True)
+        return {'root_run_id': root_run_id, 'events': events[:200]}
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get('/api/integrations/runs/{run_id}/provenance')
 def integration_provenance(run_id: int, session: Session = Depends(get_session)):
     try:
         return IntegrationOrchestrator(session).get_provenance(run_id)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/runs/{run_id}/decision-events')
+def integration_decision_events(run_id: int, limit: int = 100, session: Session = Depends(get_session)):
+    try:
+        return {'events': IntegrationOrchestrator(session).list_operator_decision_events(run_id, limit=limit)}
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/runs/{run_id}/persona-compare')
+def integration_persona_compare(run_id: int, other_run_id: int | None = None, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).get_persona_delta_compare(run_id, other_run_id)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/api/integrations/runs/{run_id}/policy-check')
+def integration_policy_check(run_id: int, payload: PersonaPolicyCheckRequest, session: Session = Depends(get_session)):
+    row = IntegrationOrchestrator(session).get_run(run_id)
+    if not row:
+        raise HTTPException(status_code=404, detail='run not found')
+    real = session.get(IntegrationRun, run_id)
+    if not real:
+        raise HTTPException(status_code=404, detail='run not found')
+    return IntegrationOrchestrator(session).evaluate_persona_policy(real, action=payload.action)
+
+
+@router.get('/api/integrations/runs/{run_id}/audit-summary')
+def integration_audit_summary(run_id: int, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).get_audit_summary(run_id)
     except IntegrationClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -382,6 +432,16 @@ def integration_insights(session: Session = Depends(get_session)):
 @router.get('/api/integrations/persona-insights')
 def integration_persona_insights(root_run_id: int | None = None, session: Session = Depends(get_session)):
     return IntegrationOrchestrator(session).get_persona_performance_summary(root_run_id)
+
+
+@router.get('/api/integrations/persona-trends')
+def integration_persona_trends(window: str = '30d', repo: str | None = None, strategy: str | None = None, status: str | None = None, session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).get_persona_trends(window=window, repo=repo, strategy=strategy, status=status)
+
+
+@router.get('/api/integrations/persona-trends/matrix')
+def integration_persona_matrix(window: str = '30d', repo: str | None = None, status: str | None = None, session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).get_persona_strategy_matrix(window=window, repo=repo, status=status)
 
 
 @router.get('/api/integrations/cohorts')

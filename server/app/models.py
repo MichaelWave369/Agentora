@@ -429,6 +429,21 @@ class AlertEvent(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class OperatorDecisionEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int
+    root_run_id: int
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    event_type: str
+    actor_type: str = 'operator'
+    previous_state_json: str = '{}'
+    new_state_json: str = '{}'
+    rationale: str = ''
+    related_persona_id: str = ''
+    related_strategy: str = ''
+    metadata_json: str = '{}'
+
+
 class IntegrationSetting(SQLModel, table=True):
     name: str = Field(primary_key=True)
     enabled: bool = False

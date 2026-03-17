@@ -33,7 +33,7 @@ from app.integrations.schemas import (
     PrepareMissionRequest,
     SoftwareTaskRequest,
 )
-from app.models import AlertEvent, IntegrationRun, WatcherEvent
+from app.models import AlertEvent, IntegrationRun, OperatorDecisionEvent, WatcherEvent
 
 ACTIVE_STATUSES = {'preparing_launch', 'launched', 'running', 'queued'}
 TERMINAL_STATUSES = {'completed', 'failed', 'cancelled', 'error'}
@@ -111,6 +111,30 @@ class IntegrationOrchestrator:
         evt = AlertEvent(run_id=run_id, alert_type=alert_type, severity=severity, delivery_status=delivery_status, detail_json=dumps_json(detail))
         self.session.add(evt)
         self.session.commit()
+
+    def record_operator_decision_event(self, *, run_id: int, root_run_id: int, event_type: str, actor_type: str = 'operator', previous_state: dict | None = None, new_state: dict | None = None, rationale: str = '', related_persona_id: str = '', related_strategy: str = '', metadata: dict | None = None):
+        evt = OperatorDecisionEvent(
+            run_id=run_id,
+            root_run_id=root_run_id,
+            event_type=event_type,
+            actor_type=actor_type,
+            previous_state_json=dumps_json(previous_state or {}),
+            new_state_json=dumps_json(new_state or {}),
+            rationale=rationale,
+            related_persona_id=related_persona_id,
+            related_strategy=related_strategy,
+            metadata_json=dumps_json(metadata or {}),
+        )
+        self.session.add(evt)
+        self.session.commit()
+
+    def list_operator_decision_events(self, run_id: int, limit: int = 100) -> list[dict]:
+        row = self.session.get(IntegrationRun, run_id)
+        if not row:
+            raise IntegrationClientError(f'Run {run_id} not found')
+        root_id = row.root_run_id or row.parent_run_id or row.id
+        rows = self.session.exec(select(OperatorDecisionEvent).where((OperatorDecisionEvent.run_id == run_id) | (OperatorDecisionEvent.root_run_id == root_id)).order_by(OperatorDecisionEvent.created_at.desc()).limit(limit)).all()
+        return [r.model_dump(mode='json') for r in rows]
 
     def _maybe_send_alert(self, row: IntegrationRun, alert_type: str, severity: str, detail: dict):
         if not settings.agentora_missions_alerts_enabled:
@@ -454,6 +478,10 @@ class IntegrationOrchestrator:
         row = self.session.get(IntegrationRun, run_id)
         if not row:
             raise IntegrationClientError(f'Run {run_id} not found')
+        policy = self.evaluate_persona_policy(row, action='writeback')
+        if not policy.get('ok'):
+            self.record_operator_decision_event(run_id=row.id or run_id, root_run_id=row.root_run_id or row.parent_run_id or row.id or run_id, event_type='policy_blocked_action', actor_type='system', previous_state={'status': row.status}, new_state={'blocked_action': 'writeback'}, rationale=policy.get('message', ''), related_persona_id=row.assigned_persona_id or row.persona_id, related_strategy=row.branch_strategy, metadata=policy)
+            raise IntegrationClientError(policy.get('message', 'Policy blocked writeback action'))
         if not row.phios_session_id:
             raise IntegrationClientError('Run has no PhiOS session id yet')
         if row.agentception_result_json:
@@ -527,6 +555,10 @@ class IntegrationOrchestrator:
         watcher_events = self.session.exec(select(WatcherEvent).where(WatcherEvent.run_id == run_id).order_by(WatcherEvent.created_at.asc())).all()
         for e in watcher_events:
             events.append({'event': e.event_type, 'at': e.created_at.isoformat(), 'status': e.status, 'latency_ms': e.latency_ms})
+        root_id = row.root_run_id or row.parent_run_id or row.id
+        decision_events = self.session.exec(select(OperatorDecisionEvent).where((OperatorDecisionEvent.run_id == run_id) | (OperatorDecisionEvent.root_run_id == root_id)).order_by(OperatorDecisionEvent.created_at.asc())).all()
+        for d in decision_events:
+            events.append({'event': d.event_type, 'at': d.created_at.isoformat(), 'status': d.actor_type, 'rationale': d.rationale, 'related_persona_id': d.related_persona_id, 'related_strategy': d.related_strategy})
         return events
 
     def compare_runs(self, left_run_id: int, right_run_id: int) -> dict:
@@ -686,6 +718,7 @@ class IntegrationOrchestrator:
         events_q = select(WatcherEvent)
         events = [e.model_dump(mode='json') for e in self.session.exec(events_q).all() if (e.run_id in run_ids if run_ids else True)]
         alerts = [a.model_dump(mode='json') for a in self.session.exec(select(AlertEvent)).all() if (a.run_id in run_ids if run_ids else True)]
+        decision_events = [e.model_dump(mode='json') for e in self.session.exec(select(OperatorDecisionEvent)).all() if (e.root_run_id in run_ids or e.run_id in run_ids if run_ids else True)]
         snapshots = {r.id: self.get_snapshot(r.id) for r in runs if r.id is not None}
         bundle = {
             'schema_version': 'mission-export-v1',
@@ -694,6 +727,7 @@ class IntegrationOrchestrator:
             'runs': [r.model_dump(mode='json') for r in runs],
             'watcher_events': events,
             'alert_events': alerts,
+            'operator_decision_events': decision_events,
             'snapshots': snapshots,
         }
         if settings.agentora_missions_sign_exports and settings.agentora_missions_export_signing_key:
@@ -714,6 +748,7 @@ class IntegrationOrchestrator:
         runs = payload.get('runs', [])
         events = payload.get('watcher_events', [])
         alerts = payload.get('alert_events', [])
+        decision_events = payload.get('operator_decision_events', [])
         snapshots = payload.get('snapshots', {})
 
         imported_runs = 0
@@ -758,7 +793,19 @@ class IntegrationOrchestrator:
             self.session.commit()
             imported_alerts += 1
 
-        return {'ok': True, 'imported_runs': imported_runs, 'imported_watcher_events': imported_events, 'imported_alert_events': imported_alerts}
+        imported_decisions = 0
+        for item in decision_events:
+            did = item.get('id')
+            if did and self.session.get(OperatorDecisionEvent, did):
+                continue
+            if not item.get('run_id') or not item.get('root_run_id'):
+                continue
+            evt = OperatorDecisionEvent(**{k: v for k, v in item.items() if k in OperatorDecisionEvent.model_fields})
+            self.session.add(evt)
+            self.session.commit()
+            imported_decisions += 1
+
+        return {'ok': True, 'imported_runs': imported_runs, 'imported_watcher_events': imported_events, 'imported_alert_events': imported_alerts, 'imported_operator_decision_events': imported_decisions}
 
 
     def _build_lineage_fields(self, parent: IntegrationRun | None) -> dict:
@@ -929,6 +976,7 @@ class IntegrationOrchestrator:
                 replay = self.apply_persona_overlay(source, overlay, replay)
             draft = self.create_replay_draft(source_run_id, replay)
             created_drafts.append(draft)
+            self.record_operator_decision_event(run_id=draft.id, root_run_id=source.root_run_id or source.id or source_run_id, event_type='persona_assignment_changed', actor_type='system', previous_state={'persona_id': source.persona_id}, new_state={'persona_id': persona_id, 'overlay': replay.get('persona_strategy_overlay', '')}, rationale=spec.get('persona_assignment_reason', ''), related_persona_id=persona_id, related_strategy=preset)
             if auto_launch or spec.get('launch'):
                 launched_runs.append(self.launch_replay_draft(draft.id, dry_run=bool(payload.get('dry_run', True))))
         self._log_event('persona-branch-set-created', run_id=source_run_id, status='ok', detail={'branch_set_id': branch_set_id, 'created': len(created_drafts), 'launched': len(launched_runs)})
@@ -986,11 +1034,16 @@ class IntegrationOrchestrator:
         if not row:
             raise IntegrationClientError(f'Run {run_id} not found')
         decision = payload.get('decision', 'accept_recommendation')
-        if decision not in {'accept_recommendation', 'reject_recommendation', 'manual_override'}:
-            raise IntegrationClientError('Invalid override decision. Use accept_recommendation, reject_recommendation, or manual_override.')
-        row.operator_override_status = decision
+        if decision not in {'accept_recommendation', 'reject_recommendation', 'manual_override', 'remove_override'}:
+            raise IntegrationClientError('Invalid override decision. Use accept_recommendation, reject_recommendation, manual_override, or remove_override.')
+        prev = {'operator_override_status': row.operator_override_status, 'recommendation_state': row.recommendation_state, 'decision_status': row.decision_status}
+        row.operator_override_status = 'none' if decision == 'remove_override' else decision
         row.operator_override_note = payload.get('note', '')
-        row.recommendation_state = 'accepted' if decision == 'accept_recommendation' else ('rejected' if decision == 'reject_recommendation' else 'overridden')
+        if settings.agentora_persona_policy_enabled and settings.agentora_persona_policy_require_override_reason and decision in {'reject_recommendation', 'manual_override'} and not row.operator_override_note.strip():
+            msg = 'Policy requires override rationale note for reject/manual override.'
+            self.record_operator_decision_event(run_id=row.id or run_id, root_run_id=row.root_run_id or row.parent_run_id or row.id or run_id, event_type='policy_blocked_action', actor_type='system', previous_state=prev, new_state={'attempted_decision': decision}, rationale=msg, related_persona_id=row.assigned_persona_id or row.persona_id, related_strategy=row.branch_strategy)
+            raise IntegrationClientError(msg)
+        row.recommendation_state = 'pending' if decision == 'remove_override' else ('accepted' if decision == 'accept_recommendation' else ('rejected' if decision == 'reject_recommendation' else 'overridden'))
         if payload.get('shortlisted') is not None:
             row.shortlisted = bool(payload.get('shortlisted'))
         if payload.get('eliminated') is not None:
@@ -1001,6 +1054,8 @@ class IntegrationOrchestrator:
         self.session.commit()
         self.session.refresh(row)
         self._log_event('operator-override', run_id=run_id, status=decision, detail={'note': row.operator_override_note, 'decision_status': row.decision_status})
+        event_map = {'accept_recommendation': 'recommendation_accepted', 'reject_recommendation': 'recommendation_rejected', 'manual_override': 'override_applied', 'remove_override': 'override_removed'}
+        self.record_operator_decision_event(run_id=row.id or run_id, root_run_id=row.root_run_id or row.parent_run_id or row.id or run_id, event_type=event_map.get(decision, 'override_applied'), actor_type='operator', previous_state=prev, new_state={'operator_override_status': row.operator_override_status, 'recommendation_state': row.recommendation_state, 'decision_status': row.decision_status}, rationale=row.operator_override_note, related_persona_id=row.assigned_persona_id or row.persona_id, related_strategy=row.branch_strategy)
         return self._to_record(row)
 
     def get_persona_performance_summary(self, root_run_id: int | None = None) -> dict:
@@ -1011,15 +1066,21 @@ class IntegrationOrchestrator:
         by_persona = {}
         for r in rows:
             key = r.assigned_persona_id or r.persona_id or 'unassigned'
-            bucket = by_persona.setdefault(key, {'count': 0, 'score_sum': 0, 'pr': 0, 'writeback_ok': 0, 'shortlisted': 0, 'overrides': 0, 'risk_high': 0, 'confidence_high': 0})
+            bucket = by_persona.setdefault(key, {'count': 0, 'score_sum': 0, 'pr': 0, 'writeback_ok': 0, 'shortlisted': 0, 'eliminated': 0, 'overrides': 0, 'risk_high': 0, 'confidence_high': 0, 'terminal_success': 0, 'terminal_total': 0, 'override_accept': 0, 'override_total': 0})
             bucket['count'] += 1
             bucket['score_sum'] += r.mission_score
             bucket['pr'] += 1 if r.pr_url else 0
             bucket['writeback_ok'] += 1 if r.writeback_status == 'written' else 0
             bucket['shortlisted'] += 1 if r.shortlisted else 0
+            bucket['eliminated'] += 1 if r.eliminated else 0
             bucket['overrides'] += 1 if r.operator_override_status != 'none' else 0
             bucket['risk_high'] += 1 if r.risk_signal == 'high' else 0
             bucket['confidence_high'] += 1 if r.confidence_level == 'high' else 0
+            bucket['terminal_success'] += 1 if r.status == 'completed' else 0
+            bucket['terminal_total'] += 1 if r.status in TERMINAL_STATUSES else 0
+            if r.operator_override_status in {'accept_recommendation', 'reject_recommendation', 'manual_override'}:
+                bucket['override_total'] += 1
+                bucket['override_accept'] += 1 if r.operator_override_status == 'accept_recommendation' else 0
         out = []
         for persona, b in by_persona.items():
             c = b['count'] or 1
@@ -1030,11 +1091,153 @@ class IntegrationOrchestrator:
                 'pr_rate': b['pr'] / c,
                 'writeback_success_rate': b['writeback_ok'] / c,
                 'shortlist_rate': b['shortlisted'] / c,
+                'eliminate_rate': b['eliminated'] / c,
                 'override_frequency': b['overrides'] / c,
+                'override_acceptance_rate': b['override_accept'] / (b['override_total'] or 1),
                 'high_risk_rate': b['risk_high'] / c,
                 'high_confidence_rate': b['confidence_high'] / c,
+                'terminal_success_rate': b['terminal_success'] / (b['terminal_total'] or 1),
             })
         return {'root_run_id': root_run_id, 'persona_metrics': sorted(out, key=lambda x: x['mission_count'], reverse=True)}
+
+    def get_persona_delta_compare(self, run_id: int, other_run_id: int | None = None) -> dict:
+        left = self.session.get(IntegrationRun, run_id)
+        if not left:
+            raise IntegrationClientError(f'Run {run_id} not found')
+        if other_run_id is None:
+            siblings = [r for r in self._lineage_runs_for_root(left.root_run_id or left.parent_run_id or left.id or run_id) if r.id != left.id]
+            if not siblings:
+                raise IntegrationClientError('No sibling branch available for persona compare.')
+            right = siblings[0]
+        else:
+            right = self.session.get(IntegrationRun, other_run_id)
+            if not right:
+                raise IntegrationClientError(f'Run {other_run_id} not found')
+        fields = {
+            'objective': (left.objective, right.objective),
+            'constraints': (self._parse_json_list(left.constraints_json), self._parse_json_list(right.constraints_json)),
+            'assigned_persona_id': (left.assigned_persona_id or left.persona_id, right.assigned_persona_id or right.persona_id),
+            'assigned_persona_role': (left.assigned_persona_role, right.assigned_persona_role),
+            'persona_strategy_overlay': (left.persona_strategy_overlay, right.persona_strategy_overlay),
+            'branch_strategy': (left.branch_strategy, right.branch_strategy),
+            'summary': (left.summary, right.summary),
+            'status': (left.status, right.status),
+            'mission_score': (left.mission_score, right.mission_score),
+            'confidence_level': (left.confidence_level, right.confidence_level),
+            'risk_signal': (left.risk_signal, right.risk_signal),
+            'writeback_status': (left.writeback_status, right.writeback_status),
+            'operator_override_status': (left.operator_override_status, right.operator_override_status),
+        }
+        diffs = {k: {'left': l, 'right': r} for k, (l, r) in fields.items() if l != r}
+        note = 'Persona compare is a heuristic aid; verify with provenance and operator intent before decisions.'
+        divergence = f"Strategy/persona divergence: {left.branch_strategy}/{left.assigned_persona_id or left.persona_id} vs {right.branch_strategy}/{right.assigned_persona_id or right.persona_id}."
+        return {'left_run_id': left.id, 'right_run_id': right.id, 'field_differences': diffs, 'persona_rationale_interpretation': divergence, 'compare_note': note}
+
+    def get_persona_trends(self, *, window: str = '30d', repo: str | None = None, strategy: str | None = None, status: str | None = None) -> dict:
+        rows = self.session.exec(select(IntegrationRun)).all()
+        now = datetime.utcnow()
+        if window == '7d':
+            cutoff = now - timedelta(days=7)
+            rows = [r for r in rows if r.created_at >= cutoff]
+        elif window == '30d':
+            cutoff = now - timedelta(days=30)
+            rows = [r for r in rows if r.created_at >= cutoff]
+        if repo:
+            rows = [r for r in rows if r.repo == repo]
+        if strategy:
+            rows = [r for r in rows if r.branch_strategy == strategy]
+        if status:
+            rows = [r for r in rows if r.status == status]
+        by_persona = {}
+        for r in rows:
+            key = r.assigned_persona_id or r.persona_id or 'unassigned'
+            b = by_persona.setdefault(key, {'count': 0, 'score_sum': 0, 'pr': 0, 'wb': 0, 'short': 0, 'elim': 0, 'override_accept': 0, 'override_total': 0, 'risk_sum': 0, 'confidence_sum': 0, 'terminal_success': 0, 'terminal_total': 0})
+            b['count'] += 1; b['score_sum'] += r.mission_score; b['pr'] += 1 if r.pr_url else 0; b['wb'] += 1 if r.writeback_status == 'written' else 0
+            b['short'] += 1 if r.shortlisted else 0; b['elim'] += 1 if r.eliminated else 0
+            if r.operator_override_status in {'accept_recommendation', 'reject_recommendation', 'manual_override'}:
+                b['override_total'] += 1; b['override_accept'] += 1 if r.operator_override_status == 'accept_recommendation' else 0
+            b['risk_sum'] += {'low': 1, 'medium': 2, 'high': 3}.get(r.risk_signal, 2)
+            b['confidence_sum'] += {'low': 1, 'medium': 2, 'high': 3}.get(r.confidence_level, 1)
+            b['terminal_total'] += 1 if r.status in TERMINAL_STATUSES else 0
+            b['terminal_success'] += 1 if r.status == 'completed' else 0
+        trends = []
+        for persona, b in by_persona.items():
+            c = b['count'] or 1
+            trends.append({'persona_id': persona, 'mission_count': b['count'], 'average_score': b['score_sum']/c, 'pr_rate': b['pr']/c, 'writeback_success_rate': b['wb']/c, 'shortlist_rate': b['short']/c, 'eliminate_rate': b['elim']/c, 'override_acceptance_rate': b['override_accept']/(b['override_total'] or 1), 'average_risk_level': b['risk_sum']/c, 'average_confidence_level': b['confidence_sum']/c, 'terminal_success_rate': b['terminal_success']/(b['terminal_total'] or 1)})
+        return {'window': window, 'filters': {'repo': repo, 'strategy': strategy, 'status': status}, 'persona_trends': sorted(trends, key=lambda x: x['mission_count'], reverse=True), 'note': 'Trend analytics are operator aids and not objective truth.'}
+
+    def get_persona_strategy_matrix(self, *, window: str = '30d', repo: str | None = None, status: str | None = None) -> dict:
+        rows = self.session.exec(select(IntegrationRun)).all()
+        now = datetime.utcnow()
+        if window == '7d':
+            rows = [r for r in rows if r.created_at >= now - timedelta(days=7)]
+        elif window == '30d':
+            rows = [r for r in rows if r.created_at >= now - timedelta(days=30)]
+        if repo:
+            rows = [r for r in rows if r.repo == repo]
+        if status:
+            rows = [r for r in rows if r.status == status]
+        matrix = {}
+        for r in rows:
+            persona = r.assigned_persona_id or r.persona_id or 'unassigned'
+            strat = r.branch_strategy or 'unspecified'
+            key = (persona, strat)
+            b = matrix.setdefault(key, {'count': 0, 'score_sum': 0, 'risk_sum': 0, 'short': 0, 'pr': 0, 'overrides': 0})
+            b['count'] += 1
+            b['score_sum'] += r.mission_score
+            b['risk_sum'] += {'low': 1, 'medium': 2, 'high': 3}.get(r.risk_signal, 2)
+            b['short'] += 1 if r.shortlisted else 0
+            b['pr'] += 1 if r.pr_url else 0
+            b['overrides'] += 1 if r.operator_override_status != 'none' else 0
+        rows_out = []
+        for (persona, strat), b in matrix.items():
+            c = b['count'] or 1
+            rows_out.append({'persona_id': persona, 'strategy': strat, 'count': b['count'], 'average_score': b['score_sum']/c, 'average_risk_level': b['risk_sum']/c, 'shortlist_rate': b['short']/c, 'pr_rate': b['pr']/c, 'override_rate': b['overrides']/c})
+        return {'window': window, 'filters': {'repo': repo, 'status': status}, 'matrix': sorted(rows_out, key=lambda x: x['count'], reverse=True), 'interpretation_note': 'Persona×strategy matrix is heuristic and intended for operator guidance only.'}
+
+    def maybe_require_dual_review(self, row: IntegrationRun) -> tuple[bool, str]:
+        if not settings.agentora_persona_policy_require_dual_review_on_high_risk:
+            return True, ''
+        if row.risk_signal != 'high':
+            return True, ''
+        root_id = row.root_run_id or row.parent_run_id or row.id
+        runs = self._lineage_runs_for_root(root_id)
+        personas = {r.assigned_persona_id or r.persona_id for r in runs if not r.eliminated}
+        if len([p for p in personas if p]) < 2:
+            return False, 'Policy requires dual-persona review before writeback on high-risk branches.'
+        return True, ''
+
+    def evaluate_persona_policy(self, row: IntegrationRun, action: str = 'writeback') -> dict:
+        if not settings.agentora_persona_policy_enabled:
+            return {'ok': True, 'enabled': False, 'message': 'Persona policy disabled.'}
+        if settings.agentora_persona_policy_block_exploratory_on_high_risk and row.risk_signal == 'high' and row.persona_strategy_overlay == 'exploratory_innovator':
+            return {'ok': False, 'enabled': True, 'message': 'Policy blocks exploratory overlay on high-risk missions.'}
+        if settings.agentora_persona_policy_require_override_reason and action == 'override' and row.operator_override_status != 'none' and not (row.operator_override_note or '').strip():
+            return {'ok': False, 'enabled': True, 'message': 'Policy requires override rationale note.'}
+        if settings.agentora_persona_policy_require_conservative_branch_on_high_risk and row.risk_signal == 'high':
+            root_id = row.root_run_id or row.parent_run_id or row.id
+            siblings = self._lineage_runs_for_root(root_id)
+            has_conservative = any((r.persona_strategy_overlay == 'conservative_stabilizer' or r.branch_strategy in {'conservative_fix', 'minimal_patch'}) for r in siblings)
+            if not has_conservative:
+                return {'ok': False, 'enabled': True, 'message': 'Policy requires at least one conservative branch for high-risk portfolios.'}
+        dual_ok, dual_msg = self.maybe_require_dual_review(row)
+        if not dual_ok:
+            return {'ok': False, 'enabled': True, 'message': dual_msg}
+        return {'ok': True, 'enabled': True, 'message': 'Policy check passed.'}
+
+    def get_cross_root_persona_summary(self) -> dict:
+        return self.get_persona_trends(window='all')
+
+    def get_audit_summary(self, run_id: int) -> dict:
+        row = self.session.get(IntegrationRun, run_id)
+        if not row:
+            raise IntegrationClientError(f'Run {run_id} not found')
+        root_id = row.root_run_id or row.parent_run_id or row.id
+        events = self.list_operator_decision_events(run_id, limit=200)
+        total = len(events)
+        operator = sum(1 for e in events if e.get('actor_type') == 'operator')
+        blocked = sum(1 for e in events if e.get('event_type') == 'policy_blocked_action')
+        return {'run_id': run_id, 'root_run_id': root_id, 'total_decision_events': total, 'operator_events': operator, 'policy_blocked_events': blocked, 'latest_events': events[:10]}
 
     def set_branch_decision(self, run_id: int, *, shortlisted: bool | None = None, eliminated: bool | None = None, decision_note: str = '') -> OrchestrationRunRecord:
         row = self.session.get(IntegrationRun, run_id)
@@ -1053,6 +1256,8 @@ class IntegrationOrchestrator:
         self.session.add(row)
         self.session.commit()
         self.session.refresh(row)
+        event_type = 'shortlist_applied' if row.shortlisted else ('eliminate_applied' if row.eliminated else 'manual_reprioritization')
+        self.record_operator_decision_event(run_id=row.id or run_id, root_run_id=row.root_run_id or row.parent_run_id or row.id or run_id, event_type=event_type, actor_type='operator', previous_state={}, new_state={'decision_status': row.decision_status}, rationale=decision_note, related_persona_id=row.assigned_persona_id or row.persona_id, related_strategy=row.branch_strategy)
         return self._to_record(row)
 
     def _lineage_runs_for_root(self, root_run_id: int) -> list[IntegrationRun]:

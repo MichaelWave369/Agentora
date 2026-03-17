@@ -314,3 +314,96 @@ def test_export_import_preserves_persona_metadata(monkeypatch):
 
     imported = client.post('/api/integrations/import', json=exported.json())
     assert imported.status_code == 200
+
+
+def test_operator_decision_events_persist_and_timeline(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='AuditRoot', objective='Audit decision flow')
+    created = client.post(f'/api/integrations/runs/{source}/persona-branch-set', json={'specs': [{'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer'}]})
+    assert created.status_code == 200
+    branch_id = created.json()['created_drafts'][0]['id']
+
+    ov = client.post(f'/api/integrations/runs/{branch_id}/override', json={'decision': 'manual_override', 'note': 'human override'})
+    assert ov.status_code == 200
+
+    events = client.get(f'/api/integrations/runs/{branch_id}/decision-events')
+    assert events.status_code == 200
+    assert events.json()['events']
+
+    timeline = client.get(f'/api/integrations/runs/{branch_id}/timeline')
+    assert timeline.status_code == 200
+    assert any(e.get('event') in {'override_applied', 'operator-override'} for e in timeline.json()['events'])
+
+
+def test_persona_delta_compare_route(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='CompareRoot', objective='Compare personas')
+    created = client.post(
+        f'/api/integrations/runs/{source}/persona-branch-set',
+        json={'specs': [{'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer'}, {'persona_id': 'architect', 'overlay': 'architect_refactorer'}]},
+    )
+    assert created.status_code == 200
+    a, b = created.json()['created_drafts'][0]['id'], created.json()['created_drafts'][1]['id']
+    cmp = client.get(f'/api/integrations/runs/{a}/persona-compare?other_run_id={b}')
+    assert cmp.status_code == 200
+    body = cmp.json()
+    assert 'field_differences' in body
+    assert 'compare_note' in body
+
+
+def test_persona_trends_and_matrix(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='TrendRoot', objective='Trend mission')
+    client.post(f'/api/integrations/runs/{source}/persona-branch-set', json={'specs': [{'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer'}, {'persona_id': 'architect', 'overlay': 'architect_refactorer'}]})
+
+    t7 = client.get('/api/integrations/persona-trends?window=7d')
+    assert t7.status_code == 200
+    assert 'persona_trends' in t7.json()
+
+    t30 = client.get('/api/integrations/persona-trends?window=30d')
+    assert t30.status_code == 200
+
+    tall = client.get('/api/integrations/persona-trends?window=all')
+    assert tall.status_code == 200
+
+    matrix = client.get('/api/integrations/persona-trends/matrix?window=30d')
+    assert matrix.status_code == 200
+    assert 'matrix' in matrix.json()
+
+
+def test_policy_block_and_override_reason_requirement(monkeypatch):
+    _enable_mock(monkeypatch)
+    monkeypatch.setattr(settings, 'agentora_persona_policy_enabled', True)
+    monkeypatch.setattr(settings, 'agentora_persona_policy_require_override_reason', True)
+    client = make_client()
+    source = _launch_mock_run(client, title='PolicyRoot', objective='Policy mission')
+    created = client.post(f'/api/integrations/runs/{source}/persona-branch-set', json={'specs': [{'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer'}]})
+    branch_id = created.json()['created_drafts'][0]['id']
+
+    bad = client.post(f'/api/integrations/runs/{branch_id}/override', json={'decision': 'manual_override', 'note': ''})
+    assert bad.status_code == 400
+
+    events = client.get(f'/api/integrations/runs/{branch_id}/decision-events')
+    assert events.status_code == 200
+    assert any(e.get('event_type') == 'policy_blocked_action' for e in events.json()['events'])
+
+
+def test_export_import_preserves_operator_decision_events(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='ExportAuditRoot', objective='Export audit')
+    created = client.post(f'/api/integrations/runs/{source}/persona-branch-set', json={'specs': [{'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer'}]})
+    branch_id = created.json()['created_drafts'][0]['id']
+    client.post(f'/api/integrations/runs/{branch_id}/override', json={'decision': 'accept_recommendation', 'note': 'looks good'})
+
+    exported = client.get('/api/integrations/export')
+    assert exported.status_code == 200
+    payload = exported.json()
+    assert 'operator_decision_events' in payload
+
+    imported = client.post('/api/integrations/import', json=payload)
+    assert imported.status_code == 200
+    assert 'imported_operator_decision_events' in imported.json()
