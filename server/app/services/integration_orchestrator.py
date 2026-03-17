@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 from datetime import datetime, timedelta
+from uuid import uuid4
 
 import httpx
 from sqlmodel import Session, select
@@ -20,6 +21,8 @@ from app.integrations.mappers import (
 from app.integrations.phios_client import IntegrationClientError, PhiOSClient
 from app.integrations.schemas import (
     AgentExecutionOutcome,
+    BranchPortfolioSummary,
+    BranchSetCreateResponse,
     ContextPackRequest,
     LaunchMissionRequest,
     MissionContextPacket,
@@ -32,6 +35,16 @@ from app.models import AlertEvent, IntegrationRun, WatcherEvent
 ACTIVE_STATUSES = {'preparing_launch', 'launched', 'running', 'queued'}
 TERMINAL_STATUSES = {'completed', 'failed', 'cancelled', 'error'}
 IMPORTANT_EVENT_TYPES = {'launched', 'terminal-state-reached', 'writeback-succeeded', 'writeback-failed', 'watched', 'unwatched'}
+BRANCH_STRATEGY_PRESETS = {
+    'conservative_fix': {'objective_suffix': 'prioritize safety and minimal scope drift', 'fork_reason': 'conservative risk-reduced fix path', 'provenance_note': 'Preset conservative_fix applied for low-risk stabilization.'},
+    'aggressive_refactor': {'objective_suffix': 'allow larger structural refactors to improve maintainability', 'fork_reason': 'aggressive refactor branch', 'provenance_note': 'Preset aggressive_refactor applied for structural cleanup.'},
+    'minimal_patch': {'objective_suffix': 'implement the smallest viable patch', 'fork_reason': 'minimal patch branch', 'provenance_note': 'Preset minimal_patch applied to reduce blast radius.'},
+    'persona_swap': {'fork_reason': 'persona perspective comparison', 'provenance_note': 'Preset persona_swap applied for alternative execution style.'},
+    'recovery_branch': {'objective_suffix': 'recover from prior failures and re-establish green state', 'fork_reason': 'recovery replay branch', 'provenance_note': 'Preset recovery_branch applied after failure risk review.'},
+    'constraint_relaxation': {'fork_reason': 'constraint relaxation experiment', 'provenance_note': 'Preset constraint_relaxation applied to test broader solution space.'},
+    'constraint_tightening': {'fork_reason': 'constraint tightening for safety', 'provenance_note': 'Preset constraint_tightening applied for stricter guardrails.'},
+    'exploratory_branch': {'objective_suffix': 'explore alternate implementation and tradeoffs', 'fork_reason': 'exploratory branch', 'provenance_note': 'Preset exploratory_branch applied for comparative planning.'},
+}
 
 
 class IntegrationOrchestrator:
@@ -688,6 +701,8 @@ class IntegrationOrchestrator:
                 continue
             if item.get('parent_run_id') == item.get('id'):
                 raise IntegrationClientError('Malformed lineage cycle detected in import')
+            if item.get('branch_set_id') and not (item.get('root_run_id') or item.get('parent_run_id') or item.get('id')):
+                raise IntegrationClientError('Invalid branch metadata: branch_set_id requires lineage reference')
             row = IntegrationRun(**{k: v for k, v in item.items() if k in IntegrationRun.model_fields})
             self.session.add(row)
             self.session.commit()
@@ -745,6 +760,165 @@ class IntegrationOrchestrator:
         if replay.get('repo') and replay.get('repo') != source.repo and not settings.agentora_missions_replay_allow_repo_change:
             raise IntegrationClientError('Replay blocked: repo change is not allowed by policy.')
 
+    def get_branch_strategy_presets(self) -> dict:
+        return BRANCH_STRATEGY_PRESETS
+
+    def apply_branch_strategy_preset(self, source: IntegrationRun, preset: str, overrides: dict | None = None) -> dict:
+        preset_data = BRANCH_STRATEGY_PRESETS.get(preset)
+        if not preset_data:
+            raise IntegrationClientError(f'Unknown branch strategy preset: {preset}')
+        replay = {
+            'replay_kind': 'branch_with_new_objective',
+            'objective': source.objective,
+            'constraints': self._parse_json_list(source.constraints_json),
+            'persona_id': source.persona_id,
+            'fork_reason': preset_data.get('fork_reason', ''),
+            'provenance_note': preset_data.get('provenance_note', ''),
+            'branch_strategy': preset,
+        }
+        suffix = preset_data.get('objective_suffix', '').strip()
+        if suffix:
+            replay['objective'] = f"{source.objective}. {suffix}".strip()
+        if preset == 'constraint_relaxation':
+            replay['constraints'] = []
+            replay['replay_kind'] = 'branch_with_new_constraints'
+        elif preset == 'constraint_tightening':
+            replay['constraints'] = self._parse_json_list(source.constraints_json) + ['Increase validation and explicit safeguards.']
+            replay['replay_kind'] = 'branch_with_new_constraints'
+        elif preset == 'persona_swap':
+            replay['replay_kind'] = 'branch_with_new_persona'
+        elif preset == 'recovery_branch':
+            replay['replay_kind'] = 'recovery_replay'
+
+        for key, value in (overrides or {}).items():
+            if value is not None:
+                replay[key] = value
+        return replay
+
+    def create_branch_set(self, source_run_id: int, payload: dict) -> BranchSetCreateResponse:
+        specs = payload.get('specs') or []
+        if not specs:
+            raise IntegrationClientError('Branch set creation requires at least one branch spec.')
+        source = self.session.get(IntegrationRun, source_run_id)
+        if not source:
+            raise IntegrationClientError(f'Source run {source_run_id} not found')
+        branch_set_id = payload.get('branch_set_id') or f'bs-{source_run_id}-{uuid4().hex[:8]}'
+        created_drafts = []
+        launched_runs = []
+        auto_launch = bool(payload.get('auto_launch_selected', False))
+        for idx, spec in enumerate(specs):
+            strategy = spec.get('preset', 'exploratory_branch')
+            replay = self.apply_branch_strategy_preset(source, strategy, {
+                'branch_label': spec.get('branch_label') or f'{strategy}-{idx + 1}',
+                'objective': spec.get('objective'),
+                'constraints': spec.get('constraints'),
+                'persona_id': spec.get('persona_id'),
+                'fork_reason': spec.get('fork_reason'),
+                'provenance_note': spec.get('provenance_note'),
+                'branch_set_id': branch_set_id,
+                'branch_strategy': strategy,
+                'branch_order': idx,
+                'dry_run': bool(payload.get('dry_run', True)),
+            })
+            draft = self.create_replay_draft(source_run_id, replay)
+            created_drafts.append(draft)
+            if auto_launch or spec.get('launch'):
+                launched_runs.append(self.launch_replay_draft(draft.id, dry_run=bool(payload.get('dry_run', True))))
+        self._log_event('branch-set-created', run_id=source_run_id, status='ok', detail={'branch_set_id': branch_set_id, 'created': len(created_drafts), 'launched': len(launched_runs)})
+        return BranchSetCreateResponse(root_run_id=source.root_run_id or source.id or source_run_id, branch_set_id=branch_set_id, created_drafts=created_drafts, launched_runs=launched_runs)
+
+    def set_branch_decision(self, run_id: int, *, shortlisted: bool | None = None, eliminated: bool | None = None, decision_note: str = '') -> OrchestrationRunRecord:
+        row = self.session.get(IntegrationRun, run_id)
+        if not row:
+            raise IntegrationClientError(f'Run {run_id} not found')
+        if shortlisted is not None:
+            row.shortlisted = bool(shortlisted)
+        if eliminated is not None:
+            row.eliminated = bool(eliminated)
+        if row.shortlisted and row.eliminated:
+            row.eliminated = False
+        row.decision_status = 'shortlisted' if row.shortlisted else ('eliminated' if row.eliminated else 'undecided')
+        if decision_note:
+            row.decision_note = decision_note
+        row.updated_at = datetime.utcnow()
+        self.session.add(row)
+        self.session.commit()
+        self.session.refresh(row)
+        return self._to_record(row)
+
+    def _lineage_runs_for_root(self, root_run_id: int) -> list[IntegrationRun]:
+        rows = self.session.exec(select(IntegrationRun).where((IntegrationRun.id == root_run_id) | (IntegrationRun.root_run_id == root_run_id) | (IntegrationRun.parent_run_id == root_run_id))).all()
+        return rows
+
+    def get_branch_portfolio(self, root_run_id: int, branch_set_id: str | None = None) -> BranchPortfolioSummary:
+        root = self.session.get(IntegrationRun, root_run_id)
+        if not root:
+            raise IntegrationClientError(f'Root run {root_run_id} not found')
+        runs = self._lineage_runs_for_root(root_run_id)
+        if branch_set_id:
+            runs = [r for r in runs if r.branch_set_id == branch_set_id or r.id == root_run_id]
+        branches = []
+        for r in runs:
+            objective_delta = '' if r.id == root.id else (r.objective or '').replace(root.objective or '', '').strip('. ')
+            branches.append({
+                'run_id': r.id,
+                'root_run_id': r.root_run_id,
+                'branch_set_id': r.branch_set_id,
+                'branch_label': r.branch_label or (r.mission_title or f'run-{r.id}'),
+                'branch_strategy': r.branch_strategy,
+                'persona_id': r.persona_id,
+                'objective_delta': objective_delta,
+                'status': r.status,
+                'mission_score': r.mission_score,
+                'confidence_level': r.confidence_level,
+                'risk_signal': r.risk_signal,
+                'pr_present': bool(r.pr_url),
+                'writeback_status': r.writeback_status,
+                'shortlisted': r.shortlisted,
+                'eliminated': r.eliminated,
+                'decision_status': r.decision_status,
+            })
+        def rank_key(b):
+            risk_penalty = {'low': 0, 'medium': 10, 'high': 20}.get(b['risk_signal'], 15)
+            return b['mission_score'] - risk_penalty + (8 if b['pr_present'] else 0) + (5 if b['writeback_status'] == 'written' else 0)
+        ranked = sorted(branches, key=rank_key, reverse=True)
+        shortlist = [b['run_id'] for b in ranked if b['decision_status'] == 'shortlisted'] or [b['run_id'] for b in ranked[:2] if not b['eliminated']]
+        elimination = [b['run_id'] for b in ranked if b['decision_status'] == 'eliminated'] or [b['run_id'] for b in ranked if b['risk_signal'] == 'high' and b['mission_score'] < 40]
+        note = 'Operator aid only: ranking is heuristic and should be reviewed with provenance, risk, and objective fit.'
+        return BranchPortfolioSummary(root_run_id=root_run_id, branch_set_id=branch_set_id, branches=branches, ranking_summary=[{'run_id': b['run_id'], 'branch_label': b['branch_label'], 'strategy': b['branch_strategy'], 'heuristic_rank_score': rank_key(b)} for b in ranked], shortlist_suggestions=shortlist, elimination_suggestions=elimination, interpretation_note=note)
+
+    def get_root_decision_summary(self, root_run_id: int) -> dict:
+        portfolio = self.get_branch_portfolio(root_run_id)
+        branches = [b for b in portfolio.branches if b.run_id != root_run_id]
+        root = self.session.get(IntegrationRun, root_run_id)
+        if not branches:
+            return {'root_run_id': root_run_id, 'source_objective': root.objective if root else '', 'number_of_branches': 0, 'terminal_branches': 0, 'best_scoring_branch': None, 'lowest_risk_branch': None, 'branches_with_prs': [], 'branches_with_successful_writeback': [], 'recommended_next_branch': None, 'rationale_summary': 'No branch portfolio exists yet.'}
+        best_score = max(branches, key=lambda b: b.mission_score)
+        risk_rank = {'low': 0, 'medium': 1, 'high': 2}
+        lowest_risk = min(branches, key=lambda b: (risk_rank.get(b.risk_signal, 3), -b.mission_score))
+        recommended = None
+        for candidate in portfolio.shortlist_suggestions:
+            match = next((b for b in branches if b.run_id == candidate), None)
+            if match and not match.eliminated:
+                recommended = match
+                break
+        terminal = [b for b in branches if b.status in TERMINAL_STATUSES]
+        prs = [b.run_id for b in branches if b.pr_present]
+        writeback_ok = [b.run_id for b in branches if b.writeback_status == 'written']
+        rationale = f"Heuristic recommendation favors branch {recommended.run_id if recommended else best_score.run_id} for balanced score/risk; operator must validate fit against objective and provenance."
+        return {
+            'root_run_id': root_run_id,
+            'source_objective': root.objective if root else '',
+            'number_of_branches': len(branches),
+            'terminal_branches': len(terminal),
+            'best_scoring_branch': best_score.run_id,
+            'lowest_risk_branch': lowest_risk.run_id,
+            'branches_with_prs': prs,
+            'branches_with_successful_writeback': writeback_ok,
+            'recommended_next_branch': recommended.run_id if recommended else best_score.run_id,
+            'rationale_summary': rationale,
+        }
+
     def create_replay_draft(self, source_run_id: int, replay: dict) -> OrchestrationRunRecord:
         source = self.session.get(IntegrationRun, source_run_id)
         if not source:
@@ -768,6 +942,14 @@ class IntegrationOrchestrator:
             replay_kind=replay.get('replay_kind', 'exact_replay'),
             provenance_note=replay.get('provenance_note', ''),
             fork_reason=replay.get('fork_reason', ''),
+            branch_set_id=replay.get('branch_set_id', source.branch_set_id),
+            branch_label=replay.get('branch_label', ''),
+            branch_strategy=replay.get('branch_strategy', ''),
+            decision_status='undecided',
+            shortlisted=bool(replay.get('shortlisted', False)),
+            eliminated=bool(replay.get('eliminated', False)),
+            branch_order=int(replay.get('branch_order', 0) or 0),
+            decision_note=replay.get('decision_note', ''),
             parent_run_id=lineage['parent_run_id'],
             root_run_id=lineage['root_run_id'],
             lineage_depth=lineage['lineage_depth'],
@@ -814,6 +996,14 @@ class IntegrationOrchestrator:
             row.replay_kind = draft.replay_kind
             row.provenance_note = draft.provenance_note
             row.fork_reason = draft.fork_reason
+            row.branch_set_id = draft.branch_set_id
+            row.branch_label = draft.branch_label
+            row.branch_strategy = draft.branch_strategy
+            row.decision_status = draft.decision_status
+            row.shortlisted = draft.shortlisted
+            row.eliminated = draft.eliminated
+            row.branch_order = draft.branch_order
+            row.decision_note = draft.decision_note
             row.immutable_origin_created_at = draft.immutable_origin_created_at
             self._persist_snapshot(row)
             self.session.add(row)
@@ -837,7 +1027,7 @@ class IntegrationOrchestrator:
 
     def get_descendants(self, root_run_id: int) -> list[dict]:
         rows = self.session.exec(select(IntegrationRun).where((IntegrationRun.root_run_id == root_run_id) | (IntegrationRun.parent_run_id == root_run_id))).all()
-        return [{'id': r.id, 'parent_run_id': r.parent_run_id, 'root_run_id': r.root_run_id, 'lineage_depth': r.lineage_depth, 'mission_title': r.mission_title, 'status': r.status, 'replay_kind': r.replay_kind} for r in rows]
+        return [{'id': r.id, 'parent_run_id': r.parent_run_id, 'root_run_id': r.root_run_id, 'lineage_depth': r.lineage_depth, 'mission_title': r.mission_title, 'status': r.status, 'replay_kind': r.replay_kind, 'branch_set_id': r.branch_set_id, 'branch_label': r.branch_label, 'branch_strategy': r.branch_strategy, 'decision_status': r.decision_status} for r in rows]
 
     def get_lineage(self, run_id: int) -> dict:
         row = self.session.get(IntegrationRun, run_id)
@@ -860,6 +1050,14 @@ class IntegrationOrchestrator:
             'replay_kind': row.replay_kind,
             'provenance_note': row.provenance_note,
             'fork_reason': row.fork_reason,
+            'branch_set_id': row.branch_set_id,
+            'branch_label': row.branch_label,
+            'branch_strategy': row.branch_strategy,
+            'decision_status': row.decision_status,
+            'shortlisted': row.shortlisted,
+            'eliminated': row.eliminated,
+            'branch_order': row.branch_order,
+            'decision_note': row.decision_note,
             'immutable_origin_created_at': row.immutable_origin_created_at.isoformat() if row.immutable_origin_created_at else None,
         }
 

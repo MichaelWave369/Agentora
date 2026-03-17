@@ -414,3 +414,49 @@ Mutable replay draft fields:
 
 - Replay launch currently creates a new launched run from draft state (draft remains a historical artifact).
 - Export signatures are optional local integrity hints, not external trust attestations.
+
+## PhiOS + AgentCeption integration (Phase H)
+
+Phase H adds lineage-aware branch-set planning for comparative mission execution under one root objective.
+
+### Branch-set and strategy capabilities
+
+- Branch-set metadata on each run (`branch_set_id`, `branch_label`, `branch_strategy`, `decision_status`, `shortlisted`, `eliminated`, `branch_order`, `decision_note`).
+- Central strategy presets for sibling planning:
+  - `conservative_fix`
+  - `aggressive_refactor`
+  - `minimal_patch`
+  - `persona_swap`
+  - `recovery_branch`
+  - `constraint_relaxation`
+  - `constraint_tightening`
+  - `exploratory_branch`
+- Bulk branch draft creation from one source run (with optional launch of selected branches).
+- Root-level portfolio comparison and heuristic shortlist/elimination suggestions.
+- Root-level decision summaries for operator review.
+
+### Phase H routes
+
+- `GET /api/integrations/branch-strategies`
+- `POST /api/integrations/runs/{run_id}/branch-set`
+- `GET /api/integrations/runs/{run_id}/portfolio`
+- `GET /api/integrations/lineage/{root_run_id}/portfolio`
+- `GET /api/integrations/lineage/{root_run_id}/decision-summary`
+- `POST /api/integrations/runs/{run_id}/shortlist`
+- `POST /api/integrations/runs/{run_id}/eliminate`
+
+### Lifecycle
+
+Root Mission -> Snapshot -> Branch Set -> Sibling Branches -> Portfolio Compare -> Decision Summary
+
+### Heuristic caveat
+
+Portfolio ranking and recommendations are operator aids, not objective truth. Always validate recommendation outputs against provenance, risk, and mission intent.
+
+### Local demo steps
+
+1. Launch a root mission from Software Missions.
+2. Open **Branch Set Planning (Phase H)** and select strategy presets.
+3. Create branch drafts (optionally launch selected branches).
+4. Review **Portfolio / Decision Summary**.
+5. Mark branches as shortlist/eliminate and compare chosen runs.

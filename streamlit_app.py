@@ -37,6 +37,7 @@ except Exception:
         def sidebar(self): return self
         def radio(self, _l, options): return options[0] if options else ''
         def selectbox(self, *_a, **_k): return ''
+        def multiselect(self, _l, options, default=None): return default or []
         def text_input(self, *_a, **_k): return ''
         def text_area(self, *_a, **_k): return ''
         def slider(self, *_a, **_k): return 60
@@ -652,6 +653,40 @@ def _software_missions_page():
             if st.button('Launch Replay Draft') and draft.get('id'):
                 launched = safe_api_post(f"/api/integrations/runs/{draft['id']}/launch-from-draft", {'dry_run': True}, 'launch replay draft')
                 st.session_state['integration_run'] = launched
+
+        st.markdown('### Branch Set Planning (Phase H)')
+        presets_payload = safe_api_get('/api/integrations/branch-strategies', 'branch presets')
+        preset_names = sorted((presets_payload.get('presets') or {}).keys())
+        selected_presets = st.multiselect('strategy presets', options=preset_names, default=preset_names[:2] if preset_names else [])
+        launch_selected = st.checkbox('launch selected branches after draft creation', value=False)
+        if st.button('Create Branch Set') and source_id and selected_presets:
+            specs = [{'preset': p, 'branch_label': p.replace('_', '-'), 'launch': launch_selected} for p in selected_presets]
+            branch_resp = safe_api_post(f'/api/integrations/runs/{source_id}/branch-set', {'specs': specs, 'dry_run': True, 'auto_launch_selected': launch_selected}, 'create branch set')
+            st.session_state['branch_set'] = branch_resp
+        branch_set = st.session_state.get('branch_set', {})
+        if branch_set:
+            st.json(branch_set)
+
+        if source_id:
+            st.markdown('### Portfolio / Decision Summary')
+            root_guess = source_id
+            run_detail = safe_api_get(f'/api/integrations/runs/{source_id}', 'run detail')
+            if isinstance(run_detail, dict):
+                root_guess = run_detail.get('root_run_id') or run_detail.get('parent_run_id') or source_id
+            portfolio = safe_api_get(f'/api/integrations/lineage/{root_guess}/portfolio', 'root portfolio')
+            decision = safe_api_get(f'/api/integrations/lineage/{root_guess}/decision-summary', 'decision summary')
+            st.json({'portfolio': portfolio, 'decision_summary': decision})
+            branches = portfolio.get('branches', []) if isinstance(portfolio, dict) else []
+            options = [b.get('run_id') for b in branches if b.get('run_id') and b.get('run_id') != root_guess]
+            target = st.selectbox('branch decision target', options=options) if options else None
+            note = st.text_input('decision note', value='')
+            c1, c2 = st.columns(2)
+            with c1:
+                if target and st.button('Shortlist Branch'):
+                    st.json(safe_api_post(f'/api/integrations/runs/{target}/shortlist', {'decision_note': note}, 'shortlist branch'))
+            with c2:
+                if target and st.button('Eliminate Branch'):
+                    st.json(safe_api_post(f'/api/integrations/runs/{target}/eliminate', {'decision_note': note}, 'eliminate branch'))
 
         if source_id:
             st.markdown('### Provenance / Lineage')

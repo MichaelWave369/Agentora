@@ -136,3 +136,99 @@ def test_compare_severity_and_snapshot_route(monkeypatch):
     snap = client.get(f'/api/integrations/runs/{left}/snapshot')
     assert snap.status_code == 200
     assert snap.json().get('snapshot_hash')
+
+
+def test_strategy_preset_application(monkeypatch):
+    _enable_mock(monkeypatch)
+    from app.db import Session, create_db_and_tables, engine
+    from app.models import IntegrationRun
+    from app.services.integration_orchestrator import IntegrationOrchestrator
+
+    create_db_and_tables()
+    with Session(engine) as session:
+        source = IntegrationRun(status='completed', persona_id='persona-1', repo='owner/repo', mission_title='Source', objective='Fix flaky test', constraints_json=json.dumps(['No schema changes']))
+        session.add(source)
+        session.commit()
+        session.refresh(source)
+        orch = IntegrationOrchestrator(session)
+        payload = orch.apply_branch_strategy_preset(source, 'constraint_tightening')
+        assert payload['replay_kind'] == 'branch_with_new_constraints'
+        assert any('safeguards' in c for c in payload['constraints'])
+
+
+def test_bulk_branch_set_create_and_launch(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='Root', objective='Improve reliability')
+    res = client.post(
+        f'/api/integrations/runs/{source}/branch-set',
+        json={
+            'specs': [
+                {'preset': 'minimal_patch', 'branch_label': 'minimal', 'launch': False},
+                {'preset': 'aggressive_refactor', 'branch_label': 'refactor', 'launch': True},
+            ],
+            'dry_run': True,
+            'auto_launch_selected': False,
+        },
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body['branch_set_id']
+    assert len(body['created_drafts']) == 2
+    assert len(body['launched_runs']) == 1
+
+
+def test_portfolio_and_decision_summary_routes(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='RootPortfolio', objective='Improve API stability')
+    created = client.post(
+        f'/api/integrations/runs/{source}/branch-set',
+        json={
+            'specs': [
+                {'preset': 'conservative_fix', 'branch_label': 'safe-path'},
+                {'preset': 'exploratory_branch', 'branch_label': 'explore-path'},
+            ]
+        },
+    )
+    assert created.status_code == 200
+    drafts = created.json()['created_drafts']
+    first_branch = drafts[0]['id']
+
+    shortlist = client.post(f'/api/integrations/runs/{first_branch}/shortlist', json={'decision_note': 'best candidate'})
+    assert shortlist.status_code == 200
+    assert shortlist.json()['decision_status'] == 'shortlisted'
+
+    root_id = source
+    portfolio = client.get(f'/api/integrations/lineage/{root_id}/portfolio')
+    assert portfolio.status_code == 200
+    p = portfolio.json()
+    assert p['branches']
+    assert 'interpretation_note' in p
+
+    summary = client.get(f'/api/integrations/lineage/{root_id}/decision-summary')
+    assert summary.status_code == 200
+    assert summary.json()['number_of_branches'] >= 1
+
+
+def test_export_import_preserves_branch_metadata(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='RootExport', objective='Export lineage branch metadata')
+    created = client.post(
+        f'/api/integrations/runs/{source}/branch-set',
+        json={'specs': [{'preset': 'minimal_patch', 'branch_label': 'branch-a'}]},
+    )
+    assert created.status_code == 200
+    branch_id = created.json()['created_drafts'][0]['id']
+    client.post(f'/api/integrations/runs/{branch_id}/eliminate', json={'decision_note': 'too risky'})
+
+    exported = client.get('/api/integrations/export')
+    assert exported.status_code == 200
+    payload = exported.json()
+    branch_rows = [r for r in payload['runs'] if r.get('id') == branch_id]
+    assert branch_rows and branch_rows[0].get('branch_set_id')
+    assert branch_rows[0].get('decision_status') == 'eliminated'
+
+    imported = client.post('/api/integrations/import', json=payload)
+    assert imported.status_code == 200

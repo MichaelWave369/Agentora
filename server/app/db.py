@@ -70,6 +70,14 @@ def _ensure_integrationrun_columns() -> None:
         'provenance_note': "TEXT NOT NULL DEFAULT ''",
         'fork_reason': "TEXT NOT NULL DEFAULT ''",
         'immutable_origin_created_at': 'DATETIME',
+        'branch_set_id': "TEXT NOT NULL DEFAULT ''",
+        'branch_label': "TEXT NOT NULL DEFAULT ''",
+        'branch_strategy': "TEXT NOT NULL DEFAULT ''",
+        'decision_status': "TEXT NOT NULL DEFAULT 'undecided'",
+        'shortlisted': 'BOOLEAN NOT NULL DEFAULT 0',
+        'eliminated': 'BOOLEAN NOT NULL DEFAULT 0',
+        'branch_order': 'INTEGER NOT NULL DEFAULT 0',
+        'decision_note': "TEXT NOT NULL DEFAULT ''",
     }
     with engine.connect() as conn:
         try:

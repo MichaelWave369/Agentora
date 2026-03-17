@@ -390,6 +390,14 @@ class IntegrationRun(SQLModel, table=True):
     provenance_note: str = ''
     fork_reason: str = ''
     immutable_origin_created_at: Optional[datetime] = None
+    branch_set_id: str = ''
+    branch_label: str = ''
+    branch_strategy: str = ''
+    decision_status: str = 'undecided'
+    shortlisted: bool = False
+    eliminated: bool = False
+    branch_order: int = 0
+    decision_note: str = ''
     error_message: str = ''
 
 

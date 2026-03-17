@@ -213,6 +213,14 @@ class OrchestrationRunRecord(BaseModel):
     provenance_note: str = ''
     fork_reason: str = ''
     immutable_origin_created_at: datetime | None = None
+    branch_set_id: str = ''
+    branch_label: str = ''
+    branch_strategy: str = ''
+    decision_status: str = 'undecided'
+    shortlisted: bool = False
+    eliminated: bool = False
+    branch_order: int = 0
+    decision_note: str = ''
     error_message: str = ''
 
 
@@ -281,6 +289,65 @@ class ReplayDraftRequest(BaseModel):
 
 class ReplayLaunchRequest(BaseModel):
     dry_run: bool = True
+
+
+class BranchDraftSpec(BaseModel):
+    preset: str = 'exploratory_branch'
+    branch_label: str | None = None
+    objective: str | None = None
+    constraints: list[str] | None = None
+    persona_id: str | None = None
+    fork_reason: str | None = None
+    provenance_note: str | None = None
+    launch: bool = False
+
+
+class BranchSetCreateRequest(BaseModel):
+    branch_set_id: str | None = None
+    set_label: str = ''
+    dry_run: bool = True
+    auto_launch_selected: bool = False
+    specs: list[BranchDraftSpec] = Field(default_factory=list)
+
+
+class BranchSetCreateResponse(BaseModel):
+    root_run_id: int
+    branch_set_id: str
+    created_drafts: list[OrchestrationRunRecord] = Field(default_factory=list)
+    launched_runs: list[OrchestrationRunRecord] = Field(default_factory=list)
+
+
+class BranchPortfolioBranch(BaseModel):
+    run_id: int
+    root_run_id: int | None = None
+    branch_set_id: str = ''
+    branch_label: str = ''
+    branch_strategy: str = ''
+    persona_id: str = ''
+    objective_delta: str = ''
+    status: str = ''
+    mission_score: int = 0
+    confidence_level: str = 'low'
+    risk_signal: str = 'high'
+    pr_present: bool = False
+    writeback_status: str = 'not_written'
+    shortlisted: bool = False
+    eliminated: bool = False
+    decision_status: str = 'undecided'
+
+
+class BranchPortfolioSummary(BaseModel):
+    root_run_id: int
+    branch_set_id: str | None = None
+    branches: list[BranchPortfolioBranch] = Field(default_factory=list)
+    ranking_summary: list[dict[str, Any]] = Field(default_factory=list)
+    shortlist_suggestions: list[int] = Field(default_factory=list)
+    elimination_suggestions: list[int] = Field(default_factory=list)
+    interpretation_note: str = ''
+
+
+class DecisionStateRequest(BaseModel):
+    decision_note: str = ''
 
 
 class LineageNode(BaseModel):

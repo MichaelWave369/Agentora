@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.db import get_session
 from app.integrations.agentception_client import AgentCeptionClient
 from app.integrations.phios_client import IntegrationClientError, PhiOSClient
-from app.integrations.schemas import ContextPackRequest, LaunchMissionRequest, PrepareMissionRequest, ReplayDraftRequest, ReplayLaunchRequest, SoftwareTaskRequest, WritebackRequest
+from app.integrations.schemas import BranchSetCreateRequest, ContextPackRequest, DecisionStateRequest, LaunchMissionRequest, PrepareMissionRequest, ReplayDraftRequest, ReplayLaunchRequest, SoftwareTaskRequest, WritebackRequest
 from app.models import IntegrationSetting, Message, Run
 from app.services.adapters.integrations import statuses
 from app.services.integration_orchestrator import IntegrationOrchestrator
@@ -190,6 +190,63 @@ def integration_lineage(run_id: int, session: Session = Depends(get_session)):
 def integration_lineage_root(root_run_id: int, session: Session = Depends(get_session)):
     try:
         return {'root_run_id': root_run_id, 'descendants': IntegrationOrchestrator(session).get_descendants(root_run_id)}
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/branch-strategies')
+def integration_branch_strategies(session: Session = Depends(get_session)):
+    return {'presets': IntegrationOrchestrator(session).get_branch_strategy_presets()}
+
+
+@router.post('/api/integrations/runs/{run_id}/branch-set')
+def integration_branch_set(run_id: int, payload: BranchSetCreateRequest, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).create_branch_set(run_id, payload.model_dump(mode='json')).model_dump(mode='json')
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/runs/{run_id}/portfolio')
+def integration_portfolio_by_run(run_id: int, branch_set_id: str | None = None, session: Session = Depends(get_session)):
+    try:
+        run = IntegrationOrchestrator(session).get_run(run_id)
+        if not run:
+            raise IntegrationClientError(f'Run {run_id} not found')
+        root_id = run.root_run_id or run.parent_run_id or run.id
+        return IntegrationOrchestrator(session).get_branch_portfolio(root_id, branch_set_id=branch_set_id).model_dump(mode='json')
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/lineage/{root_run_id}/portfolio')
+def integration_portfolio_by_root(root_run_id: int, branch_set_id: str | None = None, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).get_branch_portfolio(root_run_id, branch_set_id=branch_set_id).model_dump(mode='json')
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/lineage/{root_run_id}/decision-summary')
+def integration_decision_summary(root_run_id: int, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).get_root_decision_summary(root_run_id)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/api/integrations/runs/{run_id}/shortlist')
+def integration_shortlist(run_id: int, payload: DecisionStateRequest, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).set_branch_decision(run_id, shortlisted=True, eliminated=False, decision_note=payload.decision_note).model_dump(mode='json')
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/api/integrations/runs/{run_id}/eliminate')
+def integration_eliminate(run_id: int, payload: DecisionStateRequest, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).set_branch_decision(run_id, shortlisted=False, eliminated=True, decision_note=payload.decision_note).model_dump(mode='json')
     except IntegrationClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
