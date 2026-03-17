@@ -102,6 +102,13 @@ class Settings(BaseSettings):
 
     agentora_integrations_mock: bool = Field(default=False, alias='AGENTORA_INTEGRATIONS_MOCK')
 
+    agentora_missions_watcher_enabled: bool = Field(default=False, alias='AGENTORA_MISSIONS_WATCHER_ENABLED')
+    agentora_missions_watcher_interval_seconds: int = Field(default=20, alias='AGENTORA_MISSIONS_WATCHER_INTERVAL_SECONDS')
+    agentora_missions_watcher_max_active_runs: int = Field(default=25, alias='AGENTORA_MISSIONS_WATCHER_MAX_ACTIVE_RUNS')
+    agentora_missions_auto_writeback: bool = Field(default=False, alias='AGENTORA_MISSIONS_AUTO_WRITEBACK')
+    agentora_missions_writeback_debounce_seconds: int = Field(default=300, alias='AGENTORA_MISSIONS_WRITEBACK_DEBOUNCE_SECONDS')
+    agentora_missions_mcp_enabled: bool = Field(default=False, alias='AGENTORA_MISSIONS_MCP_ENABLED')
+
 
     @property
     def allowed_tool_names(self) -> set[str]:

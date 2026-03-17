@@ -1,6 +1,8 @@
+import json
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlencode
 
 import requests
 
@@ -494,117 +496,175 @@ def _software_missions_page():
 
     phios_health = safe_api_get('/api/integrations/phios/health', 'phios health')
     ac_health = safe_api_get('/api/integrations/agentception/health', 'agentception health')
-    if phios_health.get('mode') == 'mock' or ac_health.get('mode') == 'mock':
-        st.warning('Mock mode is active. Results are deterministic fakes for operator workflow testing.')
-    if phios_health.get('detail') == 'disabled' or ac_health.get('detail') == 'disabled':
-        st.warning('One or more integrations are disabled. Enable env flags or use mock mode.')
+
+    mock_active = phios_health.get('mode') == 'mock' or ac_health.get('mode') == 'mock'
+    if mock_active:
+        st.info('🧪 Mock mode active: mission packets, job updates, and writebacks are deterministic test data.')
+    elif phios_health.get('detail') == 'disabled' or ac_health.get('detail') == 'disabled':
+        st.warning('One or more integrations are disabled. Enable env flags or use AGENTORA_INTEGRATIONS_MOCK=true.')
+
+    watcher_cfg = {
+        'watcher_enabled': bool(os.getenv('AGENTORA_MISSIONS_WATCHER_ENABLED', 'false').lower() == 'true'),
+        'auto_writeback_enabled': bool(os.getenv('AGENTORA_MISSIONS_AUTO_WRITEBACK', 'false').lower() == 'true'),
+    }
+    st.json({'phios': phios_health, 'agentception': ac_health, 'mission_controls': watcher_cfg})
 
     st.markdown('### Mission Setup')
-    st.markdown('PhiOS and AgentCeption connectivity')
-    st.json({'phios': phios_health, 'agentception': ac_health})
-
     persona_id = st.text_input('persona_id', value='operator-default')
     repo = st.text_input('repo', value='owner/repo')
     mission_title = st.text_input('mission title', value='Bridge hardening mission')
-    objective = st.text_area('objective', value='Execute a structured mission loop with context injection, launch, refresh, and writeback.')
-    operator_intent = st.text_area('operator intent', value='Ship safely with clear telemetry and recoverable operator actions.')
+    objective = st.text_area('objective', value='Execute a structured mission loop with context injection, launch, watch/refresh, and writeback review.')
+    operator_intent = st.text_area('operator intent', value='Ship safely with clear telemetry, debounce writeback, and durable mission history.')
     acceptance = st.text_area('acceptance criteria (one per line)', value='Prepare returns structured mission packet\nLaunch persists run linkage\nRefresh updates normalized outcome\nWriteback stores structured result')
     constraints = st.text_area('constraints (one per line)', value='Do not vendor AgentCeption\nDo not break existing Agentora startup')
     dry_run = st.checkbox('dry_run', value=True)
 
-    if st.button('Prepare Mission Context'):
-        prepare_payload = {
-            'persona_id': persona_id,
-            'repo': repo,
-            'mission_title': mission_title,
-            'objective': objective,
-            'operator_intent': operator_intent,
-            'constraints': [line.strip() for line in constraints.splitlines() if line.strip()],
-        }
-        packet = safe_api_post('/api/integrations/runs/prepare', prepare_payload, 'prepare mission')
-        st.session_state['mission_packet'] = packet
+    cbtn1, cbtn2 = st.columns(2)
+    with cbtn1:
+        if st.button('Prepare Mission Context'):
+            prepare_payload = {
+                'persona_id': persona_id,
+                'repo': repo,
+                'mission_title': mission_title,
+                'objective': objective,
+                'operator_intent': operator_intent,
+                'constraints': [line.strip() for line in constraints.splitlines() if line.strip()],
+            }
+            packet = safe_api_post('/api/integrations/runs/prepare', prepare_payload, 'prepare mission')
+            st.session_state['mission_packet'] = packet
+    with cbtn2:
+        if st.button('Launch Mission'):
+            launch_payload = {
+                'persona_id': persona_id,
+                'repo': repo,
+                'mission_title': mission_title,
+                'objective': objective,
+                'operator_intent': operator_intent,
+                'acceptance_criteria': [line.strip() for line in acceptance.splitlines() if line.strip()],
+                'constraints': [line.strip() for line in constraints.splitlines() if line.strip()],
+                'dry_run': dry_run,
+                'prepared_packet': st.session_state.get('mission_packet') or None,
+            }
+            run_record = safe_api_post('/api/integrations/runs/launch', launch_payload, 'launch mission')
+            st.session_state['integration_run'] = run_record
 
-    packet = st.session_state.get('mission_packet', {})
     st.markdown('### PhiOS Mission Packet Preview')
+    packet = st.session_state.get('mission_packet', {})
     if packet:
-        st.markdown('**Persona summary**')
-        st.json(packet.get('persona', {}))
-        st.markdown('**Context summary**')
-        st.write(packet.get('summary', ''))
-        st.markdown('**Memory snippets**')
-        st.json(packet.get('memory_snippets', []))
-        st.markdown('**Coding style preferences**')
-        st.json(packet.get('coding_style_preferences', []))
-        st.markdown('**Architectural principles**')
-        st.json(packet.get('architectural_principles', []))
-        st.markdown('**Risk flags**')
-        st.json(packet.get('risk_flags', []))
-        st.markdown('**Recommended next actions**')
-        st.json(packet.get('recommended_next_actions', []))
-        st.markdown('**Success criteria**')
-        st.json(packet.get('success_criteria', []))
-        st.markdown('**Dispatch brief**')
-        st.json(packet.get('dispatch_brief', {}))
+        st.json({
+            'persona': packet.get('persona', {}),
+            'summary': packet.get('summary', ''),
+            'memory_snippets': packet.get('memory_snippets', []),
+            'coding_style_preferences': packet.get('coding_style_preferences', []),
+            'architectural_principles': packet.get('architectural_principles', []),
+            'risk_flags': packet.get('risk_flags', []),
+            'recommended_next_actions': packet.get('recommended_next_actions', []),
+            'success_criteria': packet.get('success_criteria', []),
+            'dispatch_brief': packet.get('dispatch_brief', {}),
+        })
     else:
-        st.info('Prepare mission context to preview PhiOS packet details.')
-
-    if st.button('Launch Mission'):
-        launch_payload = {
-            'persona_id': persona_id,
-            'repo': repo,
-            'mission_title': mission_title,
-            'objective': objective,
-            'operator_intent': operator_intent,
-            'acceptance_criteria': [line.strip() for line in acceptance.splitlines() if line.strip()],
-            'constraints': [line.strip() for line in constraints.splitlines() if line.strip()],
-            'dry_run': dry_run,
-            'prepared_packet': packet or None,
-        }
-        run_record = safe_api_post('/api/integrations/runs/launch', launch_payload, 'launch mission')
-        st.session_state['integration_run'] = run_record
+        st.caption('No prepared packet yet.')
 
     st.markdown('### Mission Status')
     run = st.session_state.get('integration_run', {})
     if run:
-        st.json(run)
+        st.markdown(f"### 🔎 Active Mission: {run.get('mission_title', '(untitled)')}")
+        st.markdown(f"**Run ID:** {run.get('id', '')} | **Job ID:** {run.get('agentception_job_id', '')}")
+        st.markdown(f"**Status:** {run.get('status', '')} | **AgentCeption:** {run.get('agentception_status', '')} | **Writeback:** {run.get('writeback_status', '')}")
+        st.markdown(f"**Branch:** {run.get('branch', '')} | **PR:** {run.get('pr_url', '')}")
+        st.markdown(f"**Watcher:** {'enabled' if run.get('watch_enabled') else 'disabled'} | **Auto writeback:** {'enabled' if run.get('auto_writeback_enabled') else 'disabled'}")
+        st.markdown(f"**Summary:** {run.get('summary', '')}")
+
         run_id = run.get('id')
-        if run_id:
-            if st.button('Refresh Status'):
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            if run_id and st.button('Refresh Status'):
                 refreshed = safe_api_post(f'/api/integrations/runs/{run_id}/refresh', {}, 'refresh run')
                 st.session_state['integration_run'] = refreshed
-                run = refreshed
-            if st.button('Write Back to PhiOS'):
-                payload = {'operator_notes': 'manual writeback from Software Missions UI', 'tags': ['phase-c', 'manual']}
+        with c2:
+            if run_id and st.button('Write Back to PhiOS'):
+                payload = {'operator_notes': 'manual writeback from Software Missions UI', 'tags': ['phase-d', 'manual']}
                 st.json(safe_api_post(f'/api/integrations/runs/{run_id}/writeback', payload, 'writeback'))
-
-            st.markdown(f"- **Run ID:** {run.get('id', '')}")
-            st.markdown(f"- **AgentCeption Job ID:** {run.get('agentception_job_id', '')}")
-            st.markdown(f"- **Status:** {run.get('agentception_status', run.get('status', ''))}")
-            st.markdown(f"- **Phase:** {run.get('agentception_result_json', '')[:140]}")
-            st.markdown(f"- **Branch:** {run.get('branch', '')}")
-            st.markdown(f"- **PR URL:** {run.get('pr_url', '')}")
-            st.markdown(f"- **Summary:** {run.get('summary', '')}")
+        with c3:
+            if run_id and st.button('Watch Run'):
+                st.session_state['integration_run'] = safe_api_post(f'/api/integrations/runs/{run_id}/watch', {}, 'watch run')
+        with c4:
+            if run_id and st.button('Unwatch Run'):
+                st.session_state['integration_run'] = safe_api_post(f'/api/integrations/runs/{run_id}/unwatch', {}, 'unwatch run')
     else:
-        st.info('No mission launched in this session yet.')
+        st.info('No active mission in session.')
 
     st.markdown('### Mission History')
-    history = safe_api_get('/api/integrations/runs', 'mission history')
-    if isinstance(history, list) and history:
-        compact = [
-            {
-                'created_at': item.get('created_at'),
-                'mission_title': item.get('mission_title'),
-                'repo': item.get('repo'),
-                'status': item.get('status'),
-                'pr_url': item.get('pr_url'),
-                'writeback_status': item.get('writeback_status'),
-            }
-            for item in history[:15]
-        ]
-        st.table(compact)
-    else:
-        st.caption('No mission history yet.')
+    h1, h2, h3, h4 = st.columns(4)
+    with h1:
+        filter_status = st.selectbox('status filter', options=['', 'preparing_launch', 'launched', 'running', 'completed', 'failed', 'cancelled', 'error'])
+    with h2:
+        filter_repo = st.text_input('repo filter', value='')
+    with h3:
+        filter_persona = st.text_input('persona filter', value='')
+    with h4:
+        filter_writeback = st.selectbox('writeback filter', options=['', 'not_written', 'written', 'failed'])
+    search_text = st.text_input('search mission title/objective/summary', value='')
 
+    params = {
+        'status': filter_status,
+        'repo': filter_repo,
+        'persona_id': filter_persona,
+        'writeback_status': filter_writeback,
+        'search': search_text,
+        'limit': 25,
+        'offset': 0,
+    }
+    query = urlencode({k: v for k, v in params.items() if v not in ('', None)})
+    history = safe_api_get(f"/api/integrations/runs?{query}" if query else '/api/integrations/runs', 'mission history')
+
+    if isinstance(history, list) and history:
+        compact = []
+        for item in history:
+            phase = ''
+            try:
+                payload = item.get('agentception_result_json', '{}')
+                if payload:
+                    phase = json.loads(payload).get('phase', '')
+            except Exception:
+                phase = ''
+            compact.append(
+                {
+                    'id': item.get('id'),
+                    'created_at': item.get('created_at'),
+                    'mission_title': item.get('mission_title'),
+                    'repo': item.get('repo'),
+                    'persona_id': item.get('persona_id'),
+                    'status': item.get('status'),
+                    'phase': phase,
+                    'pr_url': item.get('pr_url'),
+                    'writeback_status': item.get('writeback_status'),
+                }
+            )
+        st.table(compact)
+
+        selected_id = st.selectbox('recent mission detail', options=[x.get('id') for x in compact], index=0)
+        if selected_id:
+            detail = safe_api_get(f'/api/integrations/runs/{selected_id}', 'mission detail')
+            st.json(detail)
+
+        st.markdown('#### Compare Missions')
+        c_left, c_right = st.columns(2)
+        with c_left:
+            left_id = st.selectbox('left run', options=[x.get('id') for x in compact], key='compare_left')
+        with c_right:
+            right_id = st.selectbox('right run', options=[x.get('id') for x in compact], key='compare_right')
+        if left_id and right_id:
+            compare = safe_api_get(f'/api/integrations/runs/compare?left_run_id={left_id}&right_run_id={right_id}', 'compare missions')
+            cols = st.columns(2)
+            with cols[0]:
+                st.markdown('**Left mission**')
+                st.json(compare.get('left', {}))
+            with cols[1]:
+                st.markdown('**Right mission**')
+                st.json(compare.get('right', {}))
+    else:
+        st.caption('No mission history matches current filters.')
 
 def _core_page():
     _panel_json('Health', '/api/health')

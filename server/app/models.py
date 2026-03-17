@@ -365,6 +365,14 @@ class IntegrationRun(SQLModel, table=True):
     writeback_status: str = 'not_written'
     writeback_at: Optional[datetime] = None
     writeback_error: str = ''
+    last_outcome_hash: str = ''
+    last_writeback_hash: str = ''
+    last_writeback_attempt_at: Optional[datetime] = None
+    writeback_policy: str = 'manual'
+    auto_writeback_enabled: bool = False
+    watch_enabled: bool = True
+    last_refreshed_at: Optional[datetime] = None
+    watch_error: str = ''
     error_message: str = ''
 
 class IntegrationSetting(SQLModel, table=True):

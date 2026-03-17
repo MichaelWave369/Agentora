@@ -45,6 +45,14 @@ def _ensure_integrationrun_columns() -> None:
         'writeback_error': "TEXT NOT NULL DEFAULT ''",
         'phios_packet_json': "TEXT NOT NULL DEFAULT '{}'",
         'agentception_result_json': "TEXT NOT NULL DEFAULT '{}'",
+        'last_outcome_hash': "TEXT NOT NULL DEFAULT ''",
+        'last_writeback_hash': "TEXT NOT NULL DEFAULT ''",
+        'last_writeback_attempt_at': 'DATETIME',
+        'writeback_policy': "TEXT NOT NULL DEFAULT 'manual'",
+        'auto_writeback_enabled': 'BOOLEAN NOT NULL DEFAULT 0',
+        'watch_enabled': 'BOOLEAN NOT NULL DEFAULT 1',
+        'last_refreshed_at': 'DATETIME',
+        'watch_error': "TEXT NOT NULL DEFAULT ''",
     }
     with engine.connect() as conn:
         try:

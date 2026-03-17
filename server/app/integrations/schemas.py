@@ -188,6 +188,14 @@ class OrchestrationRunRecord(BaseModel):
     writeback_status: str = 'not_written'
     writeback_at: datetime | None = None
     writeback_error: str = ''
+    last_outcome_hash: str = ''
+    last_writeback_hash: str = ''
+    last_writeback_attempt_at: datetime | None = None
+    writeback_policy: str = 'manual'
+    auto_writeback_enabled: bool = False
+    watch_enabled: bool = True
+    last_refreshed_at: datetime | None = None
+    watch_error: str = ''
     error_message: str = ''
 
 

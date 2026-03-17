@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import datetime, timezone
 from typing import Any
@@ -93,9 +94,34 @@ def map_outcome_to_writeback_payload(
         artifact_urls=outcome.artifact_urls,
         recommended_followups=followups,
         operator_notes=operator_notes,
-        tags=tags or ['agentora', 'phase-c', outcome.status],
+        tags=tags or ['agentora', 'phase-d', outcome.status],
         raw_payload={'outcome': outcome.model_dump(mode='json')},
     )
+
+
+def outcome_fingerprint(outcome: AgentExecutionOutcome) -> str:
+    payload = {
+        'job_id': outcome.job_id,
+        'status': outcome.status,
+        'phase': outcome.phase,
+        'branch': outcome.branch,
+        'pr_url': outcome.pr_url,
+        'issue_urls': outcome.issue_urls,
+        'artifact_urls': outcome.artifact_urls,
+        'summary': outcome.summary,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode('utf-8')).hexdigest()
+
+
+def is_meaningful_outcome(outcome: AgentExecutionOutcome) -> bool:
+    return bool(outcome.summary or outcome.pr_url or outcome.issue_urls or outcome.artifact_urls)
+
+
+def is_terminal_or_milestone(outcome: AgentExecutionOutcome) -> bool:
+    if outcome.status in {'completed', 'failed', 'cancelled'}:
+        return True
+    milestone_phases = {'pr_opened', 'review_ready', 'implementation_complete'}
+    return outcome.phase in milestone_phases or bool(outcome.pr_url)
 
 
 def dumps_json(data: Any) -> str:

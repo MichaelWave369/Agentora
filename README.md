@@ -205,3 +205,51 @@ Then open **Software Missions** and use: Prepare Mission Context → Launch Miss
 - AgentCeption and PhiOS endpoint fields are normalized defensively and may require schema alignment with live deployments.
 - Refresh is operator-triggered (no background poll worker yet).
 - Writeback is manual by default to avoid repeated auto-writeback spam.
+
+## PhiOS + AgentCeption integration (Phase D)
+
+Phase D makes Software Missions durable and operator-friendly with optional background automation.
+
+### New capabilities
+
+- **Background mission watcher** (env-gated): periodically refreshes active runs.
+- **Debounced auto-writeback policy** (env-gated): prevents repeated duplicate PhiOS writebacks.
+- **Mission history filters and compare**: status/repo/persona/writeback/search filtering + side-by-side compare.
+- **Optional MCP mission operations exposure** (env-gated) for external clients.
+
+### Phase D env flags
+
+```bash
+AGENTORA_MISSIONS_WATCHER_ENABLED=false
+AGENTORA_MISSIONS_WATCHER_INTERVAL_SECONDS=20
+AGENTORA_MISSIONS_WATCHER_MAX_ACTIVE_RUNS=25
+AGENTORA_MISSIONS_AUTO_WRITEBACK=false
+AGENTORA_MISSIONS_WRITEBACK_DEBOUNCE_SECONDS=300
+AGENTORA_MISSIONS_MCP_ENABLED=false
+```
+
+### Lifecycle
+
+Prepare -> Launch -> Watch/Refresh -> Writeback -> Review/Compare
+
+### Optional MCP mission ops
+
+When `AGENTORA_MISSIONS_MCP_ENABLED=true`, Agentora exposes mission operations via:
+
+- `GET /api/integrations/mcp/capabilities`
+- `POST /api/integrations/mcp/call`
+
+Supported MCP tool names:
+- `prepare_mission`
+- `launch_mission`
+- `refresh_mission`
+- `writeback_mission`
+- `get_mission`
+- `list_missions`
+- `get_mission_timeline`
+
+### Known limitations (Phase D)
+
+- Watcher is intentionally lightweight for single-process local use.
+- Auto-writeback is conservative and debounced; manual writeback remains primary for operator control.
+- MCP exposure is an HTTP-backed extension point (not a full separate MCP server runtime yet).
