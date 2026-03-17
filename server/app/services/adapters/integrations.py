@@ -1,7 +1,7 @@
 from sqlmodel import Session
 from app.models import IntegrationSetting
 
-DEFAULTS = ['private_spark', 'personal_memory_agent', 'growora']
+DEFAULTS = ['private_spark', 'personal_memory_agent', 'growora', 'phios', 'agentception']
 
 
 def ensure_defaults(session: Session):

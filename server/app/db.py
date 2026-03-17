@@ -27,11 +27,70 @@ def set_engine(database_url: str):
     return engine
 
 
+def _ensure_integrationrun_columns() -> None:
+    required = {
+        'mission_title': "TEXT NOT NULL DEFAULT ''",
+        'operator_intent': "TEXT NOT NULL DEFAULT ''",
+        'context_summary': "TEXT NOT NULL DEFAULT ''",
+        'dispatch_brief': "TEXT NOT NULL DEFAULT ''",
+        'acceptance_criteria_json': "TEXT NOT NULL DEFAULT '[]'",
+        'constraints_json': "TEXT NOT NULL DEFAULT '[]'",
+        'success_criteria_json': "TEXT NOT NULL DEFAULT '[]'",
+        'recommended_actions_json': "TEXT NOT NULL DEFAULT '[]'",
+        'branch': "TEXT NOT NULL DEFAULT ''",
+        'issue_urls_json': "TEXT NOT NULL DEFAULT '[]'",
+        'artifact_urls_json': "TEXT NOT NULL DEFAULT '[]'",
+        'writeback_status': "TEXT NOT NULL DEFAULT 'not_written'",
+        'writeback_at': 'DATETIME',
+        'writeback_error': "TEXT NOT NULL DEFAULT ''",
+        'phios_packet_json': "TEXT NOT NULL DEFAULT '{}'",
+        'agentception_result_json': "TEXT NOT NULL DEFAULT '{}'",
+        'last_outcome_hash': "TEXT NOT NULL DEFAULT ''",
+        'last_writeback_hash': "TEXT NOT NULL DEFAULT ''",
+        'last_writeback_attempt_at': 'DATETIME',
+        'writeback_policy': "TEXT NOT NULL DEFAULT 'manual'",
+        'auto_writeback_enabled': 'BOOLEAN NOT NULL DEFAULT 0',
+        'watch_enabled': 'BOOLEAN NOT NULL DEFAULT 1',
+        'last_refreshed_at': 'DATETIME',
+        'watch_error': "TEXT NOT NULL DEFAULT ''",
+        'refresh_count': 'INTEGER NOT NULL DEFAULT 0',
+        'mission_score': 'INTEGER NOT NULL DEFAULT 0',
+        'confidence_level': "TEXT NOT NULL DEFAULT 'low'",
+        'completion_signal': "TEXT NOT NULL DEFAULT 'unknown'",
+        'result_quality_signal': "TEXT NOT NULL DEFAULT 'low'",
+        'writeback_readiness_signal': "TEXT NOT NULL DEFAULT 'low'",
+        'risk_signal': "TEXT NOT NULL DEFAULT 'high'",
+        'mission_snapshot_json': "TEXT NOT NULL DEFAULT '{}'",
+        'snapshot_hash': "TEXT NOT NULL DEFAULT ''",
+        'parent_run_id': 'INTEGER',
+        'root_run_id': 'INTEGER',
+        'lineage_depth': 'INTEGER NOT NULL DEFAULT 0',
+        'replay_source_snapshot_hash': "TEXT NOT NULL DEFAULT ''",
+        'replay_kind': "TEXT NOT NULL DEFAULT ''",
+        'provenance_note': "TEXT NOT NULL DEFAULT ''",
+        'fork_reason': "TEXT NOT NULL DEFAULT ''",
+        'immutable_origin_created_at': 'DATETIME',
+    }
+    with engine.connect() as conn:
+        try:
+            rows = conn.exec_driver_sql("PRAGMA table_info('integrationrun')").fetchall()
+        except Exception:
+            return
+        if not rows:
+            return
+        existing = {row[1] for row in rows}
+        for col, col_def in required.items():
+            if col not in existing:
+                conn.exec_driver_sql(f'ALTER TABLE integrationrun ADD COLUMN {col} {col_def}')
+        conn.commit()
+
+
 def create_db_and_tables() -> None:
     # Ensure all SQLModel tables are registered before metadata.create_all()
     from . import models  # noqa: F401
 
     SQLModel.metadata.create_all(engine)
+    _ensure_integrationrun_columns()
 
 
 def init_db(database_url: Optional[str] = None):
