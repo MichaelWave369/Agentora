@@ -333,6 +333,24 @@ class TemplateUsage(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
 
 
+
+
+class IntegrationRun(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    status: str = 'created'
+    persona_id: str = ''
+    repo: str = ''
+    objective: str = ''
+    phios_session_id: str = ''
+    agentception_job_id: str = ''
+    agentception_status: str = ''
+    pr_url: str = ''
+    summary: str = ''
+    raw_payload_json: str = '{}'
+    error_message: str = ''
+
 class IntegrationSetting(SQLModel, table=True):
     name: str = Field(primary_key=True)
     enabled: bool = False

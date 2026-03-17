@@ -90,6 +90,18 @@ class Settings(BaseSettings):
     coevo_url: str = Field(default='', alias='COEVO_URL')
     coevo_api_key: str = Field(default='', alias='COEVO_API_KEY')
 
+    agentora_phios_enabled: bool = Field(default=False, alias='AGENTORA_PHIOS_ENABLED')
+    agentora_phios_url: str = Field(default='http://127.0.0.1:8090', alias='AGENTORA_PHIOS_URL')
+    agentora_phios_api_key: str = Field(default='', alias='AGENTORA_PHIOS_API_KEY')
+    agentora_phios_timeout_seconds: int = Field(default=20, alias='AGENTORA_PHIOS_TIMEOUT_SECONDS')
+
+    agentora_agentception_enabled: bool = Field(default=False, alias='AGENTORA_AGENTCEPTION_ENABLED')
+    agentora_agentception_url: str = Field(default='http://127.0.0.1:1337', alias='AGENTORA_AGENTCEPTION_URL')
+    agentora_agentception_api_key: str = Field(default='', alias='AGENTORA_AGENTCEPTION_API_KEY')
+    agentora_agentception_timeout_seconds: int = Field(default=45, alias='AGENTORA_AGENTCEPTION_TIMEOUT_SECONDS')
+
+    agentora_integrations_mock: bool = Field(default=False, alias='AGENTORA_INTEGRATIONS_MOCK')
+
 
     @property
     def allowed_tool_names(self) -> set[str]:
