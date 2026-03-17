@@ -29,6 +29,21 @@ def _enforce_mcp_policy(tool: str, x_api_key: str | None):
         return {'ok': False, 'detail': f'MCP is read-only; tool blocked: {tool}'}
     return None
 
+MCP_MUTATING_TOOLS = {'launch_mission', 'refresh_mission', 'writeback_mission'}
+
+
+def _enforce_mcp_policy(tool: str, x_api_key: str | None):
+    if not settings.agentora_missions_mcp_enabled:
+        return {'ok': False, 'detail': 'MCP mission exposure disabled (set AGENTORA_MISSIONS_MCP_ENABLED=true).'}
+    if settings.agentora_missions_mcp_api_key and x_api_key != settings.agentora_missions_mcp_api_key:
+        return {'ok': False, 'detail': 'Invalid or missing MCP API key.'}
+    allowed = settings.missions_mcp_allowed_tools
+    if allowed and tool and tool not in allowed:
+        return {'ok': False, 'detail': f'Tool not allowed by policy: {tool}'}
+    if settings.agentora_missions_mcp_read_only and tool in MCP_MUTATING_TOOLS:
+        return {'ok': False, 'detail': f'MCP is read-only; tool blocked: {tool}'}
+    return None
+
 
 @router.get('/api/integrations/status')
 def integration_status(session: Session = Depends(get_session)):
