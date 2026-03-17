@@ -6,7 +6,13 @@ from sqlmodel import Session
 from app.db import get_session
 from app.integrations.agentception_client import AgentCeptionClient
 from app.integrations.phios_client import IntegrationClientError, PhiOSClient
-from app.integrations.schemas import ContextPackRequest, SoftwareTaskRequest, WritebackRequest
+from app.integrations.schemas import (
+    ContextPackRequest,
+    LaunchMissionRequest,
+    PrepareMissionRequest,
+    SoftwareTaskRequest,
+    WritebackRequest,
+)
 from app.models import IntegrationSetting, Message, Run
 from app.services.adapters.integrations import statuses
 from app.services.integration_orchestrator import IntegrationOrchestrator
@@ -68,9 +74,8 @@ def agentception_health():
 
 
 @router.post('/api/integrations/agentception/launch')
-def integration_launch(payload: SoftwareTaskRequest, session: Session = Depends(get_session)):
-    orchestrator = IntegrationOrchestrator(session)
-    record = orchestrator.launch_from_request(payload)
+def integration_launch_legacy(payload: SoftwareTaskRequest, session: Session = Depends(get_session)):
+    record = IntegrationOrchestrator(session).launch_from_request(payload)
     return record.model_dump(mode='json')
 
 
@@ -80,6 +85,21 @@ def integration_job(job_id: str):
         return AgentCeptionClient().get_job_status(job_id).model_dump(mode='json')
     except IntegrationClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/api/integrations/runs/prepare')
+def integration_prepare(payload: PrepareMissionRequest, session: Session = Depends(get_session)):
+    try:
+        packet = IntegrationOrchestrator(session).prepare_mission_context(payload)
+        return packet.model_dump(mode='json')
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/api/integrations/runs/launch')
+def integration_launch(payload: LaunchMissionRequest, session: Session = Depends(get_session)):
+    record = IntegrationOrchestrator(session).launch_software_mission(payload)
+    return record.model_dump(mode='json')
 
 
 @router.get('/api/integrations/runs')
@@ -107,6 +127,14 @@ def integration_refresh(run_id: int, session: Session = Depends(get_session)):
 @router.post('/api/integrations/runs/{run_id}/writeback')
 def integration_writeback(run_id: int, payload: WritebackRequest, session: Session = Depends(get_session)):
     try:
-        return IntegrationOrchestrator(session).writeback_run(run_id, payload.summary, payload.details, payload.tags)
+        return IntegrationOrchestrator(session).writeback_run(run_id, payload.operator_notes, payload.tags)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/runs/{run_id}/timeline')
+def integration_timeline(run_id: int, session: Session = Depends(get_session)):
+    try:
+        return {'run_id': run_id, 'events': IntegrationOrchestrator(session).run_timeline(run_id)}
     except IntegrationClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
