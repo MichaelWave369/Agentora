@@ -333,6 +333,66 @@ class TemplateUsage(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
 
 
+
+
+class IntegrationRun(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    status: str = 'created'
+    persona_id: str = ''
+    repo: str = ''
+    mission_title: str = ''
+    objective: str = ''
+    operator_intent: str = ''
+    context_summary: str = ''
+    dispatch_brief: str = ''
+    acceptance_criteria_json: str = '[]'
+    constraints_json: str = '[]'
+    success_criteria_json: str = '[]'
+    recommended_actions_json: str = '[]'
+    phios_session_id: str = ''
+    agentception_job_id: str = ''
+    agentception_status: str = ''
+    branch: str = ''
+    pr_url: str = ''
+    issue_urls_json: str = '[]'
+    artifact_urls_json: str = '[]'
+    summary: str = ''
+    raw_payload_json: str = '{}'
+    phios_packet_json: str = '{}'
+    agentception_result_json: str = '{}'
+    writeback_status: str = 'not_written'
+    writeback_at: Optional[datetime] = None
+    writeback_error: str = ''
+    last_outcome_hash: str = ''
+    last_writeback_hash: str = ''
+    last_writeback_attempt_at: Optional[datetime] = None
+    writeback_policy: str = 'manual'
+    auto_writeback_enabled: bool = False
+    watch_enabled: bool = True
+    last_refreshed_at: Optional[datetime] = None
+    watch_error: str = ''
+    refresh_count: int = 0
+    mission_score: int = 0
+    confidence_level: str = 'low'
+    completion_signal: str = 'unknown'
+    result_quality_signal: str = 'low'
+    writeback_readiness_signal: str = 'low'
+    risk_signal: str = 'high'
+    error_message: str = ''
+
+
+
+class WatcherEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: Optional[int] = None
+    event_type: str
+    status: str = ''
+    latency_ms: float = 0.0
+    detail_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 class IntegrationSetting(SQLModel, table=True):
     name: str = Field(primary_key=True)
     enabled: bool = False

@@ -90,6 +90,28 @@ class Settings(BaseSettings):
     coevo_url: str = Field(default='', alias='COEVO_URL')
     coevo_api_key: str = Field(default='', alias='COEVO_API_KEY')
 
+    agentora_phios_enabled: bool = Field(default=False, alias='AGENTORA_PHIOS_ENABLED')
+    agentora_phios_url: str = Field(default='http://127.0.0.1:8090', alias='AGENTORA_PHIOS_URL')
+    agentora_phios_api_key: str = Field(default='', alias='AGENTORA_PHIOS_API_KEY')
+    agentora_phios_timeout_seconds: int = Field(default=20, alias='AGENTORA_PHIOS_TIMEOUT_SECONDS')
+
+    agentora_agentception_enabled: bool = Field(default=False, alias='AGENTORA_AGENTCEPTION_ENABLED')
+    agentora_agentception_url: str = Field(default='http://127.0.0.1:1337', alias='AGENTORA_AGENTCEPTION_URL')
+    agentora_agentception_api_key: str = Field(default='', alias='AGENTORA_AGENTCEPTION_API_KEY')
+    agentora_agentception_timeout_seconds: int = Field(default=45, alias='AGENTORA_AGENTCEPTION_TIMEOUT_SECONDS')
+
+    agentora_integrations_mock: bool = Field(default=False, alias='AGENTORA_INTEGRATIONS_MOCK')
+
+    agentora_missions_watcher_enabled: bool = Field(default=False, alias='AGENTORA_MISSIONS_WATCHER_ENABLED')
+    agentora_missions_watcher_interval_seconds: int = Field(default=20, alias='AGENTORA_MISSIONS_WATCHER_INTERVAL_SECONDS')
+    agentora_missions_watcher_max_active_runs: int = Field(default=25, alias='AGENTORA_MISSIONS_WATCHER_MAX_ACTIVE_RUNS')
+    agentora_missions_auto_writeback: bool = Field(default=False, alias='AGENTORA_MISSIONS_AUTO_WRITEBACK')
+    agentora_missions_writeback_debounce_seconds: int = Field(default=300, alias='AGENTORA_MISSIONS_WRITEBACK_DEBOUNCE_SECONDS')
+    agentora_missions_mcp_enabled: bool = Field(default=False, alias='AGENTORA_MISSIONS_MCP_ENABLED')
+    agentora_missions_mcp_api_key: str = Field(default='', alias='AGENTORA_MISSIONS_MCP_API_KEY')
+    agentora_missions_mcp_read_only: bool = Field(default=False, alias='AGENTORA_MISSIONS_MCP_READ_ONLY')
+    agentora_missions_mcp_allowed_tools: str = Field(default='', alias='AGENTORA_MISSIONS_MCP_ALLOWED_TOOLS')
+
 
     @property
     def allowed_tool_names(self) -> set[str]:
@@ -142,6 +164,10 @@ class Settings(BaseSettings):
     @property
     def allowed_apps(self) -> list[str]:
         return [x.strip() for x in self.agentora_allowed_apps.split(',') if x.strip()]
+
+    @property
+    def missions_mcp_allowed_tools(self) -> set[str]:
+        return {x.strip() for x in self.agentora_missions_mcp_allowed_tools.split(',') if x.strip()}
 
 
 settings = Settings()

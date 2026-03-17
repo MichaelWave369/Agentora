@@ -1,6 +1,8 @@
+import json
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlencode
 
 import requests
 
@@ -487,6 +489,148 @@ def _world_garden_page():
         st.balloons()
         st.json(safe_api_post('/api/world-garden/festival/harvest', {}, 'harvest festival'))
 
+
+
+def _software_missions_page():
+    st.subheader('Phi x Ception — Software Missions')
+
+    phios_health = safe_api_get('/api/integrations/phios/health', 'phios health')
+    ac_health = safe_api_get('/api/integrations/agentception/health', 'agentception health')
+    metrics = safe_api_get('/api/integrations/metrics', 'mission metrics')
+    insights = safe_api_get('/api/integrations/insights', 'mission insights')
+    watcher_events = safe_api_get('/api/integrations/watcher/events?limit=20', 'watcher events')
+
+    mock_active = phios_health.get('mode') == 'mock' or ac_health.get('mode') == 'mock'
+    if mock_active:
+        st.info('🧪 Mock mode active: mission packets, watcher telemetry, and writeback outcomes use deterministic test data.')
+    elif phios_health.get('detail') == 'disabled' or ac_health.get('detail') == 'disabled':
+        st.warning('One or more integrations are disabled. Enable env flags or use AGENTORA_INTEGRATIONS_MOCK=true.')
+
+    st.markdown('### Mission Telemetry')
+    st.json({'metrics': metrics, 'recent_events': watcher_events.get('events', [])[:8]})
+
+    st.markdown('### Mission Insights')
+    st.json(insights)
+
+    st.markdown('### Mission Setup')
+    persona_id = st.text_input('persona_id', value='operator-default')
+    repo = st.text_input('repo', value='owner/repo')
+    mission_title = st.text_input('mission title', value='Bridge intelligence mission')
+    objective = st.text_area('objective', value='Run a durable mission with telemetry, evaluation signals, compare diffs, and policy-aware writeback.')
+    operator_intent = st.text_area('operator intent', value='Improve observability and trust while preserving local-first operator control.')
+    acceptance = st.text_area('acceptance criteria (one per line)', value='Watcher metrics update\nStructured compare includes diff interpretation\nEvaluation signals persist and display\nMCP policy controls enforce access')
+    constraints = st.text_area('constraints (one per line)', value='No heavy monitoring infra\nNo silent repeated writebacks')
+    dry_run = st.checkbox('dry_run', value=True)
+
+    cbtn1, cbtn2 = st.columns(2)
+    with cbtn1:
+        if st.button('Prepare Mission Context'):
+            payload = {
+                'persona_id': persona_id,
+                'repo': repo,
+                'mission_title': mission_title,
+                'objective': objective,
+                'operator_intent': operator_intent,
+                'constraints': [line.strip() for line in constraints.splitlines() if line.strip()],
+            }
+            st.session_state['mission_packet'] = safe_api_post('/api/integrations/runs/prepare', payload, 'prepare mission')
+    with cbtn2:
+        if st.button('Launch Mission'):
+            payload = {
+                'persona_id': persona_id,
+                'repo': repo,
+                'mission_title': mission_title,
+                'objective': objective,
+                'operator_intent': operator_intent,
+                'acceptance_criteria': [line.strip() for line in acceptance.splitlines() if line.strip()],
+                'constraints': [line.strip() for line in constraints.splitlines() if line.strip()],
+                'dry_run': dry_run,
+                'prepared_packet': st.session_state.get('mission_packet') or None,
+            }
+            st.session_state['integration_run'] = safe_api_post('/api/integrations/runs/launch', payload, 'launch mission')
+
+    st.markdown('### PhiOS Mission Packet Preview')
+    packet = st.session_state.get('mission_packet', {})
+    if packet:
+        st.json(packet)
+
+    st.markdown('### Active Mission Status')
+    run = st.session_state.get('integration_run', {})
+    if run:
+        st.markdown(f"### 🔎 {run.get('mission_title', '(untitled)')} • Score {run.get('mission_score', 0)} • Confidence {run.get('confidence_level', 'low')}")
+        st.markdown(f"**Status:** {run.get('status')} | **AgentCeption:** {run.get('agentception_status')} | **Writeback:** {run.get('writeback_status')}")
+        st.markdown(f"**Signals:** completion={run.get('completion_signal')} quality={run.get('result_quality_signal')} readiness={run.get('writeback_readiness_signal')} risk={run.get('risk_signal')}")
+        st.markdown(f"**Watcher:** {'enabled' if run.get('watch_enabled') else 'disabled'} | **Auto writeback:** {'enabled' if run.get('auto_writeback_enabled') else 'disabled'} | **Refresh count:** {run.get('refresh_count', 0)}")
+        run_id = run.get('id')
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            if run_id and st.button('Refresh Status'):
+                st.session_state['integration_run'] = safe_api_post(f'/api/integrations/runs/{run_id}/refresh', {}, 'refresh run')
+        with c2:
+            if run_id and st.button('Write Back to PhiOS'):
+                st.json(safe_api_post(f'/api/integrations/runs/{run_id}/writeback', {'operator_notes': 'manual writeback from UI', 'tags': ['phase-e', 'manual']}, 'writeback'))
+        with c3:
+            if run_id and st.button('Watch Run'):
+                st.session_state['integration_run'] = safe_api_post(f'/api/integrations/runs/{run_id}/watch', {}, 'watch run')
+        with c4:
+            if run_id and st.button('Unwatch Run'):
+                st.session_state['integration_run'] = safe_api_post(f'/api/integrations/runs/{run_id}/unwatch', {}, 'unwatch run')
+
+        if run_id:
+            timeline = safe_api_get(f'/api/integrations/runs/{run_id}/timeline', 'timeline')
+            st.markdown('#### Timeline')
+            for evt in timeline.get('events', []):
+                st.markdown(f"- `{evt.get('event','event')}` • {evt.get('status','')} • {evt.get('at','')}")
+    else:
+        st.info('No active mission in session.')
+
+    st.markdown('### Mission History')
+    h1, h2, h3, h4 = st.columns(4)
+    with h1:
+        filter_status = st.selectbox('status filter', options=['', 'preparing_launch', 'launched', 'running', 'completed', 'failed', 'cancelled', 'error'])
+    with h2:
+        filter_repo = st.text_input('repo filter', value='')
+    with h3:
+        filter_persona = st.text_input('persona filter', value='')
+    with h4:
+        filter_writeback = st.selectbox('writeback filter', options=['', 'not_written', 'written', 'failed'])
+    search_text = st.text_input('search mission title/objective/summary', value='')
+    query = urlencode({k: v for k, v in {'status': filter_status, 'repo': filter_repo, 'persona_id': filter_persona, 'writeback_status': filter_writeback, 'search': search_text, 'limit': 25}.items() if v not in ('', None)})
+    history = safe_api_get(f"/api/integrations/runs?{query}" if query else '/api/integrations/runs', 'mission history')
+
+    if isinstance(history, list) and history:
+        rows = []
+        for item in history:
+            phase = ''
+            try:
+                phase = json.loads(item.get('agentception_result_json', '{}') or '{}').get('phase', '')
+            except Exception:
+                pass
+            rows.append({'id': item.get('id'), 'created_at': item.get('created_at'), 'mission_title': item.get('mission_title'), 'repo': item.get('repo'), 'persona_id': item.get('persona_id'), 'status': item.get('status'), 'phase': phase, 'pr_url': item.get('pr_url'), 'writeback_status': item.get('writeback_status'), 'mission_score': item.get('mission_score', 0), 'confidence': item.get('confidence_level', 'low')})
+        st.table(rows)
+
+        selected_id = st.selectbox('recent mission detail', options=[x['id'] for x in rows], index=0)
+        if selected_id:
+            st.json(safe_api_get(f'/api/integrations/runs/{selected_id}', 'mission detail'))
+
+        st.markdown('### Compare Missions (Structured Diff)')
+        c_left, c_right = st.columns(2)
+        with c_left:
+            left_id = st.selectbox('left run', options=[x['id'] for x in rows], key='compare_left')
+        with c_right:
+            right_id = st.selectbox('right run', options=[x['id'] for x in rows], key='compare_right')
+        if left_id and right_id:
+            diff = safe_api_get(f'/api/integrations/runs/compare?left_run_id={left_id}&right_run_id={right_id}', 'compare missions')
+            st.markdown(f"**Interpretation:** {diff.get('interpretation', '')}")
+            st.json({'field_differences': diff.get('field_differences', {}), 'summary_similarity_note': diff.get('summary_similarity_note', ''), 'recommended_followups_delta': diff.get('recommended_followups_delta', {}), 'success_criteria_delta': diff.get('success_criteria_delta', {}), 'risk_flags_delta': diff.get('risk_flags_delta', {}), 'outcome_hash_equal': diff.get('outcome_hash_equal'), 'timeline_length_comparison': diff.get('timeline_length_comparison', {})})
+            cc1, cc2 = st.columns(2)
+            with cc1:
+                st.markdown('**Left mission**')
+                st.json(diff.get('left', {}))
+            with cc2:
+                st.markdown('**Right mission**')
+                st.json(diff.get('right', {}))
+
 def _core_page():
     _panel_json('Health', '/api/health')
     _panel_json('Runs', '/api/runs')
@@ -504,7 +648,7 @@ def render_dashboard() -> None:
     st.caption('Local-first operating studio • private by default • general-availability build')
     st.info(f"API Mode: {ACTIVE_MODE.upper()} | DB: {st.session_state['db_url']}")
 
-    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'World Garden (experimental)', 'Core'])
+    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'World Garden (experimental)', 'Software Missions', 'Core'])
     st.sidebar.markdown("<span class='agentora-pill'>NO CLOUD REQUIRED</span>", unsafe_allow_html=True)
 
     if page == 'Dashboard':
@@ -527,6 +671,8 @@ def render_dashboard() -> None:
         _garden_page()
     elif page == 'World Garden (experimental)':
         _world_garden_page()
+    elif page == 'Software Missions':
+        _software_missions_page()
     else:
         _core_page()
 

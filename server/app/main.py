@@ -7,12 +7,17 @@ from app.core.config import settings
 from app.db import init_db
 from app.routers import health, ollama, agents, teams, runs, tools, exports, snapshot
 from app.routers import marketplace, multimodal, voice, analytics, integrations, lan, studio, band, arena, gathering, legacy, cosmos, open_cosmos, garden, world_garden, capsules, workers, memory, team, actions, workflows, operator, system
+from app.services.mission_watcher import mission_watcher
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
-    yield
+    mission_watcher.start()
+    try:
+        yield
+    finally:
+        mission_watcher.stop()
 
 
 def create_app() -> FastAPI:
