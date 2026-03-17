@@ -90,6 +90,62 @@ class Settings(BaseSettings):
     coevo_url: str = Field(default='', alias='COEVO_URL')
     coevo_api_key: str = Field(default='', alias='COEVO_API_KEY')
 
+    agentora_phios_enabled: bool = Field(default=False, alias='AGENTORA_PHIOS_ENABLED')
+    agentora_phios_url: str = Field(default='http://127.0.0.1:8090', alias='AGENTORA_PHIOS_URL')
+    agentora_phios_api_key: str = Field(default='', alias='AGENTORA_PHIOS_API_KEY')
+    agentora_phios_timeout_seconds: int = Field(default=20, alias='AGENTORA_PHIOS_TIMEOUT_SECONDS')
+
+    agentora_agentception_enabled: bool = Field(default=False, alias='AGENTORA_AGENTCEPTION_ENABLED')
+    agentora_agentception_url: str = Field(default='http://127.0.0.1:1337', alias='AGENTORA_AGENTCEPTION_URL')
+    agentora_agentception_api_key: str = Field(default='', alias='AGENTORA_AGENTCEPTION_API_KEY')
+    agentora_agentception_timeout_seconds: int = Field(default=45, alias='AGENTORA_AGENTCEPTION_TIMEOUT_SECONDS')
+
+    agentora_integrations_mock: bool = Field(default=False, alias='AGENTORA_INTEGRATIONS_MOCK')
+
+    agentora_missions_watcher_enabled: bool = Field(default=False, alias='AGENTORA_MISSIONS_WATCHER_ENABLED')
+    agentora_missions_watcher_interval_seconds: int = Field(default=20, alias='AGENTORA_MISSIONS_WATCHER_INTERVAL_SECONDS')
+    agentora_missions_watcher_max_active_runs: int = Field(default=25, alias='AGENTORA_MISSIONS_WATCHER_MAX_ACTIVE_RUNS')
+    agentora_missions_auto_writeback: bool = Field(default=False, alias='AGENTORA_MISSIONS_AUTO_WRITEBACK')
+    agentora_missions_writeback_debounce_seconds: int = Field(default=300, alias='AGENTORA_MISSIONS_WRITEBACK_DEBOUNCE_SECONDS')
+    agentora_missions_mcp_enabled: bool = Field(default=False, alias='AGENTORA_MISSIONS_MCP_ENABLED')
+    agentora_missions_mcp_api_key: str = Field(default='', alias='AGENTORA_MISSIONS_MCP_API_KEY')
+    agentora_missions_mcp_read_only: bool = Field(default=False, alias='AGENTORA_MISSIONS_MCP_READ_ONLY')
+    agentora_missions_mcp_allowed_tools: str = Field(default='', alias='AGENTORA_MISSIONS_MCP_ALLOWED_TOOLS')
+
+    agentora_missions_events_ttl_days: int = Field(default=30, alias='AGENTORA_MISSIONS_EVENTS_TTL_DAYS')
+    agentora_missions_events_max_per_run: int = Field(default=200, alias='AGENTORA_MISSIONS_EVENTS_MAX_PER_RUN')
+    agentora_missions_compaction_enabled: bool = Field(default=False, alias='AGENTORA_MISSIONS_COMPACTION_ENABLED')
+    agentora_missions_compaction_interval_seconds: int = Field(default=600, alias='AGENTORA_MISSIONS_COMPACTION_INTERVAL_SECONDS')
+
+    agentora_missions_alerts_enabled: bool = Field(default=False, alias='AGENTORA_MISSIONS_ALERTS_ENABLED')
+    agentora_missions_alerts_webhook_url: str = Field(default='', alias='AGENTORA_MISSIONS_ALERTS_WEBHOOK_URL')
+    agentora_missions_alerts_on_terminal: bool = Field(default=True, alias='AGENTORA_MISSIONS_ALERTS_ON_TERMINAL')
+    agentora_missions_alerts_on_writeback_failure: bool = Field(default=True, alias='AGENTORA_MISSIONS_ALERTS_ON_WRITEBACK_FAILURE')
+    agentora_missions_alerts_on_high_risk: bool = Field(default=True, alias='AGENTORA_MISSIONS_ALERTS_ON_HIGH_RISK')
+
+    agentora_missions_score_pr_bonus: int = Field(default=25, alias='AGENTORA_MISSIONS_SCORE_PR_BONUS')
+    agentora_missions_score_terminal_success_bonus: int = Field(default=30, alias='AGENTORA_MISSIONS_SCORE_TERMINAL_SUCCESS_BONUS')
+    agentora_missions_score_writeback_success_bonus: int = Field(default=10, alias='AGENTORA_MISSIONS_SCORE_WRITEBACK_SUCCESS_BONUS')
+    agentora_missions_score_failure_penalty: int = Field(default=20, alias='AGENTORA_MISSIONS_SCORE_FAILURE_PENALTY')
+    agentora_missions_score_summary_min_length: int = Field(default=80, alias='AGENTORA_MISSIONS_SCORE_SUMMARY_MIN_LENGTH')
+    agentora_missions_risk_threshold_high: int = Field(default=2, alias='AGENTORA_MISSIONS_RISK_THRESHOLD_HIGH')
+    agentora_missions_confidence_threshold_high: int = Field(default=75, alias='AGENTORA_MISSIONS_CONFIDENCE_THRESHOLD_HIGH')
+    agentora_missions_confidence_threshold_medium: int = Field(default=45, alias='AGENTORA_MISSIONS_CONFIDENCE_THRESHOLD_MEDIUM')
+
+    agentora_missions_replay_enabled: bool = Field(default=True, alias='AGENTORA_MISSIONS_REPLAY_ENABLED')
+    agentora_missions_replay_allow_repo_change: bool = Field(default=False, alias='AGENTORA_MISSIONS_REPLAY_ALLOW_REPO_CHANGE')
+    agentora_missions_replay_max_lineage_depth: int = Field(default=20, alias='AGENTORA_MISSIONS_REPLAY_MAX_LINEAGE_DEPTH')
+    agentora_missions_replay_require_provenance_note: bool = Field(default=False, alias='AGENTORA_MISSIONS_REPLAY_REQUIRE_PROVENANCE_NOTE')
+
+    agentora_missions_sign_exports: bool = Field(default=False, alias='AGENTORA_MISSIONS_SIGN_EXPORTS')
+    agentora_missions_export_signing_key: str = Field(default='', alias='AGENTORA_MISSIONS_EXPORT_SIGNING_KEY')
+
+    agentora_persona_policy_enabled: bool = Field(default=False, alias='AGENTORA_PERSONA_POLICY_ENABLED')
+    agentora_persona_policy_require_dual_review_on_high_risk: bool = Field(default=False, alias='AGENTORA_PERSONA_POLICY_REQUIRE_DUAL_REVIEW_ON_HIGH_RISK')
+    agentora_persona_policy_block_exploratory_on_high_risk: bool = Field(default=False, alias='AGENTORA_PERSONA_POLICY_BLOCK_EXPLORATORY_ON_HIGH_RISK')
+    agentora_persona_policy_require_override_reason: bool = Field(default=True, alias='AGENTORA_PERSONA_POLICY_REQUIRE_OVERRIDE_REASON')
+    agentora_persona_policy_require_conservative_branch_on_high_risk: bool = Field(default=False, alias='AGENTORA_PERSONA_POLICY_REQUIRE_CONSERVATIVE_BRANCH_ON_HIGH_RISK')
+
 
     @property
     def allowed_tool_names(self) -> set[str]:
@@ -142,6 +198,10 @@ class Settings(BaseSettings):
     @property
     def allowed_apps(self) -> list[str]:
         return [x.strip() for x in self.agentora_allowed_apps.split(',') if x.strip()]
+
+    @property
+    def missions_mcp_allowed_tools(self) -> set[str]:
+        return {x.strip() for x in self.agentora_missions_mcp_allowed_tools.split(',') if x.strip()}
 
 
 settings = Settings()
