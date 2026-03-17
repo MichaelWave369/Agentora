@@ -667,6 +667,22 @@ def _software_missions_page():
         if branch_set:
             st.json(branch_set)
 
+        st.markdown('### Persona Branch Planning (Phase I)')
+        personas_payload = safe_api_get('/api/integrations/personas', 'persona catalog')
+        overlays_payload = safe_api_get('/api/integrations/persona-overlays', 'persona overlays')
+        persona_ids = [p.get('id') for p in personas_payload.get('personas', []) if p.get('id')]
+        overlay_names = sorted((overlays_payload.get('overlays') or {}).keys())
+        persona_pick = st.multiselect('personas for sibling branches', options=persona_ids, default=persona_ids[:2] if persona_ids else [])
+        overlay_default = overlay_names[0] if overlay_names else ''
+        overlay_pick = st.selectbox('default overlay', options=[''] + overlay_names, index=(1 if overlay_default else 0))
+        persona_launch = st.checkbox('launch persona branches after draft creation', value=False)
+        if st.button('Create Persona Branch Set') and source_id and persona_pick:
+            specs = [{'persona_id': pid, 'overlay': overlay_pick, 'preset': 'exploratory_branch', 'launch': persona_launch, 'branch_label': f'{pid}-branch'} for pid in persona_pick]
+            resp = safe_api_post(f'/api/integrations/runs/{source_id}/persona-branch-set', {'specs': specs, 'dry_run': True, 'auto_launch_selected': persona_launch}, 'create persona branch set')
+            st.session_state['persona_branch_set'] = resp
+        if st.session_state.get('persona_branch_set'):
+            st.json(st.session_state['persona_branch_set'])
+
         if source_id:
             st.markdown('### Portfolio / Decision Summary')
             root_guess = source_id
@@ -675,18 +691,24 @@ def _software_missions_page():
                 root_guess = run_detail.get('root_run_id') or run_detail.get('parent_run_id') or source_id
             portfolio = safe_api_get(f'/api/integrations/lineage/{root_guess}/portfolio', 'root portfolio')
             decision = safe_api_get(f'/api/integrations/lineage/{root_guess}/decision-summary', 'decision summary')
-            st.json({'portfolio': portfolio, 'decision_summary': decision})
+            persona_portfolio = safe_api_get(f'/api/integrations/lineage/{root_guess}/persona-portfolio', 'persona portfolio')
+            persona_summary = safe_api_get(f'/api/integrations/lineage/{root_guess}/persona-summary', 'persona summary')
+            st.json({'portfolio': portfolio, 'persona_portfolio': persona_portfolio, 'decision_summary': decision, 'persona_summary': persona_summary})
             branches = portfolio.get('branches', []) if isinstance(portfolio, dict) else []
             options = [b.get('run_id') for b in branches if b.get('run_id') and b.get('run_id') != root_guess]
             target = st.selectbox('branch decision target', options=options) if options else None
             note = st.text_input('decision note', value='')
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns(3)
             with c1:
                 if target and st.button('Shortlist Branch'):
                     st.json(safe_api_post(f'/api/integrations/runs/{target}/shortlist', {'decision_note': note}, 'shortlist branch'))
             with c2:
                 if target and st.button('Eliminate Branch'):
                     st.json(safe_api_post(f'/api/integrations/runs/{target}/eliminate', {'decision_note': note}, 'eliminate branch'))
+            with c3:
+                override_decision = st.selectbox('override decision', options=['accept_recommendation', 'reject_recommendation', 'manual_override'])
+                if target and st.button('Apply Override'):
+                    st.json(safe_api_post(f'/api/integrations/runs/{target}/override', {'decision': override_decision, 'note': note}, 'apply override'))
 
         if source_id:
             st.markdown('### Provenance / Lineage')

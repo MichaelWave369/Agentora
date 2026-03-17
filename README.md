@@ -460,3 +460,43 @@ Portfolio ranking and recommendations are operator aids, not objective truth. Al
 3. Create branch drafts (optionally launch selected branches).
 4. Review **Portfolio / Decision Summary**.
 5. Mark branches as shortlist/eliminate and compare chosen runs.
+
+## PhiOS + AgentCeption integration (Phase I)
+
+Phase I introduces persona-aware branch orchestration so sibling branches can be deliberately assigned and compared by persona strategy.
+
+### Persona-aware capabilities
+
+- Persona assignment metadata per branch (`assigned_persona_id`, `assigned_persona_name`, `assigned_persona_role`, `persona_strategy_overlay`, assignment reason).
+- Operator override metadata kept separate from heuristic recommendations (`operator_override_status`, `operator_override_note`, `recommendation_state`).
+- Central persona strategy overlays (e.g., `skeptic_reviewer`, `architect_refactorer`, `conservative_stabilizer`, `rapid_builder`).
+- Persona-aware bulk branch set creation from one root run.
+- Persona portfolio and persona performance summary APIs.
+- Operator accept/reject/manual override controls with visible notes.
+
+### Phase I routes
+
+- `GET /api/integrations/personas`
+- `GET /api/integrations/personas/{persona_id}`
+- `GET /api/integrations/persona-overlays`
+- `POST /api/integrations/runs/{run_id}/persona-branch-set`
+- `GET /api/integrations/lineage/{root_run_id}/persona-portfolio`
+- `POST /api/integrations/runs/{run_id}/override`
+- `GET /api/integrations/lineage/{root_run_id}/persona-summary`
+- `GET /api/integrations/persona-insights`
+
+### Lifecycle
+
+Root Mission -> Branch Set -> Persona Branches -> Portfolio Compare -> Operator Override -> Next Decision
+
+### Heuristic caveat
+
+Persona recommendations are heuristic operator aids. They are not objective truth and should be reviewed with provenance, risk posture, and mission intent.
+
+### Local demo steps
+
+1. Create a root mission in Software Missions.
+2. Use **Persona Branch Planning (Phase I)** to assign sibling branches to personas/overlays.
+3. Open persona portfolio + persona summary panels.
+4. Apply override actions (`accept`, `reject`, `manual`) with rationale.
+5. Use persona insights to inspect score/risk/PR/writeback trends.

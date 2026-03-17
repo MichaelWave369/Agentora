@@ -221,6 +221,14 @@ class OrchestrationRunRecord(BaseModel):
     eliminated: bool = False
     branch_order: int = 0
     decision_note: str = ''
+    assigned_persona_id: str = ''
+    assigned_persona_name: str = ''
+    assigned_persona_role: str = ''
+    persona_strategy_overlay: str = ''
+    persona_assignment_reason: str = ''
+    operator_override_status: str = 'none'
+    operator_override_note: str = ''
+    recommendation_state: str = 'pending'
     error_message: str = ''
 
 
@@ -324,6 +332,10 @@ class BranchPortfolioBranch(BaseModel):
     branch_label: str = ''
     branch_strategy: str = ''
     persona_id: str = ''
+    assigned_persona_id: str = ''
+    assigned_persona_name: str = ''
+    assigned_persona_role: str = ''
+    persona_strategy_overlay: str = ''
     objective_delta: str = ''
     status: str = ''
     mission_score: int = 0
@@ -334,6 +346,8 @@ class BranchPortfolioBranch(BaseModel):
     shortlisted: bool = False
     eliminated: bool = False
     decision_status: str = 'undecided'
+    operator_override_status: str = 'none'
+    recommendation_state: str = 'pending'
 
 
 class BranchPortfolioSummary(BaseModel):
@@ -348,6 +362,69 @@ class BranchPortfolioSummary(BaseModel):
 
 class DecisionStateRequest(BaseModel):
     decision_note: str = ''
+
+
+class PersonaBranchSpec(BaseModel):
+    persona_id: str
+    overlay: str = ''
+    preset: str = 'exploratory_branch'
+    branch_label: str | None = None
+    objective: str | None = None
+    constraints: list[str] | None = None
+    launch: bool = False
+    persona_assignment_reason: str = ''
+
+
+class PersonaBranchSetCreateRequest(BaseModel):
+    branch_set_id: str | None = None
+    dry_run: bool = True
+    auto_launch_selected: bool = False
+    specs: list[PersonaBranchSpec] = Field(default_factory=list)
+
+
+class PersonaBranchSetCreateResponse(BaseModel):
+    root_run_id: int
+    branch_set_id: str
+    created_drafts: list[OrchestrationRunRecord] = Field(default_factory=list)
+    launched_runs: list[OrchestrationRunRecord] = Field(default_factory=list)
+
+
+class PersonaPortfolioBranch(BaseModel):
+    run_id: int
+    branch_label: str = ''
+    branch_strategy: str = ''
+    assigned_persona_id: str = ''
+    assigned_persona_name: str = ''
+    assigned_persona_role: str = ''
+    persona_strategy_overlay: str = ''
+    status: str = ''
+    mission_score: int = 0
+    confidence_level: str = 'low'
+    risk_signal: str = 'high'
+    pr_present: bool = False
+    writeback_status: str = 'not_written'
+    shortlisted: bool = False
+    eliminated: bool = False
+    operator_override_status: str = 'none'
+    recommendation_state: str = 'pending'
+
+
+class PersonaPortfolioSummary(BaseModel):
+    root_run_id: int
+    branches: list[PersonaPortfolioBranch] = Field(default_factory=list)
+    best_scoring_persona_branch: int | None = None
+    lowest_risk_persona_branch: int | None = None
+    persona_branches_with_prs: list[int] = Field(default_factory=list)
+    persona_branches_with_successful_writeback: list[int] = Field(default_factory=list)
+    persona_divergence_interpretation: str = ''
+    recommended_next_persona_branch: int | None = None
+
+
+class PortfolioDecisionRequest(BaseModel):
+    decision: str = 'accept_recommendation'
+    shortlisted: bool | None = None
+    eliminated: bool | None = None
+    note: str = ''
 
 
 class LineageNode(BaseModel):

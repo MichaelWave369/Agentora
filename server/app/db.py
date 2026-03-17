@@ -78,6 +78,14 @@ def _ensure_integrationrun_columns() -> None:
         'eliminated': 'BOOLEAN NOT NULL DEFAULT 0',
         'branch_order': 'INTEGER NOT NULL DEFAULT 0',
         'decision_note': "TEXT NOT NULL DEFAULT ''",
+        'assigned_persona_id': "TEXT NOT NULL DEFAULT ''",
+        'assigned_persona_name': "TEXT NOT NULL DEFAULT ''",
+        'assigned_persona_role': "TEXT NOT NULL DEFAULT ''",
+        'persona_strategy_overlay': "TEXT NOT NULL DEFAULT ''",
+        'persona_assignment_reason': "TEXT NOT NULL DEFAULT ''",
+        'operator_override_status': "TEXT NOT NULL DEFAULT 'none'",
+        'operator_override_note': "TEXT NOT NULL DEFAULT ''",
+        'recommendation_state': "TEXT NOT NULL DEFAULT 'pending'",
     }
     with engine.connect() as conn:
         try:

@@ -232,3 +232,85 @@ def test_export_import_preserves_branch_metadata(monkeypatch):
 
     imported = client.post('/api/integrations/import', json=payload)
     assert imported.status_code == 200
+
+
+def test_persona_catalog_fallback_and_detail(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    personas = client.get('/api/integrations/personas')
+    assert personas.status_code == 200
+    items = personas.json()['personas']
+    assert items
+    pid = items[0]['id']
+    detail = client.get(f'/api/integrations/personas/{pid}')
+    assert detail.status_code == 200
+    assert detail.json()['id'] == pid
+
+
+def test_persona_overlay_and_branch_set(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='PersonaRoot', objective='Improve branch orchestration')
+    overlays = client.get('/api/integrations/persona-overlays')
+    assert overlays.status_code == 200
+    assert 'skeptic_reviewer' in overlays.json()['overlays']
+
+    create = client.post(
+        f'/api/integrations/runs/{source}/persona-branch-set',
+        json={
+            'specs': [
+                {'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer', 'preset': 'conservative_fix', 'branch_label': 'skeptic-safe'},
+                {'persona_id': 'architect', 'overlay': 'architect_refactorer', 'preset': 'aggressive_refactor', 'branch_label': 'arch-refactor'},
+            ],
+            'dry_run': True,
+        },
+    )
+    assert create.status_code == 200
+    body = create.json()
+    assert len(body['created_drafts']) == 2
+    assert body['created_drafts'][0]['assigned_persona_id']
+    assert body['created_drafts'][0]['persona_strategy_overlay']
+
+
+def test_persona_portfolio_override_and_summary(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='PersonaPortfolio', objective='Persona compare objective')
+    created = client.post(
+        f'/api/integrations/runs/{source}/persona-branch-set',
+        json={'specs': [{'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer'}, {'persona_id': 'architect', 'overlay': 'architect_refactorer'}]},
+    )
+    assert created.status_code == 200
+    run_id = created.json()['created_drafts'][0]['id']
+
+    override = client.post(f'/api/integrations/runs/{run_id}/override', json={'decision': 'reject_recommendation', 'shortlisted': False, 'eliminated': True, 'note': 'operator rejected'})
+    assert override.status_code == 200
+    assert override.json()['operator_override_status'] == 'reject_recommendation'
+    assert override.json()['recommendation_state'] == 'rejected'
+
+    persona_portfolio = client.get(f'/api/integrations/lineage/{source}/persona-portfolio')
+    assert persona_portfolio.status_code == 200
+    assert persona_portfolio.json()['branches']
+
+    persona_summary = client.get(f'/api/integrations/lineage/{source}/persona-summary')
+    assert persona_summary.status_code == 200
+    assert 'persona_metrics' in persona_summary.json()
+
+
+def test_export_import_preserves_persona_metadata(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='PersonaExport', objective='Export persona metadata')
+    created = client.post(f'/api/integrations/runs/{source}/persona-branch-set', json={'specs': [{'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer'}]})
+    assert created.status_code == 200
+    run_id = created.json()['created_drafts'][0]['id']
+    client.post(f'/api/integrations/runs/{run_id}/override', json={'decision': 'manual_override', 'note': 'manual pick'})
+
+    exported = client.get('/api/integrations/export')
+    assert exported.status_code == 200
+    rows = [r for r in exported.json()['runs'] if r.get('id') == run_id]
+    assert rows and rows[0]['assigned_persona_id']
+    assert rows[0]['operator_override_status'] == 'manual_override'
+
+    imported = client.post('/api/integrations/import', json=exported.json())
+    assert imported.status_code == 200

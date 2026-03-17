@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.db import get_session
 from app.integrations.agentception_client import AgentCeptionClient
 from app.integrations.phios_client import IntegrationClientError, PhiOSClient
-from app.integrations.schemas import BranchSetCreateRequest, ContextPackRequest, DecisionStateRequest, LaunchMissionRequest, PrepareMissionRequest, ReplayDraftRequest, ReplayLaunchRequest, SoftwareTaskRequest, WritebackRequest
+from app.integrations.schemas import BranchSetCreateRequest, ContextPackRequest, DecisionStateRequest, LaunchMissionRequest, PersonaBranchSetCreateRequest, PortfolioDecisionRequest, PrepareMissionRequest, ReplayDraftRequest, ReplayLaunchRequest, SoftwareTaskRequest, WritebackRequest
 from app.models import IntegrationSetting, Message, Run
 from app.services.adapters.integrations import statuses
 from app.services.integration_orchestrator import IntegrationOrchestrator
@@ -63,6 +63,19 @@ def phios_health():
 def phios_persona(persona_id: str):
     try:
         return PhiOSClient().get_persona(persona_id).model_dump(mode='json')
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/personas')
+def integration_personas(session: Session = Depends(get_session)):
+    return {'personas': IntegrationOrchestrator(session).list_personas()}
+
+
+@router.get('/api/integrations/personas/{persona_id}')
+def integration_persona_detail(persona_id: str, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).resolve_persona(persona_id)
     except IntegrationClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -207,6 +220,19 @@ def integration_branch_set(run_id: int, payload: BranchSetCreateRequest, session
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get('/api/integrations/persona-overlays')
+def integration_persona_overlays(session: Session = Depends(get_session)):
+    return {'overlays': IntegrationOrchestrator(session).get_persona_strategy_overlays()}
+
+
+@router.post('/api/integrations/runs/{run_id}/persona-branch-set')
+def integration_persona_branch_set(run_id: int, payload: PersonaBranchSetCreateRequest, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).create_persona_branch_set(run_id, payload.model_dump(mode='json')).model_dump(mode='json')
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get('/api/integrations/runs/{run_id}/portfolio')
 def integration_portfolio_by_run(run_id: int, branch_set_id: str | None = None, session: Session = Depends(get_session)):
     try:
@@ -231,6 +257,30 @@ def integration_portfolio_by_root(root_run_id: int, branch_set_id: str | None = 
 def integration_decision_summary(root_run_id: int, session: Session = Depends(get_session)):
     try:
         return IntegrationOrchestrator(session).get_root_decision_summary(root_run_id)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/lineage/{root_run_id}/persona-portfolio')
+def integration_persona_portfolio(root_run_id: int, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).get_persona_portfolio(root_run_id).model_dump(mode='json')
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/lineage/{root_run_id}/persona-summary')
+def integration_persona_summary(root_run_id: int, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).get_persona_performance_summary(root_run_id)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/api/integrations/runs/{run_id}/override')
+def integration_override(run_id: int, payload: PortfolioDecisionRequest, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).apply_operator_override(run_id, payload.model_dump(mode='json')).model_dump(mode='json')
     except IntegrationClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -327,6 +377,11 @@ def integration_compact(session: Session = Depends(get_session)):
 @router.get('/api/integrations/insights')
 def integration_insights(session: Session = Depends(get_session)):
     return IntegrationOrchestrator(session).get_insights()
+
+
+@router.get('/api/integrations/persona-insights')
+def integration_persona_insights(root_run_id: int | None = None, session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).get_persona_performance_summary(root_run_id)
 
 
 @router.get('/api/integrations/cohorts')

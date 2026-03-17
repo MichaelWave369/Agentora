@@ -27,6 +27,9 @@ from app.integrations.schemas import (
     LaunchMissionRequest,
     MissionContextPacket,
     OrchestrationRunRecord,
+    PersonaBranchSetCreateResponse,
+    PersonaPortfolioSummary,
+    PersonaSummary,
     PrepareMissionRequest,
     SoftwareTaskRequest,
 )
@@ -45,6 +48,24 @@ BRANCH_STRATEGY_PRESETS = {
     'constraint_tightening': {'fork_reason': 'constraint tightening for safety', 'provenance_note': 'Preset constraint_tightening applied for stricter guardrails.'},
     'exploratory_branch': {'objective_suffix': 'explore alternate implementation and tradeoffs', 'fork_reason': 'exploratory branch', 'provenance_note': 'Preset exploratory_branch applied for comparative planning.'},
 }
+
+LOCAL_PERSONA_REGISTRY = {
+    'persona-1': {'id': 'persona-1', 'name': 'Core Operator', 'role': 'principal engineer', 'style': 'precise and test-driven', 'goals': ['ship safely'], 'constraints': ['preserve existing flows']},
+    'skeptic': {'id': 'skeptic', 'name': 'Skeptic Reviewer', 'role': 'review engineer', 'style': 'risk-first and adversarial', 'goals': ['catch regressions'], 'constraints': ['avoid speculative changes']},
+    'architect': {'id': 'architect', 'name': 'Architect Refactorer', 'role': 'software architect', 'style': 'system-level refactor focus', 'goals': ['improve maintainability'], 'constraints': ['preserve compatibility']},
+    'stabilizer': {'id': 'stabilizer', 'name': 'Conservative Stabilizer', 'role': 'reliability engineer', 'style': 'incremental and defensive', 'goals': ['reduce risk'], 'constraints': ['minimal blast radius']},
+}
+
+PERSONA_STRATEGY_OVERLAYS = {
+    'skeptic_reviewer': {'preferred_preset': 'conservative_fix', 'objective_tone': 'emphasize risk discovery and verification', 'risk_posture': 'high-scrutiny', 'fork_reason': 'skeptic review branch', 'provenance_note': 'Overlay skeptic_reviewer applied for risk-focused validation.'},
+    'architect_refactorer': {'preferred_preset': 'aggressive_refactor', 'objective_tone': 'favor structural clarity and long-term maintainability', 'risk_posture': 'medium', 'fork_reason': 'architectural refactor comparison', 'provenance_note': 'Overlay architect_refactorer applied for system design tradeoff exploration.'},
+    'conservative_stabilizer': {'preferred_preset': 'minimal_patch', 'objective_tone': 'minimize change while restoring reliability', 'risk_posture': 'low', 'fork_reason': 'stability-first branch', 'provenance_note': 'Overlay conservative_stabilizer applied for safe recovery.'},
+    'rapid_builder': {'preferred_preset': 'exploratory_branch', 'objective_tone': 'optimize for implementation speed and momentum', 'risk_posture': 'medium-high', 'fork_reason': 'rapid prototype branch', 'provenance_note': 'Overlay rapid_builder applied for fast path experimentation.'},
+    'recovery_operator': {'preferred_preset': 'recovery_branch', 'objective_tone': 'recover service health and unblock operator workflows', 'risk_posture': 'medium', 'fork_reason': 'recovery operations branch', 'provenance_note': 'Overlay recovery_operator applied for remediation workflow.'},
+    'minimal_change_guardian': {'preferred_preset': 'minimal_patch', 'objective_tone': 'strictly limit scope to required fixes', 'risk_posture': 'low', 'fork_reason': 'minimal change guard branch', 'provenance_note': 'Overlay minimal_change_guardian applied to enforce narrow patch scope.'},
+    'exploratory_innovator': {'preferred_preset': 'exploratory_branch', 'objective_tone': 'explore alternative patterns and innovation opportunities', 'risk_posture': 'high', 'fork_reason': 'exploratory innovation branch', 'provenance_note': 'Overlay exploratory_innovator applied for alternative solution discovery.'},
+}
+
 
 
 class IntegrationOrchestrator:
@@ -495,6 +516,7 @@ class IntegrationOrchestrator:
             'average_mission_score': avg_score,
             'top_risk_signals': sorted(risk_counts.items(), key=lambda x: x[1], reverse=True),
             'average_pr_presence_rate': pr_presence,
+            'persona_performance_summary': self.get_persona_performance_summary(),
         }
 
     def run_timeline(self, run_id: int) -> list[dict]:
@@ -703,6 +725,8 @@ class IntegrationOrchestrator:
                 raise IntegrationClientError('Malformed lineage cycle detected in import')
             if item.get('branch_set_id') and not (item.get('root_run_id') or item.get('parent_run_id') or item.get('id')):
                 raise IntegrationClientError('Invalid branch metadata: branch_set_id requires lineage reference')
+            if item.get('assigned_persona_name') and not (item.get('assigned_persona_id') or item.get('persona_id')):
+                raise IntegrationClientError('Invalid persona metadata: assigned_persona_name requires assigned_persona_id/persona_id')
             row = IntegrationRun(**{k: v for k, v in item.items() if k in IntegrationRun.model_fields})
             self.session.add(row)
             self.session.commit()
@@ -759,6 +783,49 @@ class IntegrationOrchestrator:
             raise IntegrationClientError('Replay blocked: provenance note is required by policy.')
         if replay.get('repo') and replay.get('repo') != source.repo and not settings.agentora_missions_replay_allow_repo_change:
             raise IntegrationClientError('Replay blocked: repo change is not allowed by policy.')
+
+    def list_personas(self) -> list[dict]:
+        personas = []
+        if settings.agentora_integrations_mock:
+            personas = [PersonaSummary.model_validate(v).model_dump(mode='json') for v in LOCAL_PERSONA_REGISTRY.values()]
+        else:
+            base = [v for v in LOCAL_PERSONA_REGISTRY.values()]
+            personas = [PersonaSummary.model_validate(v).model_dump(mode='json') for v in base]
+        return personas
+
+    def resolve_persona(self, persona_id: str) -> dict:
+        if not persona_id:
+            raise IntegrationClientError('persona_id is required')
+        try:
+            p = self.phios.get_persona(persona_id)
+            return p.model_dump(mode='json')
+        except Exception:
+            local = LOCAL_PERSONA_REGISTRY.get(persona_id)
+            if local:
+                return PersonaSummary.model_validate(local).model_dump(mode='json')
+            if settings.agentora_integrations_mock:
+                return self.phios._mock_persona(persona_id).model_dump(mode='json')
+            raise IntegrationClientError(f'Persona {persona_id} could not be resolved from PhiOS or local registry.')
+
+    def get_persona_strategy_overlays(self) -> dict:
+        return PERSONA_STRATEGY_OVERLAYS
+
+    def apply_persona_overlay(self, source: IntegrationRun, overlay: str, replay: dict | None = None) -> dict:
+        overlay_data = PERSONA_STRATEGY_OVERLAYS.get(overlay)
+        if not overlay_data:
+            raise IntegrationClientError(f'Unknown persona strategy overlay: {overlay}')
+        out = dict(replay or {})
+        if not out.get('branch_strategy'):
+            out['branch_strategy'] = overlay_data.get('preferred_preset', 'exploratory_branch')
+        out['persona_strategy_overlay'] = overlay
+        out['fork_reason'] = out.get('fork_reason') or overlay_data.get('fork_reason', '')
+        out['provenance_note'] = out.get('provenance_note') or overlay_data.get('provenance_note', '')
+        tone = overlay_data.get('objective_tone', '').strip()
+        if tone and out.get('objective'):
+            out['objective'] = f"{out['objective']}. {tone}".strip()
+        elif tone:
+            out['objective'] = f"{source.objective}. {tone}".strip()
+        return out
 
     def get_branch_strategy_presets(self) -> dict:
         return BRANCH_STRATEGY_PRESETS
@@ -827,6 +894,148 @@ class IntegrationOrchestrator:
         self._log_event('branch-set-created', run_id=source_run_id, status='ok', detail={'branch_set_id': branch_set_id, 'created': len(created_drafts), 'launched': len(launched_runs)})
         return BranchSetCreateResponse(root_run_id=source.root_run_id or source.id or source_run_id, branch_set_id=branch_set_id, created_drafts=created_drafts, launched_runs=launched_runs)
 
+    def create_persona_branch_set(self, source_run_id: int, payload: dict) -> PersonaBranchSetCreateResponse:
+        specs = payload.get('specs') or []
+        if not specs:
+            raise IntegrationClientError('Persona branch set requires at least one spec.')
+        source = self.session.get(IntegrationRun, source_run_id)
+        if not source:
+            raise IntegrationClientError(f'Source run {source_run_id} not found')
+        branch_set_id = payload.get('branch_set_id') or f'pbs-{source_run_id}-{uuid4().hex[:8]}'
+        created_drafts = []
+        launched_runs = []
+        auto_launch = bool(payload.get('auto_launch_selected', False))
+        for idx, spec in enumerate(specs):
+            persona_id = (spec.get('persona_id') or '').strip()
+            if not persona_id:
+                raise IntegrationClientError(f'Persona branch spec #{idx + 1} is missing persona_id')
+            persona = self.resolve_persona(persona_id)
+            preset = spec.get('preset') or 'exploratory_branch'
+            replay = self.apply_branch_strategy_preset(source, preset, {
+                'branch_label': spec.get('branch_label') or f"{persona.get('name', persona_id)}-{preset}",
+                'objective': spec.get('objective'),
+                'constraints': spec.get('constraints'),
+                'persona_id': persona_id,
+                'branch_set_id': branch_set_id,
+                'branch_strategy': preset,
+                'branch_order': idx,
+                'assigned_persona_id': persona_id,
+                'assigned_persona_name': persona.get('name', ''),
+                'assigned_persona_role': persona.get('role', ''),
+                'persona_assignment_reason': spec.get('persona_assignment_reason', ''),
+            })
+            overlay = (spec.get('overlay') or '').strip()
+            if overlay:
+                replay = self.apply_persona_overlay(source, overlay, replay)
+            draft = self.create_replay_draft(source_run_id, replay)
+            created_drafts.append(draft)
+            if auto_launch or spec.get('launch'):
+                launched_runs.append(self.launch_replay_draft(draft.id, dry_run=bool(payload.get('dry_run', True))))
+        self._log_event('persona-branch-set-created', run_id=source_run_id, status='ok', detail={'branch_set_id': branch_set_id, 'created': len(created_drafts), 'launched': len(launched_runs)})
+        return PersonaBranchSetCreateResponse(root_run_id=source.root_run_id or source.id or source_run_id, branch_set_id=branch_set_id, created_drafts=created_drafts, launched_runs=launched_runs)
+
+    def get_persona_portfolio(self, root_run_id: int) -> PersonaPortfolioSummary:
+        portfolio = self.get_branch_portfolio(root_run_id)
+        persona_rows = []
+        for b in portfolio.branches:
+            row = self.session.get(IntegrationRun, b.run_id)
+            if not row or b.run_id == root_run_id:
+                continue
+            persona_rows.append({
+                'run_id': row.id,
+                'branch_label': row.branch_label or row.mission_title,
+                'branch_strategy': row.branch_strategy,
+                'assigned_persona_id': row.assigned_persona_id or row.persona_id,
+                'assigned_persona_name': row.assigned_persona_name,
+                'assigned_persona_role': row.assigned_persona_role,
+                'persona_strategy_overlay': row.persona_strategy_overlay,
+                'status': row.status,
+                'mission_score': row.mission_score,
+                'confidence_level': row.confidence_level,
+                'risk_signal': row.risk_signal,
+                'pr_present': bool(row.pr_url),
+                'writeback_status': row.writeback_status,
+                'shortlisted': row.shortlisted,
+                'eliminated': row.eliminated,
+                'operator_override_status': row.operator_override_status,
+                'recommendation_state': row.recommendation_state,
+            })
+        if not persona_rows:
+            return PersonaPortfolioSummary(root_run_id=root_run_id, branches=[], persona_divergence_interpretation='No persona-assigned branches available yet.')
+        risk_rank = {'low': 0, 'medium': 1, 'high': 2}
+        best = max(persona_rows, key=lambda x: x['mission_score'])
+        low_risk = min(persona_rows, key=lambda x: (risk_rank.get(x['risk_signal'], 3), -x['mission_score']))
+        prs = [r['run_id'] for r in persona_rows if r['pr_present']]
+        writes = [r['run_id'] for r in persona_rows if r['writeback_status'] == 'written']
+        shortlisted = [r['run_id'] for r in persona_rows if r['shortlisted'] and not r['eliminated']]
+        rec = shortlisted[0] if shortlisted else best['run_id']
+        interp = 'Persona divergence is heuristic: compare risk posture and objective fit before accepting recommendations.'
+        return PersonaPortfolioSummary(
+            root_run_id=root_run_id,
+            branches=persona_rows,
+            best_scoring_persona_branch=best['run_id'],
+            lowest_risk_persona_branch=low_risk['run_id'],
+            persona_branches_with_prs=prs,
+            persona_branches_with_successful_writeback=writes,
+            persona_divergence_interpretation=interp,
+            recommended_next_persona_branch=rec,
+        )
+
+    def apply_operator_override(self, run_id: int, payload: dict) -> OrchestrationRunRecord:
+        row = self.session.get(IntegrationRun, run_id)
+        if not row:
+            raise IntegrationClientError(f'Run {run_id} not found')
+        decision = payload.get('decision', 'accept_recommendation')
+        if decision not in {'accept_recommendation', 'reject_recommendation', 'manual_override'}:
+            raise IntegrationClientError('Invalid override decision. Use accept_recommendation, reject_recommendation, or manual_override.')
+        row.operator_override_status = decision
+        row.operator_override_note = payload.get('note', '')
+        row.recommendation_state = 'accepted' if decision == 'accept_recommendation' else ('rejected' if decision == 'reject_recommendation' else 'overridden')
+        if payload.get('shortlisted') is not None:
+            row.shortlisted = bool(payload.get('shortlisted'))
+        if payload.get('eliminated') is not None:
+            row.eliminated = bool(payload.get('eliminated'))
+        row.decision_status = 'shortlisted' if row.shortlisted else ('eliminated' if row.eliminated else 'undecided')
+        row.updated_at = datetime.utcnow()
+        self.session.add(row)
+        self.session.commit()
+        self.session.refresh(row)
+        self._log_event('operator-override', run_id=run_id, status=decision, detail={'note': row.operator_override_note, 'decision_status': row.decision_status})
+        return self._to_record(row)
+
+    def get_persona_performance_summary(self, root_run_id: int | None = None) -> dict:
+        rows = self.list_runs(limit=10000)
+        if root_run_id is not None:
+            allowed = {root_run_id} | {r['id'] for r in self.get_descendants(root_run_id)}
+            rows = [r for r in rows if r.id in allowed]
+        by_persona = {}
+        for r in rows:
+            key = r.assigned_persona_id or r.persona_id or 'unassigned'
+            bucket = by_persona.setdefault(key, {'count': 0, 'score_sum': 0, 'pr': 0, 'writeback_ok': 0, 'shortlisted': 0, 'overrides': 0, 'risk_high': 0, 'confidence_high': 0})
+            bucket['count'] += 1
+            bucket['score_sum'] += r.mission_score
+            bucket['pr'] += 1 if r.pr_url else 0
+            bucket['writeback_ok'] += 1 if r.writeback_status == 'written' else 0
+            bucket['shortlisted'] += 1 if r.shortlisted else 0
+            bucket['overrides'] += 1 if r.operator_override_status != 'none' else 0
+            bucket['risk_high'] += 1 if r.risk_signal == 'high' else 0
+            bucket['confidence_high'] += 1 if r.confidence_level == 'high' else 0
+        out = []
+        for persona, b in by_persona.items():
+            c = b['count'] or 1
+            out.append({
+                'persona_id': persona,
+                'mission_count': b['count'],
+                'average_score': b['score_sum'] / c,
+                'pr_rate': b['pr'] / c,
+                'writeback_success_rate': b['writeback_ok'] / c,
+                'shortlist_rate': b['shortlisted'] / c,
+                'override_frequency': b['overrides'] / c,
+                'high_risk_rate': b['risk_high'] / c,
+                'high_confidence_rate': b['confidence_high'] / c,
+            })
+        return {'root_run_id': root_run_id, 'persona_metrics': sorted(out, key=lambda x: x['mission_count'], reverse=True)}
+
     def set_branch_decision(self, run_id: int, *, shortlisted: bool | None = None, eliminated: bool | None = None, decision_note: str = '') -> OrchestrationRunRecord:
         row = self.session.get(IntegrationRun, run_id)
         if not row:
@@ -867,6 +1076,10 @@ class IntegrationOrchestrator:
                 'branch_label': r.branch_label or (r.mission_title or f'run-{r.id}'),
                 'branch_strategy': r.branch_strategy,
                 'persona_id': r.persona_id,
+                'assigned_persona_id': r.assigned_persona_id,
+                'assigned_persona_name': r.assigned_persona_name,
+                'assigned_persona_role': r.assigned_persona_role,
+                'persona_strategy_overlay': r.persona_strategy_overlay,
                 'objective_delta': objective_delta,
                 'status': r.status,
                 'mission_score': r.mission_score,
@@ -877,6 +1090,8 @@ class IntegrationOrchestrator:
                 'shortlisted': r.shortlisted,
                 'eliminated': r.eliminated,
                 'decision_status': r.decision_status,
+                'operator_override_status': r.operator_override_status,
+                'recommendation_state': r.recommendation_state,
             })
         def rank_key(b):
             risk_penalty = {'low': 0, 'medium': 10, 'high': 20}.get(b['risk_signal'], 15)
@@ -885,7 +1100,7 @@ class IntegrationOrchestrator:
         shortlist = [b['run_id'] for b in ranked if b['decision_status'] == 'shortlisted'] or [b['run_id'] for b in ranked[:2] if not b['eliminated']]
         elimination = [b['run_id'] for b in ranked if b['decision_status'] == 'eliminated'] or [b['run_id'] for b in ranked if b['risk_signal'] == 'high' and b['mission_score'] < 40]
         note = 'Operator aid only: ranking is heuristic and should be reviewed with provenance, risk, and objective fit.'
-        return BranchPortfolioSummary(root_run_id=root_run_id, branch_set_id=branch_set_id, branches=branches, ranking_summary=[{'run_id': b['run_id'], 'branch_label': b['branch_label'], 'strategy': b['branch_strategy'], 'heuristic_rank_score': rank_key(b)} for b in ranked], shortlist_suggestions=shortlist, elimination_suggestions=elimination, interpretation_note=note)
+        return BranchPortfolioSummary(root_run_id=root_run_id, branch_set_id=branch_set_id, branches=branches, ranking_summary=[{'run_id': b['run_id'], 'branch_label': b['branch_label'], 'strategy': b['branch_strategy'], 'persona': b.get('assigned_persona_id') or b.get('persona_id'), 'heuristic_rank_score': rank_key(b)} for b in ranked], shortlist_suggestions=shortlist, elimination_suggestions=elimination, interpretation_note=note)
 
     def get_root_decision_summary(self, root_run_id: int) -> dict:
         portfolio = self.get_branch_portfolio(root_run_id)
@@ -950,6 +1165,14 @@ class IntegrationOrchestrator:
             eliminated=bool(replay.get('eliminated', False)),
             branch_order=int(replay.get('branch_order', 0) or 0),
             decision_note=replay.get('decision_note', ''),
+            assigned_persona_id=replay.get('assigned_persona_id', replay.get('persona_id') or source.persona_id),
+            assigned_persona_name=replay.get('assigned_persona_name', ''),
+            assigned_persona_role=replay.get('assigned_persona_role', ''),
+            persona_strategy_overlay=replay.get('persona_strategy_overlay', ''),
+            persona_assignment_reason=replay.get('persona_assignment_reason', ''),
+            operator_override_status=replay.get('operator_override_status', 'none'),
+            operator_override_note=replay.get('operator_override_note', ''),
+            recommendation_state=replay.get('recommendation_state', 'pending'),
             parent_run_id=lineage['parent_run_id'],
             root_run_id=lineage['root_run_id'],
             lineage_depth=lineage['lineage_depth'],
@@ -1004,6 +1227,14 @@ class IntegrationOrchestrator:
             row.eliminated = draft.eliminated
             row.branch_order = draft.branch_order
             row.decision_note = draft.decision_note
+            row.assigned_persona_id = draft.assigned_persona_id
+            row.assigned_persona_name = draft.assigned_persona_name
+            row.assigned_persona_role = draft.assigned_persona_role
+            row.persona_strategy_overlay = draft.persona_strategy_overlay
+            row.persona_assignment_reason = draft.persona_assignment_reason
+            row.operator_override_status = draft.operator_override_status
+            row.operator_override_note = draft.operator_override_note
+            row.recommendation_state = draft.recommendation_state
             row.immutable_origin_created_at = draft.immutable_origin_created_at
             self._persist_snapshot(row)
             self.session.add(row)
@@ -1027,7 +1258,7 @@ class IntegrationOrchestrator:
 
     def get_descendants(self, root_run_id: int) -> list[dict]:
         rows = self.session.exec(select(IntegrationRun).where((IntegrationRun.root_run_id == root_run_id) | (IntegrationRun.parent_run_id == root_run_id))).all()
-        return [{'id': r.id, 'parent_run_id': r.parent_run_id, 'root_run_id': r.root_run_id, 'lineage_depth': r.lineage_depth, 'mission_title': r.mission_title, 'status': r.status, 'replay_kind': r.replay_kind, 'branch_set_id': r.branch_set_id, 'branch_label': r.branch_label, 'branch_strategy': r.branch_strategy, 'decision_status': r.decision_status} for r in rows]
+        return [{'id': r.id, 'parent_run_id': r.parent_run_id, 'root_run_id': r.root_run_id, 'lineage_depth': r.lineage_depth, 'mission_title': r.mission_title, 'status': r.status, 'replay_kind': r.replay_kind, 'branch_set_id': r.branch_set_id, 'branch_label': r.branch_label, 'branch_strategy': r.branch_strategy, 'decision_status': r.decision_status, 'assigned_persona_id': r.assigned_persona_id, 'persona_strategy_overlay': r.persona_strategy_overlay, 'operator_override_status': r.operator_override_status} for r in rows]
 
     def get_lineage(self, run_id: int) -> dict:
         row = self.session.get(IntegrationRun, run_id)
@@ -1058,6 +1289,14 @@ class IntegrationOrchestrator:
             'eliminated': row.eliminated,
             'branch_order': row.branch_order,
             'decision_note': row.decision_note,
+            'assigned_persona_id': row.assigned_persona_id,
+            'assigned_persona_name': row.assigned_persona_name,
+            'assigned_persona_role': row.assigned_persona_role,
+            'persona_strategy_overlay': row.persona_strategy_overlay,
+            'persona_assignment_reason': row.persona_assignment_reason,
+            'operator_override_status': row.operator_override_status,
+            'operator_override_note': row.operator_override_note,
+            'recommendation_state': row.recommendation_state,
             'immutable_origin_created_at': row.immutable_origin_created_at.isoformat() if row.immutable_origin_created_at else None,
         }
 

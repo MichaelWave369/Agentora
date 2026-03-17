@@ -398,6 +398,14 @@ class IntegrationRun(SQLModel, table=True):
     eliminated: bool = False
     branch_order: int = 0
     decision_note: str = ''
+    assigned_persona_id: str = ''
+    assigned_persona_name: str = ''
+    assigned_persona_role: str = ''
+    persona_strategy_overlay: str = ''
+    persona_assignment_reason: str = ''
+    operator_override_status: str = 'none'
+    operator_override_note: str = ''
+    recommendation_state: str = 'pending'
     error_message: str = ''
 
 
