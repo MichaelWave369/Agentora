@@ -487,6 +487,79 @@ def _world_garden_page():
         st.balloons()
         st.json(safe_api_post('/api/world-garden/festival/harvest', {}, 'harvest festival'))
 
+
+
+def _software_missions_page():
+    st.subheader('Phi x Ception — Software Missions')
+    phios_health = safe_api_get('/api/integrations/phios/health', 'phios health')
+    ac_health = safe_api_get('/api/integrations/agentception/health', 'agentception health')
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**PhiOS**")
+        st.json(phios_health)
+    with c2:
+        st.markdown("**AgentCeption**")
+        st.json(ac_health)
+
+    persona_id = st.text_input('persona_id', value='operator-default')
+    repo = st.text_input('repo', value='owner/repo')
+    objective = st.text_area('objective', value='Implement thin integration bridge and return a PR-ready summary.')
+    acceptance = st.text_area('acceptance criteria (one per line)', value='All routes return JSON\nRun is persisted locally')
+    constraints = st.text_area('constraints (one per line)', value='Do not vendor AgentCeption\nKeep existing Agentora UX')
+    dry_run = st.checkbox('dry_run', value=True)
+
+    if st.button('Build Context Pack'):
+        payload = {
+            'persona_id': persona_id,
+            'task': 'software_mission',
+            'repo': repo,
+            'objective': objective,
+            'limit': 6,
+        }
+        context_pack = safe_api_post('/api/integrations/phios/context-pack', payload, 'build context pack')
+        st.session_state['integration_context_pack'] = context_pack
+
+    context_pack = st.session_state.get('integration_context_pack', {})
+    if context_pack:
+        st.markdown('**Persona summary**')
+        st.json(context_pack.get('persona', {}))
+        st.markdown('**Memory snippets**')
+        st.json(context_pack.get('memory_snippets', []))
+
+    if st.button('Launch in AgentCeption'):
+        payload = {
+            'persona_id': persona_id,
+            'repo': repo,
+            'objective': objective,
+            'acceptance_criteria': [line.strip() for line in acceptance.splitlines() if line.strip()],
+            'constraints': [line.strip() for line in constraints.splitlines() if line.strip()],
+            'dry_run': dry_run,
+        }
+        run_record = safe_api_post('/api/integrations/agentception/launch', payload, 'launch mission')
+        st.session_state['integration_run'] = run_record
+
+    run = st.session_state.get('integration_run', {})
+    if run:
+        st.markdown('**Launch record**')
+        st.json(run)
+        run_id = run.get('id')
+        if run_id:
+            c3, c4 = st.columns(2)
+            with c3:
+                if st.button('Refresh Status'):
+                    refreshed = safe_api_post(f'/api/integrations/runs/{run_id}/refresh', {}, 'refresh run')
+                    st.session_state['integration_run'] = refreshed
+            with c4:
+                if st.button('Write Result Back to PhiOS'):
+                    writeback_payload = {'summary': run.get('summary', ''), 'details': run.get('raw_payload_json', ''), 'tags': ['phase1', 'agentora']}
+                    st.json(safe_api_post(f'/api/integrations/runs/{run_id}/writeback', writeback_payload, 'writeback'))
+
+        st.markdown(f"**Job ID:** {run.get('agentception_job_id', '')}")
+        st.markdown(f"**Status:** {run.get('agentception_status', run.get('status', ''))}")
+        if run.get('pr_url'):
+            st.markdown(f"**PR URL:** {run.get('pr_url')}")
+        if run.get('summary'):
+            st.markdown(f"**Summary:** {run.get('summary')}")
 def _core_page():
     _panel_json('Health', '/api/health')
     _panel_json('Runs', '/api/runs')
@@ -504,7 +577,7 @@ def render_dashboard() -> None:
     st.caption('Local-first operating studio • private by default • general-availability build')
     st.info(f"API Mode: {ACTIVE_MODE.upper()} | DB: {st.session_state['db_url']}")
 
-    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'World Garden (experimental)', 'Core'])
+    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'World Garden (experimental)', 'Software Missions', 'Core'])
     st.sidebar.markdown("<span class='agentora-pill'>NO CLOUD REQUIRED</span>", unsafe_allow_html=True)
 
     if page == 'Dashboard':
@@ -527,6 +600,8 @@ def render_dashboard() -> None:
         _garden_page()
     elif page == 'World Garden (experimental)':
         _world_garden_page()
+    elif page == 'Software Missions':
+        _software_missions_page()
     else:
         _core_page()
 
