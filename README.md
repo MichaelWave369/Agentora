@@ -354,3 +354,63 @@ AGENTORA_MISSIONS_CONFIDENCE_THRESHOLD_MEDIUM=45
 ### Heuristic and severity note
 
 Mission score, confidence, and compare severity are **operator-facing heuristics**, not objective truth.
+
+## PhiOS + AgentCeption integration (Phase G)
+
+Phase G introduces branching/replay primitives with immutable provenance and lineage-aware operations.
+
+### New capabilities
+
+- Snapshot-based replay draft creation and launch-from-draft workflows.
+- Immutable provenance lineage fields (`parent_run_id`, `root_run_id`, `lineage_depth`, source snapshot hash, replay metadata).
+- Snapshot hash generation for integrity/provenance validation.
+- Lineage and provenance APIs for ancestry/descendant views.
+- Replay-aware compare context integrated with existing diff/severity model.
+- Optional export signing support (HMAC) for bundle integrity checks.
+
+### Replay policy env flags
+
+```bash
+AGENTORA_MISSIONS_REPLAY_ENABLED=true
+AGENTORA_MISSIONS_REPLAY_ALLOW_REPO_CHANGE=false
+AGENTORA_MISSIONS_REPLAY_MAX_LINEAGE_DEPTH=20
+AGENTORA_MISSIONS_REPLAY_REQUIRE_PROVENANCE_NOTE=false
+AGENTORA_MISSIONS_SIGN_EXPORTS=false
+AGENTORA_MISSIONS_EXPORT_SIGNING_KEY=
+```
+
+### New Phase G routes
+
+- `POST /api/integrations/runs/{run_id}/fork`
+- `POST /api/integrations/runs/{run_id}/replay`
+- `POST /api/integrations/runs/{run_id}/launch-from-draft`
+- `GET /api/integrations/runs/{run_id}/lineage`
+- `GET /api/integrations/lineage/{root_run_id}`
+- `GET /api/integrations/runs/{run_id}/provenance`
+
+### Lifecycle
+
+Original Run -> Snapshot -> Fork Draft -> Replay Launch -> Lineage Compare
+
+### Replay safety model
+
+Immutable provenance fields are preserved across forks/replays:
+- source snapshot hash
+- parent/root linkage
+- lineage depth
+- immutable origin created timestamp
+
+Mutable replay draft fields:
+- mission title
+- objective
+- operator intent
+- acceptance criteria
+- constraints
+- persona
+- dry_run
+- repo only when policy allows
+
+### Known limitations
+
+- Replay launch currently creates a new launched run from draft state (draft remains a historical artifact).
+- Export signatures are optional local integrity hints, not external trust attestations.

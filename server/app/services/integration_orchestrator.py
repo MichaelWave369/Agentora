@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import json
 from datetime import datetime, timedelta
 
@@ -39,7 +41,22 @@ class IntegrationOrchestrator:
         self.agentception = AgentCeptionClient()
 
     def _to_record(self, row: IntegrationRun) -> OrchestrationRunRecord:
-        return OrchestrationRunRecord.model_validate(row.model_dump())
+        return OrchestrationRunRecord.model_validate(row, from_attributes=True)
+
+    def compute_snapshot_hash(self, snapshot: dict) -> str:
+        normalized = json.dumps(snapshot, sort_keys=True, default=str, separators=(',', ':'))
+        return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+    def _sign_export_payload(self, payload: dict) -> str:
+        key = settings.agentora_missions_export_signing_key.encode('utf-8')
+        data = json.dumps(payload, sort_keys=True, default=str, separators=(',', ':')).encode('utf-8')
+        return hmac.new(key, data, hashlib.sha256).hexdigest()
+
+    def _verify_export_signature(self, payload: dict, signature: str) -> bool:
+        if not settings.agentora_missions_export_signing_key:
+            return False
+        expected = self._sign_export_payload(payload)
+        return hmac.compare_digest(expected, signature)
 
     def _parse_json(self, raw: str, default):
         try:
@@ -156,7 +173,10 @@ class IntegrationOrchestrator:
         row.risk_signal = 'high' if risk_points >= settings.agentora_missions_risk_threshold_high else ('medium' if risk_points > 0 else 'low')
 
     def _persist_snapshot(self, row: IntegrationRun):
-        row.mission_snapshot_json = dumps_json(self._build_snapshot(row))
+        snapshot = self._build_snapshot(row)
+        row.snapshot_hash = self.compute_snapshot_hash(snapshot)
+        snapshot['snapshot_hash'] = row.snapshot_hash
+        row.mission_snapshot_json = dumps_json(snapshot)
 
     def prepare_mission_context(self, payload: PrepareMissionRequest) -> MissionContextPacket:
         packet = self.phios.get_context_pack(
@@ -574,7 +594,10 @@ class IntegrationOrchestrator:
             self._persist_snapshot(row)
             self.session.add(row)
             self.session.commit()
-        return self._parse_json(row.mission_snapshot_json, {})
+        snapshot = self._parse_json(row.mission_snapshot_json, {})
+        if row.snapshot_hash and snapshot.get('snapshot_hash') != row.snapshot_hash:
+            snapshot['snapshot_hash'] = row.snapshot_hash
+        return snapshot
 
     def get_retention_status(self) -> dict:
         now = datetime.utcnow()
@@ -629,7 +652,7 @@ class IntegrationOrchestrator:
         events = [e.model_dump(mode='json') for e in self.session.exec(events_q).all() if (e.run_id in run_ids if run_ids else True)]
         alerts = [a.model_dump(mode='json') for a in self.session.exec(select(AlertEvent)).all() if (a.run_id in run_ids if run_ids else True)]
         snapshots = {r.id: self.get_snapshot(r.id) for r in runs if r.id is not None}
-        return {
+        bundle = {
             'schema_version': 'mission-export-v1',
             'exported_at': datetime.utcnow().isoformat(),
             'filters': {'start_date': start_date.isoformat() if start_date else None, 'end_date': end_date.isoformat() if end_date else None, 'repo': repo, 'persona_id': persona_id, 'status': status},
@@ -638,10 +661,21 @@ class IntegrationOrchestrator:
             'alert_events': alerts,
             'snapshots': snapshots,
         }
+        if settings.agentora_missions_sign_exports and settings.agentora_missions_export_signing_key:
+            bundle['signature'] = self._sign_export_payload(bundle)
+            bundle['signed'] = True
+        else:
+            bundle['signed'] = False
+        return bundle
 
     def import_data(self, payload: dict) -> dict:
         if not isinstance(payload, dict) or payload.get('schema_version') != 'mission-export-v1':
             raise IntegrationClientError('Invalid import payload: schema_version mission-export-v1 required')
+        if payload.get('signed') and payload.get('signature'):
+            raw = dict(payload)
+            signature = raw.pop('signature')
+            if not self._verify_export_signature(raw, signature):
+                raise IntegrationClientError('Invalid export signature')
         runs = payload.get('runs', [])
         events = payload.get('watcher_events', [])
         alerts = payload.get('alert_events', [])
@@ -652,6 +686,8 @@ class IntegrationOrchestrator:
             run_id = item.get('id')
             if run_id and self.session.get(IntegrationRun, run_id):
                 continue
+            if item.get('parent_run_id') == item.get('id'):
+                raise IntegrationClientError('Malformed lineage cycle detected in import')
             row = IntegrationRun(**{k: v for k, v in item.items() if k in IntegrationRun.model_fields})
             self.session.add(row)
             self.session.commit()
@@ -684,6 +720,148 @@ class IntegrationOrchestrator:
             imported_alerts += 1
 
         return {'ok': True, 'imported_runs': imported_runs, 'imported_watcher_events': imported_events, 'imported_alert_events': imported_alerts}
+
+
+    def _build_lineage_fields(self, parent: IntegrationRun | None) -> dict:
+        if not parent:
+            return {'parent_run_id': None, 'root_run_id': None, 'lineage_depth': 0, 'immutable_origin_created_at': None}
+        root = parent.root_run_id or parent.id
+        depth = (parent.lineage_depth or 0) + 1
+        return {
+            'parent_run_id': parent.id,
+            'root_run_id': root,
+            'lineage_depth': depth,
+            'immutable_origin_created_at': parent.immutable_origin_created_at or parent.created_at,
+        }
+
+    def validate_replay_mutation(self, source: IntegrationRun, replay: dict):
+        if not settings.agentora_missions_replay_enabled:
+            raise IntegrationClientError('Replay/fork features are disabled by policy.')
+        if (source.lineage_depth or 0) >= settings.agentora_missions_replay_max_lineage_depth:
+            raise IntegrationClientError('Replay blocked: lineage depth limit reached.')
+        note = (replay.get('provenance_note') or '').strip()
+        if settings.agentora_missions_replay_require_provenance_note and not note:
+            raise IntegrationClientError('Replay blocked: provenance note is required by policy.')
+        if replay.get('repo') and replay.get('repo') != source.repo and not settings.agentora_missions_replay_allow_repo_change:
+            raise IntegrationClientError('Replay blocked: repo change is not allowed by policy.')
+
+    def create_replay_draft(self, source_run_id: int, replay: dict) -> OrchestrationRunRecord:
+        source = self.session.get(IntegrationRun, source_run_id)
+        if not source:
+            raise IntegrationClientError(f'Source run {source_run_id} not found')
+        self.validate_replay_mutation(source, replay)
+        snapshot = self.get_snapshot(source_run_id)
+        source_hash = source.snapshot_hash or snapshot.get('snapshot_hash') or self.compute_snapshot_hash(snapshot)
+        lineage = self._build_lineage_fields(source)
+        draft = IntegrationRun(
+            status='draft',
+            persona_id=replay.get('persona_id') or source.persona_id,
+            repo=replay.get('repo') or source.repo,
+            mission_title=replay.get('mission_title') or f"Replay: {source.mission_title}",
+            objective=replay.get('objective') or source.objective,
+            operator_intent=replay.get('operator_intent') or source.operator_intent,
+            acceptance_criteria_json=dumps_json(replay.get('acceptance_criteria') or self._parse_json_list(source.acceptance_criteria_json)),
+            constraints_json=dumps_json(replay.get('constraints') or self._parse_json_list(source.constraints_json)),
+            phios_packet_json=source.phios_packet_json,
+            raw_payload_json=source.raw_payload_json,
+            replay_source_snapshot_hash=source_hash,
+            replay_kind=replay.get('replay_kind', 'exact_replay'),
+            provenance_note=replay.get('provenance_note', ''),
+            fork_reason=replay.get('fork_reason', ''),
+            parent_run_id=lineage['parent_run_id'],
+            root_run_id=lineage['root_run_id'],
+            lineage_depth=lineage['lineage_depth'],
+            immutable_origin_created_at=lineage['immutable_origin_created_at'],
+            writeback_policy=source.writeback_policy,
+            auto_writeback_enabled=source.auto_writeback_enabled,
+            watch_enabled=False,
+        )
+        self._evaluate_run(draft)
+        self.session.add(draft)
+        self.session.commit()
+        self.session.refresh(draft)
+        self._persist_snapshot(draft)
+        self.session.add(draft)
+        self.session.commit()
+        self._log_event('replay-draft-created', run_id=draft.id, status=draft.replay_kind, detail={'source_run_id': source_run_id})
+        return self._to_record(draft)
+
+    def launch_replay_draft(self, run_id: int, dry_run: bool = True) -> OrchestrationRunRecord:
+        draft = self.session.get(IntegrationRun, run_id)
+        if not draft:
+            raise IntegrationClientError(f'Draft run {run_id} not found')
+        if draft.status != 'draft':
+            raise IntegrationClientError('Only draft runs can be launched via launch-from-draft.')
+        packet = self._parse_json(draft.phios_packet_json, {})
+        req = LaunchMissionRequest(
+            persona_id=draft.persona_id,
+            repo=draft.repo,
+            mission_title=draft.mission_title,
+            objective=draft.objective,
+            operator_intent=draft.operator_intent,
+            acceptance_criteria=self._parse_json_list(draft.acceptance_criteria_json),
+            constraints=self._parse_json_list(draft.constraints_json),
+            dry_run=dry_run,
+            prepared_packet=packet if packet else None,
+        )
+        launched = self.launch_software_mission(req)
+        row = self.session.get(IntegrationRun, launched.id)
+        if row:
+            row.parent_run_id = draft.parent_run_id
+            row.root_run_id = draft.root_run_id or draft.parent_run_id
+            row.lineage_depth = draft.lineage_depth
+            row.replay_source_snapshot_hash = draft.replay_source_snapshot_hash
+            row.replay_kind = draft.replay_kind
+            row.provenance_note = draft.provenance_note
+            row.fork_reason = draft.fork_reason
+            row.immutable_origin_created_at = draft.immutable_origin_created_at
+            self._persist_snapshot(row)
+            self.session.add(row)
+            self.session.commit()
+            self.session.refresh(row)
+            return self._to_record(row)
+        return launched
+
+    def get_ancestors(self, run_id: int) -> list[dict]:
+        out = []
+        seen = set()
+        current = self.session.get(IntegrationRun, run_id)
+        while current and current.parent_run_id and current.parent_run_id not in seen:
+            parent = self.session.get(IntegrationRun, current.parent_run_id)
+            if not parent:
+                break
+            out.append({'id': parent.id, 'mission_title': parent.mission_title, 'status': parent.status, 'lineage_depth': parent.lineage_depth})
+            seen.add(parent.id)
+            current = parent
+        return out
+
+    def get_descendants(self, root_run_id: int) -> list[dict]:
+        rows = self.session.exec(select(IntegrationRun).where((IntegrationRun.root_run_id == root_run_id) | (IntegrationRun.parent_run_id == root_run_id))).all()
+        return [{'id': r.id, 'parent_run_id': r.parent_run_id, 'root_run_id': r.root_run_id, 'lineage_depth': r.lineage_depth, 'mission_title': r.mission_title, 'status': r.status, 'replay_kind': r.replay_kind} for r in rows]
+
+    def get_lineage(self, run_id: int) -> dict:
+        row = self.session.get(IntegrationRun, run_id)
+        if not row:
+            raise IntegrationClientError(f'Run {run_id} not found')
+        root_id = row.root_run_id or row.parent_run_id or row.id
+        return {'run_id': run_id, 'root_run_id': root_id, 'ancestry': self.get_ancestors(run_id), 'descendants': self.get_descendants(root_id)}
+
+    def get_provenance(self, run_id: int) -> dict:
+        row = self.session.get(IntegrationRun, run_id)
+        if not row:
+            raise IntegrationClientError(f'Run {run_id} not found')
+        return {
+            'run_id': row.id,
+            'parent_run_id': row.parent_run_id,
+            'root_run_id': row.root_run_id,
+            'lineage_depth': row.lineage_depth,
+            'snapshot_hash': row.snapshot_hash,
+            'replay_source_snapshot_hash': row.replay_source_snapshot_hash,
+            'replay_kind': row.replay_kind,
+            'provenance_note': row.provenance_note,
+            'fork_reason': row.fork_reason,
+            'immutable_origin_created_at': row.immutable_origin_created_at.isoformat() if row.immutable_origin_created_at else None,
+        }
 
     def cohorts(self, *, group_by: str = 'repo', status: str | None = None, writeback_status: str | None = None, confidence_level: str | None = None, mission_score_min: int | None = None, mission_score_max: int | None = None, start_date: datetime | None = None, end_date: datetime | None = None) -> dict:
         runs = self.list_runs(status=status, writeback_status=writeback_status, confidence_level=confidence_level, mission_score_min=mission_score_min, mission_score_max=mission_score_max, start_date=start_date, end_date=end_date, limit=10000)

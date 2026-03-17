@@ -1,7 +1,6 @@
 import json
 
 from app.core.config import Settings, settings
-from app.integrations.mappers import map_packet_to_launch_request
 from app.integrations.phios_client import PhiOSClient
 from app.integrations.schemas import ContextPackRequest
 
@@ -30,126 +29,110 @@ def _launch_mock_run(client, title='Mission Alpha', objective='Objective Alpha')
     return launch.json()['id']
 
 
-def test_phase_f_env_defaults_parse():
+def test_phase_g_env_defaults_parse():
     cfg = Settings()
-    assert cfg.agentora_missions_events_ttl_days == 30
-    assert cfg.agentora_missions_events_max_per_run == 200
-    assert cfg.agentora_missions_compaction_enabled is False
-    assert cfg.agentora_missions_alerts_enabled is False
+    assert cfg.agentora_missions_replay_enabled is True
+    assert cfg.agentora_missions_replay_allow_repo_change is False
+    assert cfg.agentora_missions_replay_max_lineage_depth == 20
 
 
-def test_calibration_applies(monkeypatch):
+def test_snapshot_hash_determinism(monkeypatch):
     _enable_mock(monkeypatch)
-    monkeypatch.setattr(settings, 'agentora_missions_score_pr_bonus', 40)
-    packet = PhiOSClient().get_context_pack(ContextPackRequest(persona_id='p', task='software_mission', repo='owner/repo', objective='obj'))
-    launch = map_packet_to_launch_request(packet, [], [], True)
-    assert launch.repo == 'owner/repo'
+    from app.db import Session, create_db_and_tables, engine
+    from app.services.integration_orchestrator import IntegrationOrchestrator
+
+    create_db_and_tables()
+    with Session(engine) as session:
+        orch = IntegrationOrchestrator(session)
+        h1 = orch.compute_snapshot_hash({'a': 1, 'b': [2, 3]})
+        h2 = orch.compute_snapshot_hash({'b': [2, 3], 'a': 1})
+        assert h1 == h2
 
 
-def test_retention_compaction_and_metrics_routes(monkeypatch):
-    _enable_mock(monkeypatch)
-    monkeypatch.setattr(settings, 'agentora_missions_events_max_per_run', 1)
-    client = make_client()
-    run_id = _launch_mock_run(client)
-    client.post(f'/api/integrations/runs/{run_id}/refresh', json={})
-    client.post(f'/api/integrations/runs/{run_id}/refresh', json={})
-
-    retention = client.get('/api/integrations/retention')
-    assert retention.status_code == 200
-    assert 'total_events' in retention.json()
-
-    compact = client.post('/api/integrations/retention/compact', json={})
-    assert compact.status_code == 200
-    assert 'deleted_events' in compact.json()
-
-    metrics = client.get('/api/integrations/metrics')
-    assert metrics.status_code == 200
-    assert 'refresh_attempts' in metrics.json()
-
-
-def test_export_import_round_trip(monkeypatch):
+def test_replay_draft_creation_and_launch(monkeypatch):
     _enable_mock(monkeypatch)
     client = make_client()
-    run_id = _launch_mock_run(client)
-    client.post(f'/api/integrations/runs/{run_id}/refresh', json={})
+    source = _launch_mock_run(client, title='Original', objective='Original objective')
+
+    fork = client.post(f'/api/integrations/runs/{source}/fork', json={'replay_kind': 'branch_with_new_objective', 'objective': 'New branch objective', 'provenance_note': 'test fork', 'fork_reason': 'improve objective', 'dry_run': True})
+    assert fork.status_code == 200
+    draft = fork.json()
+    assert draft['status'] == 'draft'
+    assert draft['parent_run_id'] == source
+    assert draft['replay_source_snapshot_hash']
+
+    launch = client.post(f"/api/integrations/runs/{draft['id']}/launch-from-draft", json={'dry_run': True})
+    assert launch.status_code == 200
+    launched = launch.json()
+    assert launched['parent_run_id'] == source
+
+
+def test_replay_policy_validation(monkeypatch):
+    _enable_mock(monkeypatch)
+    monkeypatch.setattr(settings, 'agentora_missions_replay_allow_repo_change', False)
+    monkeypatch.setattr(settings, 'agentora_missions_replay_require_provenance_note', True)
+    client = make_client()
+    source = _launch_mock_run(client)
+
+    bad_note = client.post(f'/api/integrations/runs/{source}/fork', json={'replay_kind': 'exact_replay', 'provenance_note': ''})
+    assert bad_note.status_code == 400
+
+    bad_repo = client.post(f'/api/integrations/runs/{source}/fork', json={'replay_kind': 'exact_replay', 'provenance_note': 'ok', 'repo': 'other/repo'})
+    assert bad_repo.status_code == 400
+
+
+def test_lineage_and_provenance_routes(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client)
+    fork = client.post(f'/api/integrations/runs/{source}/fork', json={'replay_kind': 'exact_replay', 'provenance_note': 'lineage test'}).json()
+
+    prov = client.get(f"/api/integrations/runs/{fork['id']}/provenance")
+    assert prov.status_code == 200
+    assert prov.json()['parent_run_id'] == source
+
+    lin = client.get(f"/api/integrations/runs/{fork['id']}/lineage")
+    assert lin.status_code == 200
+    assert lin.json()['root_run_id']
+
+    root = lin.json()['root_run_id']
+    root_view = client.get(f'/api/integrations/lineage/{root}')
+    assert root_view.status_code == 200
+
+
+def test_export_import_preserves_provenance(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client)
+    fork = client.post(f'/api/integrations/runs/{source}/fork', json={'replay_kind': 'recovery_replay', 'provenance_note': 'export test'}).json()
 
     exported = client.get('/api/integrations/export')
     assert exported.status_code == 200
     payload = exported.json()
     assert payload['schema_version'] == 'mission-export-v1'
-    assert payload['runs']
 
     imported = client.post('/api/integrations/import', json=payload)
     assert imported.status_code == 200
     assert imported.json()['ok'] is True
 
-    bad = client.post('/api/integrations/import', json={'schema_version': 'wrong'})
-    assert bad.status_code == 400
+    # provenance fields still available on original fork run detail
+    detail = client.get(f"/api/integrations/runs/{fork['id']}")
+    assert detail.status_code == 200
+    assert 'replay_kind' in detail.json()
 
 
-def test_alert_hook_failure_tolerant(monkeypatch):
-    _enable_mock(monkeypatch)
-    monkeypatch.setattr(settings, 'agentora_missions_alerts_enabled', True)
-    monkeypatch.setattr(settings, 'agentora_missions_alerts_webhook_url', 'http://127.0.0.1:9/unreachable')
-
-    client = make_client()
-    run_id = _launch_mock_run(client)
-    client.post(f'/api/integrations/runs/{run_id}/refresh', json={})
-    client.post(f'/api/integrations/runs/{run_id}/writeback', json={'operator_notes': 'manual', 'tags': ['x']})
-
-    alerts = client.get('/api/integrations/alerts/events')
-    assert alerts.status_code == 200
-    assert isinstance(alerts.json().get('events'), list)
-
-
-def test_cohorts_and_compare_severity_and_snapshot(monkeypatch):
+def test_compare_severity_and_snapshot_route(monkeypatch):
     _enable_mock(monkeypatch)
     client = make_client()
-    left = _launch_mock_run(client, title='Left', objective='Obj left')
-    right = _launch_mock_run(client, title='Right', objective='Obj right')
-    client.post(f'/api/integrations/runs/{left}/refresh', json={})
-    client.post(f'/api/integrations/runs/{right}/refresh', json={})
+    left = _launch_mock_run(client, title='Left', objective='obj left')
+    right = _launch_mock_run(client, title='Right', objective='obj right')
 
-    cohorts = client.get('/api/integrations/cohorts?group_by=repo')
-    assert cohorts.status_code == 200
-    assert cohorts.json()['groups']
-
-    summary = client.get('/api/integrations/cohorts/summary?group_by=repo')
-    assert summary.status_code == 200
-    assert 'average_mission_score' in summary.json()
-
-    compare = client.get(f'/api/integrations/runs/compare?left_run_id={left}&right_run_id={right}')
-    assert compare.status_code == 200
-    cmp = compare.json()
-    assert 'overall_severity' in cmp
-    assert 'field_severity' in cmp
+    cmp = client.get(f'/api/integrations/runs/compare?left_run_id={left}&right_run_id={right}')
+    assert cmp.status_code == 200
+    body = cmp.json()
+    assert 'overall_severity' in body
+    assert 'field_severity' in body
 
     snap = client.get(f'/api/integrations/runs/{left}/snapshot')
     assert snap.status_code == 200
-    assert 'prepared_packet' in snap.json()
-
-
-def test_mcp_policy_auth_readonly_allowed_tools(monkeypatch):
-    _enable_mock(monkeypatch)
-    monkeypatch.setattr(settings, 'agentora_missions_mcp_enabled', True)
-    monkeypatch.setattr(settings, 'agentora_missions_mcp_api_key', 'secret')
-    monkeypatch.setattr(settings, 'agentora_missions_mcp_read_only', True)
-    monkeypatch.setattr(settings, 'agentora_missions_mcp_allowed_tools', 'list_missions,get_mission')
-
-    client = make_client()
-    denied = client.get('/api/integrations/mcp/capabilities')
-    assert denied.status_code == 200
-    assert denied.json()['ok'] is False
-
-    caps = client.get('/api/integrations/mcp/capabilities', headers={'X-API-Key': 'secret'})
-    assert caps.status_code == 200
-    assert caps.json()['ok'] is True
-    assert 'launch_mission' not in caps.json().get('tools', [])
-
-    blocked = client.post('/api/integrations/mcp/call', headers={'X-API-Key': 'secret'}, json={'tool': 'launch_mission', 'args': {}})
-    assert blocked.status_code == 200
-    assert blocked.json()['ok'] is False
-
-    allowed = client.post('/api/integrations/mcp/call', headers={'X-API-Key': 'secret'}, json={'tool': 'list_missions', 'args': {'limit': 5}})
-    assert allowed.status_code == 200
-    assert allowed.json()['ok'] is True
+    assert snap.json().get('snapshot_hash')

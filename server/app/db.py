@@ -61,6 +61,15 @@ def _ensure_integrationrun_columns() -> None:
         'writeback_readiness_signal': "TEXT NOT NULL DEFAULT 'low'",
         'risk_signal': "TEXT NOT NULL DEFAULT 'high'",
         'mission_snapshot_json': "TEXT NOT NULL DEFAULT '{}'",
+        'snapshot_hash': "TEXT NOT NULL DEFAULT ''",
+        'parent_run_id': 'INTEGER',
+        'root_run_id': 'INTEGER',
+        'lineage_depth': 'INTEGER NOT NULL DEFAULT 0',
+        'replay_source_snapshot_hash': "TEXT NOT NULL DEFAULT ''",
+        'replay_kind': "TEXT NOT NULL DEFAULT ''",
+        'provenance_note': "TEXT NOT NULL DEFAULT ''",
+        'fork_reason': "TEXT NOT NULL DEFAULT ''",
+        'immutable_origin_created_at': 'DATETIME',
     }
     with engine.connect() as conn:
         try:

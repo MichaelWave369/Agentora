@@ -381,6 +381,15 @@ class IntegrationRun(SQLModel, table=True):
     writeback_readiness_signal: str = 'low'
     risk_signal: str = 'high'
     mission_snapshot_json: str = '{}'
+    snapshot_hash: str = ''
+    parent_run_id: Optional[int] = None
+    root_run_id: Optional[int] = None
+    lineage_depth: int = 0
+    replay_source_snapshot_hash: str = ''
+    replay_kind: str = ''
+    provenance_note: str = ''
+    fork_reason: str = ''
+    immutable_origin_created_at: Optional[datetime] = None
     error_message: str = ''
 
 

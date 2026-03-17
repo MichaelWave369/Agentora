@@ -204,6 +204,15 @@ class OrchestrationRunRecord(BaseModel):
     writeback_readiness_signal: str = 'low'
     risk_signal: str = 'high'
     mission_snapshot_json: str = '{}'
+    snapshot_hash: str = ''
+    parent_run_id: int | None = None
+    root_run_id: int | None = None
+    lineage_depth: int = 0
+    replay_source_snapshot_hash: str = ''
+    replay_kind: str = ''
+    provenance_note: str = ''
+    fork_reason: str = ''
+    immutable_origin_created_at: datetime | None = None
     error_message: str = ''
 
 
@@ -254,3 +263,37 @@ class AlertEventRecord(BaseModel):
     delivery_status: str = 'logged'
     detail_json: str = '{}'
     created_at: datetime
+
+
+class ReplayDraftRequest(BaseModel):
+    replay_kind: str = 'exact_replay'
+    mission_title: str | None = None
+    objective: str | None = None
+    operator_intent: str | None = None
+    acceptance_criteria: list[str] | None = None
+    constraints: list[str] | None = None
+    persona_id: str | None = None
+    repo: str | None = None
+    dry_run: bool = True
+    provenance_note: str = ''
+    fork_reason: str = ''
+
+
+class ReplayLaunchRequest(BaseModel):
+    dry_run: bool = True
+
+
+class LineageNode(BaseModel):
+    id: int
+    parent_run_id: int | None = None
+    root_run_id: int | None = None
+    lineage_depth: int = 0
+    mission_title: str = ''
+    status: str = ''
+    replay_kind: str = ''
+
+
+class LineageTreeResponse(BaseModel):
+    root_run_id: int
+    ancestry: list[LineageNode] = Field(default_factory=list)
+    descendants: list[LineageNode] = Field(default_factory=list)

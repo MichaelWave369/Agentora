@@ -625,6 +625,39 @@ def _software_missions_page():
             st.markdown(f"**Interpretation:** {diff.get('interpretation', '')}")
             st.json({'field_differences': diff.get('field_differences', {}), 'field_severity': diff.get('field_severity', {}), 'recommended_followups_delta': diff.get('recommended_followups_delta', {}), 'success_criteria_delta': diff.get('success_criteria_delta', {}), 'risk_flags_delta': diff.get('risk_flags_delta', {})})
 
+        st.markdown('### Replay / Fork')
+        source_id = st.selectbox('source run for replay', options=[x['id'] for x in rows], key='replay_source')
+        replay_kind = st.selectbox('replay kind', options=['exact_replay', 'branch_with_new_objective', 'branch_with_new_constraints', 'branch_with_new_persona', 'recovery_replay'])
+        new_title = st.text_input('replay mission title', value='')
+        new_objective = st.text_area('replay objective override', value='')
+        new_constraints = st.text_area('replay constraints override (one per line)', value='')
+        new_persona = st.text_input('replay persona override', value='')
+        provenance_note = st.text_input('provenance note', value='')
+        fork_reason = st.text_input('fork reason', value='')
+        if st.button('Create Replay Draft') and source_id:
+            payload = {
+                'replay_kind': replay_kind,
+                'mission_title': new_title or None,
+                'objective': new_objective or None,
+                'constraints': [x.strip() for x in new_constraints.splitlines() if x.strip()] or None,
+                'persona_id': new_persona or None,
+                'provenance_note': provenance_note,
+                'fork_reason': fork_reason,
+                'dry_run': True,
+            }
+            st.session_state['replay_draft'] = safe_api_post(f'/api/integrations/runs/{source_id}/fork', payload, 'create replay draft')
+        draft = st.session_state.get('replay_draft', {})
+        if draft:
+            st.json(draft)
+            if st.button('Launch Replay Draft') and draft.get('id'):
+                launched = safe_api_post(f"/api/integrations/runs/{draft['id']}/launch-from-draft", {'dry_run': True}, 'launch replay draft')
+                st.session_state['integration_run'] = launched
+
+        if source_id:
+            st.markdown('### Provenance / Lineage')
+            st.json(safe_api_get(f'/api/integrations/runs/{source_id}/provenance', 'provenance'))
+            st.json(safe_api_get(f'/api/integrations/runs/{source_id}/lineage', 'lineage'))
+
 def _core_page():
     _panel_json('Health', '/api/health')
     _panel_json('Runs', '/api/runs')

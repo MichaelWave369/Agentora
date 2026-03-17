@@ -132,6 +132,14 @@ class Settings(BaseSettings):
     agentora_missions_confidence_threshold_high: int = Field(default=75, alias='AGENTORA_MISSIONS_CONFIDENCE_THRESHOLD_HIGH')
     agentora_missions_confidence_threshold_medium: int = Field(default=45, alias='AGENTORA_MISSIONS_CONFIDENCE_THRESHOLD_MEDIUM')
 
+    agentora_missions_replay_enabled: bool = Field(default=True, alias='AGENTORA_MISSIONS_REPLAY_ENABLED')
+    agentora_missions_replay_allow_repo_change: bool = Field(default=False, alias='AGENTORA_MISSIONS_REPLAY_ALLOW_REPO_CHANGE')
+    agentora_missions_replay_max_lineage_depth: int = Field(default=20, alias='AGENTORA_MISSIONS_REPLAY_MAX_LINEAGE_DEPTH')
+    agentora_missions_replay_require_provenance_note: bool = Field(default=False, alias='AGENTORA_MISSIONS_REPLAY_REQUIRE_PROVENANCE_NOTE')
+
+    agentora_missions_sign_exports: bool = Field(default=False, alias='AGENTORA_MISSIONS_SIGN_EXPORTS')
+    agentora_missions_export_signing_key: str = Field(default='', alias='AGENTORA_MISSIONS_EXPORT_SIGNING_KEY')
+
 
     @property
     def allowed_tool_names(self) -> set[str]:

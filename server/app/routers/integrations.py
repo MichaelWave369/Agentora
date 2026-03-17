@@ -8,27 +8,12 @@ from app.core.config import settings
 from app.db import get_session
 from app.integrations.agentception_client import AgentCeptionClient
 from app.integrations.phios_client import IntegrationClientError, PhiOSClient
-from app.integrations.schemas import ContextPackRequest, LaunchMissionRequest, PrepareMissionRequest, SoftwareTaskRequest, WritebackRequest
+from app.integrations.schemas import ContextPackRequest, LaunchMissionRequest, PrepareMissionRequest, ReplayDraftRequest, ReplayLaunchRequest, SoftwareTaskRequest, WritebackRequest
 from app.models import IntegrationSetting, Message, Run
 from app.services.adapters.integrations import statuses
 from app.services.integration_orchestrator import IntegrationOrchestrator
 
 router = APIRouter(tags=['integrations'])
-MCP_MUTATING_TOOLS = {'launch_mission', 'refresh_mission', 'writeback_mission'}
-
-
-def _enforce_mcp_policy(tool: str, x_api_key: str | None):
-    if not settings.agentora_missions_mcp_enabled:
-        return {'ok': False, 'detail': 'MCP mission exposure disabled (set AGENTORA_MISSIONS_MCP_ENABLED=true).'}
-    if settings.agentora_missions_mcp_api_key and x_api_key != settings.agentora_missions_mcp_api_key:
-        return {'ok': False, 'detail': 'Invalid or missing MCP API key.'}
-    allowed = settings.missions_mcp_allowed_tools
-    if allowed and tool and tool not in allowed:
-        return {'ok': False, 'detail': f'Tool not allowed by policy: {tool}'}
-    if settings.agentora_missions_mcp_read_only and tool in MCP_MUTATING_TOOLS:
-        return {'ok': False, 'detail': f'MCP is read-only; tool blocked: {tool}'}
-    return None
-
 MCP_MUTATING_TOOLS = {'launch_mission', 'refresh_mission', 'writeback_mission'}
 
 
@@ -163,6 +148,56 @@ def integration_run(run_id: int, session: Session = Depends(get_session)):
 def integration_run_snapshot(run_id: int, session: Session = Depends(get_session)):
     try:
         return IntegrationOrchestrator(session).get_snapshot(run_id)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/api/integrations/runs/{run_id}/fork')
+def integration_fork(run_id: int, payload: ReplayDraftRequest, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).create_replay_draft(run_id, payload.model_dump(mode='json')).model_dump(mode='json')
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/api/integrations/runs/{run_id}/replay')
+def integration_replay(run_id: int, payload: ReplayDraftRequest, session: Session = Depends(get_session)):
+    try:
+        draft = IntegrationOrchestrator(session).create_replay_draft(run_id, payload.model_dump(mode='json'))
+        launched = IntegrationOrchestrator(session).launch_replay_draft(draft.id, dry_run=bool(payload.dry_run))
+        return {'draft': draft.model_dump(mode='json'), 'launched': launched.model_dump(mode='json')}
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/api/integrations/runs/{run_id}/launch-from-draft')
+def integration_launch_from_draft(run_id: int, payload: ReplayLaunchRequest, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).launch_replay_draft(run_id, dry_run=payload.dry_run).model_dump(mode='json')
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/runs/{run_id}/lineage')
+def integration_lineage(run_id: int, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).get_lineage(run_id)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/lineage/{root_run_id}')
+def integration_lineage_root(root_run_id: int, session: Session = Depends(get_session)):
+    try:
+        return {'root_run_id': root_run_id, 'descendants': IntegrationOrchestrator(session).get_descendants(root_run_id)}
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/runs/{run_id}/provenance')
+def integration_provenance(run_id: int, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).get_provenance(run_id)
     except IntegrationClientError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
