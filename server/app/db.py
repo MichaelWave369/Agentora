@@ -60,6 +60,7 @@ def _ensure_integrationrun_columns() -> None:
         'result_quality_signal': "TEXT NOT NULL DEFAULT 'low'",
         'writeback_readiness_signal': "TEXT NOT NULL DEFAULT 'low'",
         'risk_signal': "TEXT NOT NULL DEFAULT 'high'",
+        'mission_snapshot_json': "TEXT NOT NULL DEFAULT '{}'",
     }
     with engine.connect() as conn:
         try:

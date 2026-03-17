@@ -295,3 +295,62 @@ AGENTORA_MISSIONS_AUTO_WRITEBACK=true
 uvicorn app.main:app --app-dir server --host 127.0.0.1 --port 8088
 AGENTORA_STREAMLIT_MODE=http AGENTORA_API_URL=http://127.0.0.1:8088 streamlit run app.py
 ```
+
+## PhiOS + AgentCeption integration (Phase F)
+
+Phase F extends mission observability into mission intelligence and portability.
+
+### New capabilities
+
+- Event retention/compaction controls with TTL and per-run caps.
+- Mission export/import with versioned JSON schema.
+- Optional alert hooks for terminal state, writeback failure, and high-risk signals.
+- Cohort analysis routes for grouped mission intelligence.
+- Weighted compare severity output (`none/low/medium/high/critical`).
+- Heuristic calibration through env-tunable scoring thresholds.
+- Snapshot route for replay-oriented inspection prep.
+
+### New Phase F env flags
+
+```bash
+AGENTORA_MISSIONS_EVENTS_TTL_DAYS=30
+AGENTORA_MISSIONS_EVENTS_MAX_PER_RUN=200
+AGENTORA_MISSIONS_COMPACTION_ENABLED=false
+AGENTORA_MISSIONS_COMPACTION_INTERVAL_SECONDS=600
+
+AGENTORA_MISSIONS_ALERTS_ENABLED=false
+AGENTORA_MISSIONS_ALERTS_WEBHOOK_URL=
+AGENTORA_MISSIONS_ALERTS_ON_TERMINAL=true
+AGENTORA_MISSIONS_ALERTS_ON_WRITEBACK_FAILURE=true
+AGENTORA_MISSIONS_ALERTS_ON_HIGH_RISK=true
+
+AGENTORA_MISSIONS_SCORE_PR_BONUS=25
+AGENTORA_MISSIONS_SCORE_TERMINAL_SUCCESS_BONUS=30
+AGENTORA_MISSIONS_SCORE_WRITEBACK_SUCCESS_BONUS=10
+AGENTORA_MISSIONS_SCORE_FAILURE_PENALTY=20
+AGENTORA_MISSIONS_SCORE_SUMMARY_MIN_LENGTH=80
+AGENTORA_MISSIONS_RISK_THRESHOLD_HIGH=2
+AGENTORA_MISSIONS_CONFIDENCE_THRESHOLD_HIGH=75
+AGENTORA_MISSIONS_CONFIDENCE_THRESHOLD_MEDIUM=45
+```
+
+### Phase F routes
+
+- `GET /api/integrations/retention`
+- `POST /api/integrations/retention/compact`
+- `GET /api/integrations/export`
+- `POST /api/integrations/import`
+- `GET /api/integrations/alerts/events`
+- `GET /api/integrations/cohorts`
+- `GET /api/integrations/cohorts/summary`
+- `GET /api/integrations/runs/{run_id}/snapshot`
+
+### Export/import notes
+
+- Export format is `schema_version=mission-export-v1` JSON.
+- Import validates schema version and skips existing IDs where possible.
+- Import is additive/non-destructive by default.
+
+### Heuristic and severity note
+
+Mission score, confidence, and compare severity are **operator-facing heuristics**, not objective truth.

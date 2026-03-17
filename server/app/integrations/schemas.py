@@ -203,6 +203,7 @@ class OrchestrationRunRecord(BaseModel):
     result_quality_signal: str = 'low'
     writeback_readiness_signal: str = 'low'
     risk_signal: str = 'high'
+    mission_snapshot_json: str = '{}'
     error_message: str = ''
 
 
@@ -241,5 +242,15 @@ class WatcherEventRecord(BaseModel):
     event_type: str
     status: str = ''
     latency_ms: float = 0.0
+    detail_json: str = '{}'
+    created_at: datetime
+
+
+class AlertEventRecord(BaseModel):
+    id: int
+    run_id: int | None = None
+    alert_type: str
+    severity: str = 'info'
+    delivery_status: str = 'logged'
     detail_json: str = '{}'
     created_at: datetime

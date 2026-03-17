@@ -380,6 +380,7 @@ class IntegrationRun(SQLModel, table=True):
     result_quality_signal: str = 'low'
     writeback_readiness_signal: str = 'low'
     risk_signal: str = 'high'
+    mission_snapshot_json: str = '{}'
     error_message: str = ''
 
 
@@ -392,6 +393,16 @@ class WatcherEvent(SQLModel, table=True):
     latency_ms: float = 0.0
     detail_json: str = '{}'
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class AlertEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: Optional[int] = None
+    alert_type: str
+    severity: str = 'info'
+    delivery_status: str = 'logged'
+    detail_json: str = '{}'
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 
 class IntegrationSetting(SQLModel, table=True):
     name: str = Field(primary_key=True)

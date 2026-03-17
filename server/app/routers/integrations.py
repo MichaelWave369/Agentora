@@ -14,6 +14,20 @@ from app.services.adapters.integrations import statuses
 from app.services.integration_orchestrator import IntegrationOrchestrator
 
 router = APIRouter(tags=['integrations'])
+MCP_MUTATING_TOOLS = {'launch_mission', 'refresh_mission', 'writeback_mission'}
+
+
+def _enforce_mcp_policy(tool: str, x_api_key: str | None):
+    if not settings.agentora_missions_mcp_enabled:
+        return {'ok': False, 'detail': 'MCP mission exposure disabled (set AGENTORA_MISSIONS_MCP_ENABLED=true).'}
+    if settings.agentora_missions_mcp_api_key and x_api_key != settings.agentora_missions_mcp_api_key:
+        return {'ok': False, 'detail': 'Invalid or missing MCP API key.'}
+    allowed = settings.missions_mcp_allowed_tools
+    if allowed and tool and tool not in allowed:
+        return {'ok': False, 'detail': f'Tool not allowed by policy: {tool}'}
+    if settings.agentora_missions_mcp_read_only and tool in MCP_MUTATING_TOOLS:
+        return {'ok': False, 'detail': f'MCP is read-only; tool blocked: {tool}'}
+    return None
 
 MCP_MUTATING_TOOLS = {'launch_mission', 'refresh_mission', 'writeback_mission'}
 
@@ -83,8 +97,7 @@ def agentception_health():
 
 @router.post('/api/integrations/agentception/launch')
 def integration_launch_legacy(payload: SoftwareTaskRequest, session: Session = Depends(get_session)):
-    record = IntegrationOrchestrator(session).launch_from_request(payload)
-    return record.model_dump(mode='json')
+    return IntegrationOrchestrator(session).launch_from_request(payload).model_dump(mode='json')
 
 
 @router.get('/api/integrations/agentception/jobs/{job_id}')
@@ -114,17 +127,19 @@ def integration_runs(
     repo: str | None = Query(default=None),
     persona_id: str | None = Query(default=None),
     writeback_status: str | None = Query(default=None),
+    confidence_level: str | None = Query(default=None),
+    mission_score_min: int | None = Query(default=None),
+    mission_score_max: int | None = Query(default=None),
     start_date: str | None = Query(default=None),
     end_date: str | None = Query(default=None),
     search: str | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     session: Session = Depends(get_session),
 ):
-    orchestrator = IntegrationOrchestrator(session)
     start_dt = datetime.fromisoformat(start_date) if start_date else None
     end_dt = datetime.fromisoformat(end_date) if end_date else None
-    rows = orchestrator.list_runs(status=status, repo=repo, persona_id=persona_id, writeback_status=writeback_status, start_date=start_dt, end_date=end_dt, search=search, limit=limit, offset=offset)
+    rows = IntegrationOrchestrator(session).list_runs(status=status, repo=repo, persona_id=persona_id, writeback_status=writeback_status, confidence_level=confidence_level, mission_score_min=mission_score_min, mission_score_max=mission_score_max, start_date=start_dt, end_date=end_dt, search=search, limit=limit, offset=offset)
     return [r.model_dump(mode='json') for r in rows]
 
 
@@ -142,6 +157,14 @@ def integration_run(run_id: int, session: Session = Depends(get_session)):
     if not item:
         raise HTTPException(status_code=404, detail='run not found')
     return item.model_dump(mode='json')
+
+
+@router.get('/api/integrations/runs/{run_id}/snapshot')
+def integration_run_snapshot(run_id: int, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).get_snapshot(run_id)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post('/api/integrations/runs/{run_id}/refresh')
@@ -194,9 +217,80 @@ def integration_watcher_events(limit: int = 100, session: Session = Depends(get_
     return {'events': IntegrationOrchestrator(session).list_watcher_events(limit=limit)}
 
 
+@router.get('/api/integrations/alerts/events')
+def integration_alert_events(limit: int = 50, session: Session = Depends(get_session)):
+    return {'events': IntegrationOrchestrator(session).list_alert_events(limit=limit)}
+
+
+@router.get('/api/integrations/retention')
+def integration_retention(session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).get_retention_status()
+
+
+@router.post('/api/integrations/retention/compact')
+def integration_compact(session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).compact_events()
+
+
 @router.get('/api/integrations/insights')
 def integration_insights(session: Session = Depends(get_session)):
     return IntegrationOrchestrator(session).get_insights()
+
+
+@router.get('/api/integrations/cohorts')
+def integration_cohorts(
+    group_by: str = 'repo',
+    status: str | None = None,
+    writeback_status: str | None = None,
+    confidence_level: str | None = None,
+    mission_score_min: int | None = None,
+    mission_score_max: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    session: Session = Depends(get_session),
+):
+    start_dt = datetime.fromisoformat(start_date) if start_date else None
+    end_dt = datetime.fromisoformat(end_date) if end_date else None
+    return IntegrationOrchestrator(session).cohorts(group_by=group_by, status=status, writeback_status=writeback_status, confidence_level=confidence_level, mission_score_min=mission_score_min, mission_score_max=mission_score_max, start_date=start_dt, end_date=end_dt)
+
+
+@router.get('/api/integrations/cohorts/summary')
+def integration_cohorts_summary(
+    group_by: str = 'repo',
+    status: str | None = None,
+    writeback_status: str | None = None,
+    confidence_level: str | None = None,
+    mission_score_min: int | None = None,
+    mission_score_max: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    session: Session = Depends(get_session),
+):
+    start_dt = datetime.fromisoformat(start_date) if start_date else None
+    end_dt = datetime.fromisoformat(end_date) if end_date else None
+    return IntegrationOrchestrator(session).cohorts_summary(group_by=group_by, status=status, writeback_status=writeback_status, confidence_level=confidence_level, mission_score_min=mission_score_min, mission_score_max=mission_score_max, start_date=start_dt, end_date=end_dt)
+
+
+@router.get('/api/integrations/export')
+def integration_export(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    repo: str | None = None,
+    persona_id: str | None = None,
+    status: str | None = None,
+    session: Session = Depends(get_session),
+):
+    start_dt = datetime.fromisoformat(start_date) if start_date else None
+    end_dt = datetime.fromisoformat(end_date) if end_date else None
+    return IntegrationOrchestrator(session).export_data(start_date=start_dt, end_date=end_dt, repo=repo, persona_id=persona_id, status=status)
+
+
+@router.post('/api/integrations/import')
+def integration_import(payload: dict, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).import_data(payload)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get('/api/integrations/mcp/capabilities')

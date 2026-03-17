@@ -112,6 +112,26 @@ class Settings(BaseSettings):
     agentora_missions_mcp_read_only: bool = Field(default=False, alias='AGENTORA_MISSIONS_MCP_READ_ONLY')
     agentora_missions_mcp_allowed_tools: str = Field(default='', alias='AGENTORA_MISSIONS_MCP_ALLOWED_TOOLS')
 
+    agentora_missions_events_ttl_days: int = Field(default=30, alias='AGENTORA_MISSIONS_EVENTS_TTL_DAYS')
+    agentora_missions_events_max_per_run: int = Field(default=200, alias='AGENTORA_MISSIONS_EVENTS_MAX_PER_RUN')
+    agentora_missions_compaction_enabled: bool = Field(default=False, alias='AGENTORA_MISSIONS_COMPACTION_ENABLED')
+    agentora_missions_compaction_interval_seconds: int = Field(default=600, alias='AGENTORA_MISSIONS_COMPACTION_INTERVAL_SECONDS')
+
+    agentora_missions_alerts_enabled: bool = Field(default=False, alias='AGENTORA_MISSIONS_ALERTS_ENABLED')
+    agentora_missions_alerts_webhook_url: str = Field(default='', alias='AGENTORA_MISSIONS_ALERTS_WEBHOOK_URL')
+    agentora_missions_alerts_on_terminal: bool = Field(default=True, alias='AGENTORA_MISSIONS_ALERTS_ON_TERMINAL')
+    agentora_missions_alerts_on_writeback_failure: bool = Field(default=True, alias='AGENTORA_MISSIONS_ALERTS_ON_WRITEBACK_FAILURE')
+    agentora_missions_alerts_on_high_risk: bool = Field(default=True, alias='AGENTORA_MISSIONS_ALERTS_ON_HIGH_RISK')
+
+    agentora_missions_score_pr_bonus: int = Field(default=25, alias='AGENTORA_MISSIONS_SCORE_PR_BONUS')
+    agentora_missions_score_terminal_success_bonus: int = Field(default=30, alias='AGENTORA_MISSIONS_SCORE_TERMINAL_SUCCESS_BONUS')
+    agentora_missions_score_writeback_success_bonus: int = Field(default=10, alias='AGENTORA_MISSIONS_SCORE_WRITEBACK_SUCCESS_BONUS')
+    agentora_missions_score_failure_penalty: int = Field(default=20, alias='AGENTORA_MISSIONS_SCORE_FAILURE_PENALTY')
+    agentora_missions_score_summary_min_length: int = Field(default=80, alias='AGENTORA_MISSIONS_SCORE_SUMMARY_MIN_LENGTH')
+    agentora_missions_risk_threshold_high: int = Field(default=2, alias='AGENTORA_MISSIONS_RISK_THRESHOLD_HIGH')
+    agentora_missions_confidence_threshold_high: int = Field(default=75, alias='AGENTORA_MISSIONS_CONFIDENCE_THRESHOLD_HIGH')
+    agentora_missions_confidence_threshold_medium: int = Field(default=45, alias='AGENTORA_MISSIONS_CONFIDENCE_THRESHOLD_MEDIUM')
+
 
     @property
     def allowed_tool_names(self) -> set[str]:
