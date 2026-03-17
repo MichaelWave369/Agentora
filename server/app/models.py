@@ -444,6 +444,30 @@ class OperatorDecisionEvent(SQLModel, table=True):
     metadata_json: str = '{}'
 
 
+class MissionPatternMemory(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    pattern_type: str
+    pattern_key: str
+    repo_scope: str = ''
+    persona_scope: str = ''
+    strategy_scope: str = ''
+    source_run_count: int = 0
+    supporting_run_ids_json: str = '[]'
+    evidence_summary: str = ''
+    average_score: float = 0.0
+    average_risk: float = 0.0
+    pr_rate: float = 0.0
+    writeback_success_rate: float = 0.0
+    override_rate: float = 0.0
+    confidence_level: str = 'low'
+    promoted_by_operator: bool = False
+    promotion_note: str = ''
+    archived: bool = False
+    metadata_json: str = '{}'
+
+
 class IntegrationSetting(SQLModel, table=True):
     name: str = Field(primary_key=True)
     enabled: bool = False

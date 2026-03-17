@@ -33,7 +33,7 @@ from app.integrations.schemas import (
     PrepareMissionRequest,
     SoftwareTaskRequest,
 )
-from app.models import AlertEvent, IntegrationRun, OperatorDecisionEvent, WatcherEvent
+from app.models import AlertEvent, IntegrationRun, MissionPatternMemory, OperatorDecisionEvent, WatcherEvent
 
 ACTIVE_STATUSES = {'preparing_launch', 'launched', 'running', 'queued'}
 TERMINAL_STATUSES = {'completed', 'failed', 'cancelled', 'error'}
@@ -116,6 +116,31 @@ class IntegrationOrchestrator:
 
     def _to_record(self, row: IntegrationRun) -> OrchestrationRunRecord:
         return OrchestrationRunRecord.model_validate(row, from_attributes=True)
+
+    def _pattern_to_dict(self, row: MissionPatternMemory) -> dict:
+        return {
+            'id': row.id,
+            'created_at': row.created_at.isoformat() if row.created_at else None,
+            'updated_at': row.updated_at.isoformat() if row.updated_at else None,
+            'pattern_type': row.pattern_type,
+            'pattern_key': row.pattern_key,
+            'repo_scope': row.repo_scope,
+            'persona_scope': row.persona_scope,
+            'strategy_scope': row.strategy_scope,
+            'source_run_count': row.source_run_count,
+            'supporting_run_ids_json': row.supporting_run_ids_json,
+            'evidence_summary': row.evidence_summary,
+            'average_score': row.average_score,
+            'average_risk': row.average_risk,
+            'pr_rate': row.pr_rate,
+            'writeback_success_rate': row.writeback_success_rate,
+            'override_rate': row.override_rate,
+            'confidence_level': row.confidence_level,
+            'promoted_by_operator': row.promoted_by_operator,
+            'promotion_note': row.promotion_note,
+            'archived': row.archived,
+            'metadata_json': row.metadata_json,
+        }
 
     def compute_snapshot_hash(self, snapshot: dict) -> str:
         normalized = json.dumps(snapshot, sort_keys=True, default=str, separators=(',', ':'))
@@ -809,6 +834,7 @@ class IntegrationOrchestrator:
         events = [e.model_dump(mode='json') for e in self.session.exec(events_q).all() if (e.run_id in run_ids if run_ids else True)]
         alerts = [a.model_dump(mode='json') for a in self.session.exec(select(AlertEvent)).all() if (a.run_id in run_ids if run_ids else True)]
         decision_events = [e.model_dump(mode='json') for e in self.session.exec(select(OperatorDecisionEvent)).all() if (e.root_run_id in run_ids or e.run_id in run_ids if run_ids else True)]
+        patterns = [self._pattern_to_dict(p) for p in self.session.exec(select(MissionPatternMemory)).all()]
         snapshots = {r.id: self.get_snapshot(r.id) for r in runs if r.id is not None}
         bundle = {
             'schema_version': 'mission-export-v1',
@@ -818,6 +844,7 @@ class IntegrationOrchestrator:
             'watcher_events': events,
             'alert_events': alerts,
             'operator_decision_events': decision_events,
+            'mission_patterns': patterns,
             'snapshots': snapshots,
         }
         if settings.agentora_missions_sign_exports and settings.agentora_missions_export_signing_key:
@@ -839,6 +866,7 @@ class IntegrationOrchestrator:
         events = payload.get('watcher_events', [])
         alerts = payload.get('alert_events', [])
         decision_events = payload.get('operator_decision_events', [])
+        patterns = payload.get('mission_patterns', [])
         snapshots = payload.get('snapshots', {})
 
         imported_runs = 0
@@ -895,7 +923,17 @@ class IntegrationOrchestrator:
             self.session.commit()
             imported_decisions += 1
 
-        return {'ok': True, 'imported_runs': imported_runs, 'imported_watcher_events': imported_events, 'imported_alert_events': imported_alerts, 'imported_operator_decision_events': imported_decisions}
+        imported_patterns = 0
+        for item in patterns:
+            pid = item.get('id')
+            if pid and self.session.get(MissionPatternMemory, pid):
+                continue
+            row = MissionPatternMemory(**{k: v for k, v in item.items() if k in MissionPatternMemory.model_fields})
+            self.session.add(row)
+            self.session.commit()
+            imported_patterns += 1
+
+        return {'ok': True, 'imported_runs': imported_runs, 'imported_watcher_events': imported_events, 'imported_alert_events': imported_alerts, 'imported_operator_decision_events': imported_decisions, 'imported_mission_patterns': imported_patterns}
 
 
     def _build_lineage_fields(self, parent: IntegrationRun | None) -> dict:
@@ -1386,6 +1424,205 @@ class IntegrationOrchestrator:
         if not dual_ok:
             return {'ok': False, 'enabled': True, 'message': dual_msg}
         return {'ok': True, 'enabled': True, 'message': 'Policy check passed.'}
+
+    def derive_candidate_patterns(self, *, repo: str | None = None, persona: str | None = None, strategy: str | None = None, window: str = '30d') -> list[dict]:
+        matrix = self.get_persona_strategy_matrix(window=window, repo=repo, status=None)['matrix']
+        candidates = []
+        for row in matrix:
+            if persona and row.get('persona_id') != persona:
+                continue
+            if strategy and row.get('strategy') != strategy:
+                continue
+            if row.get('count', 0) < 2:
+                continue
+            confidence = 'high' if row.get('average_score', 0) >= 70 and row.get('average_risk_level', 3) <= 1.8 else ('medium' if row.get('average_score', 0) >= 55 else 'low')
+            pattern_key = f"persona:{row.get('persona_id')}|strategy:{row.get('strategy')}"
+            candidates.append({
+                'pattern_type': 'persona_strategy_combo',
+                'pattern_key': pattern_key,
+                'repo_scope': repo or '',
+                'persona_scope': row.get('persona_id', ''),
+                'strategy_scope': row.get('strategy', ''),
+                'source_run_count': row.get('count', 0),
+                'evidence_summary': f"{row.get('count', 0)} runs, avg score {row.get('average_score', 0):.1f}, risk {row.get('average_risk_level', 0):.2f}",
+                'average_score': row.get('average_score', 0.0),
+                'average_risk': row.get('average_risk_level', 0.0),
+                'pr_rate': row.get('pr_rate', 0.0),
+                'writeback_success_rate': 0.0,
+                'override_rate': row.get('override_rate', 0.0),
+                'confidence_level': confidence,
+                'supporting_run_ids_json': '[]',
+                'metadata_json': dumps_json({'window': window, 'source': 'persona_matrix'}),
+            })
+        return sorted(candidates, key=lambda x: (x['source_run_count'], x['average_score']), reverse=True)[:25]
+
+    def list_patterns(self, *, repo: str | None = None, persona: str | None = None, strategy: str | None = None, promoted_only: bool = False, archived: bool | None = None) -> list[dict]:
+        rows = self.session.exec(select(MissionPatternMemory).order_by(MissionPatternMemory.updated_at.desc())).all()
+        out = []
+        for r in rows:
+            if repo and r.repo_scope and r.repo_scope != repo:
+                continue
+            if persona and r.persona_scope and r.persona_scope != persona:
+                continue
+            if strategy and r.strategy_scope and r.strategy_scope != strategy:
+                continue
+            if promoted_only and not r.promoted_by_operator:
+                continue
+            if archived is not None and r.archived != archived:
+                continue
+            out.append(self._pattern_to_dict(r))
+        return out
+
+    def list_candidate_patterns(self, **filters) -> list[dict]:
+        candidates = self.derive_candidate_patterns(**filters)
+        existing = {p.pattern_key for p in self.session.exec(select(MissionPatternMemory)).all()}
+        return [c for c in candidates if c['pattern_key'] not in existing]
+
+    def _upsert_pattern_from_candidate(self, candidate: dict, *, promoted: bool, note: str = '') -> MissionPatternMemory:
+        existing = self.session.exec(select(MissionPatternMemory).where(MissionPatternMemory.pattern_key == candidate['pattern_key'])).first()
+        row = existing or MissionPatternMemory(pattern_type=candidate['pattern_type'], pattern_key=candidate['pattern_key'])
+        row.updated_at = datetime.utcnow()
+        row.repo_scope = candidate.get('repo_scope', '')
+        row.persona_scope = candidate.get('persona_scope', '')
+        row.strategy_scope = candidate.get('strategy_scope', '')
+        row.source_run_count = int(candidate.get('source_run_count', 0))
+        row.supporting_run_ids_json = candidate.get('supporting_run_ids_json', '[]')
+        row.evidence_summary = candidate.get('evidence_summary', '')
+        row.average_score = float(candidate.get('average_score', 0.0))
+        row.average_risk = float(candidate.get('average_risk', 0.0))
+        row.pr_rate = float(candidate.get('pr_rate', 0.0))
+        row.writeback_success_rate = float(candidate.get('writeback_success_rate', 0.0))
+        row.override_rate = float(candidate.get('override_rate', 0.0))
+        row.confidence_level = candidate.get('confidence_level', 'low')
+        row.promoted_by_operator = promoted
+        if note:
+            row.promotion_note = note
+        row.archived = False
+        row.metadata_json = candidate.get('metadata_json', '{}')
+        self.session.add(row)
+        self.session.commit()
+        self.session.refresh(row)
+        return row
+
+    def promote_pattern(self, pattern_id: int, note: str = '') -> dict:
+        row = self.session.get(MissionPatternMemory, pattern_id)
+        if not row:
+            raise IntegrationClientError(f'Pattern {pattern_id} not found')
+        prev = self._pattern_to_dict(row)
+        row.promoted_by_operator = True
+        row.promotion_note = note or row.promotion_note
+        row.updated_at = datetime.utcnow()
+        self.session.add(row)
+        self.session.commit()
+        self.record_operator_decision_event(run_id=0, root_run_id=0, event_type='pattern_promoted', actor_type='operator', previous_state=prev, new_state=self._pattern_to_dict(row), rationale=note, related_persona_id=row.persona_scope, related_strategy=row.strategy_scope, metadata={'pattern_id': row.id})
+        self.invalidate_analytics_cache()
+        return self._pattern_to_dict(row)
+
+    def reject_pattern(self, pattern_id: int, note: str = '') -> dict:
+        row = self.session.get(MissionPatternMemory, pattern_id)
+        if not row:
+            raise IntegrationClientError(f'Pattern {pattern_id} not found')
+        prev = self._pattern_to_dict(row)
+        row.promoted_by_operator = False
+        row.promotion_note = note or row.promotion_note
+        row.updated_at = datetime.utcnow()
+        self.session.add(row)
+        self.session.commit()
+        self.record_operator_decision_event(run_id=0, root_run_id=0, event_type='pattern_rejected', actor_type='operator', previous_state=prev, new_state=self._pattern_to_dict(row), rationale=note, related_persona_id=row.persona_scope, related_strategy=row.strategy_scope, metadata={'pattern_id': row.id})
+        self.invalidate_analytics_cache()
+        return self._pattern_to_dict(row)
+
+    def archive_pattern(self, pattern_id: int, note: str = '') -> dict:
+        row = self.session.get(MissionPatternMemory, pattern_id)
+        if not row:
+            raise IntegrationClientError(f'Pattern {pattern_id} not found')
+        prev = self._pattern_to_dict(row)
+        row.archived = True
+        if note:
+            row.promotion_note = note
+        row.updated_at = datetime.utcnow()
+        self.session.add(row)
+        self.session.commit()
+        self.record_operator_decision_event(run_id=0, root_run_id=0, event_type='pattern_archived', actor_type='operator', previous_state=prev, new_state=self._pattern_to_dict(row), rationale=note, related_persona_id=row.persona_scope, related_strategy=row.strategy_scope, metadata={'pattern_id': row.id})
+        self.invalidate_analytics_cache()
+        return self._pattern_to_dict(row)
+
+    def get_pattern_summaries(self, **filters) -> dict:
+        patterns = self.list_patterns(**filters)
+        promoted = [p for p in patterns if p.get('promoted_by_operator') and not p.get('archived')]
+        return {
+            'total_patterns': len(patterns),
+            'promoted_patterns': len(promoted),
+            'archived_patterns': len([p for p in patterns if p.get('archived')]),
+            'top_low_risk_patterns': sorted(patterns, key=lambda x: x.get('average_risk', 99))[:5],
+            'top_recovery_patterns': [p for p in patterns if 'recovery' in (p.get('strategy_scope', '') + p.get('pattern_key', ''))][:5],
+            'top_operator_approved_patterns': sorted(promoted, key=lambda x: x.get('source_run_count', 0), reverse=True)[:5],
+            'heuristic_note': 'Pattern summaries are historical evidence aids and require operator judgment.'
+        }
+
+    def get_cross_repo_memory_summary(self) -> dict:
+        patterns = self.list_patterns()
+        by_persona = {}
+        by_strategy = {}
+        for p in patterns:
+            if p.get('persona_scope'):
+                by_persona[p['persona_scope']] = by_persona.get(p['persona_scope'], 0) + p.get('source_run_count', 0)
+            if p.get('strategy_scope'):
+                by_strategy[p['strategy_scope']] = by_strategy.get(p['strategy_scope'], 0) + p.get('source_run_count', 0)
+        return {
+            'strongest_recurring_personas': sorted(by_persona.items(), key=lambda x: x[1], reverse=True)[:10],
+            'strongest_recurring_strategies': sorted(by_strategy.items(), key=lambda x: x[1], reverse=True)[:10],
+            'pattern_drift_note': 'Compare recent candidate patterns with promoted history to detect drift.',
+            'heuristic_note': 'Cross-repo memory is evidence-based and non-authoritative.'
+        }
+
+    def _suggest_from_patterns(self, patterns: list[dict], context: dict) -> dict:
+        if not patterns:
+            return {'suggestions': [], 'heuristic_note': 'No qualifying historical patterns found; operator should choose directly.'}
+        scored = sorted(patterns, key=lambda p: (1 if p.get('promoted_by_operator') else 0, p.get('average_score', 0), -p.get('average_risk', 99), p.get('source_run_count', 0)), reverse=True)
+        top = scored[:5]
+        suggestions = []
+        for p in top:
+            suggestions.append({
+                'suggested_persona': p.get('persona_scope') or None,
+                'suggested_strategy': p.get('strategy_scope') or None,
+                'suggested_policy_template': 'strict_review' if p.get('average_risk', 3) > 2.2 else 'default',
+                'supporting_pattern_ids': [p.get('id')] if p.get('id') else [],
+                'supporting_evidence_summary': p.get('evidence_summary', ''),
+                'scope_match_info': {'repo_match': not p.get('repo_scope') or p.get('repo_scope') == context.get('repo', ''), 'persona_match': p.get('persona_scope') == context.get('persona_id'), 'strategy_match': p.get('strategy_scope') == context.get('strategy')},
+                'confidence_basis': f"source_runs={p.get('source_run_count', 0)}, avg_score={p.get('average_score', 0):.1f}, avg_risk={p.get('average_risk', 0):.2f}",
+                'heuristic_note': 'Suggestion is heuristic; operator approval is required before use.',
+            })
+        return {'context': context, 'suggestions': suggestions, 'feedback_loop_source': 'operator_promoted_and_candidate_patterns', 'heuristic_note': 'Historical pattern evidence informs suggestions but does not decide outcomes.'}
+
+    def suggest_for_new_mission(self, *, repo: str = '', persona_id: str = '', strategy: str = '') -> dict:
+        patterns = self.list_patterns(repo=repo, promoted_only=True, archived=False)
+        if not patterns:
+            patterns = self.list_candidate_patterns(repo=repo)
+        return self._suggest_from_patterns(patterns, {'repo': repo, 'persona_id': persona_id, 'strategy': strategy, 'mode': 'new_mission'})
+
+    def suggest_for_replay(self, run_id: int) -> dict:
+        row = self.session.get(IntegrationRun, run_id)
+        if not row:
+            raise IntegrationClientError(f'Run {run_id} not found')
+        patterns = self.list_patterns(repo=row.repo, persona=row.assigned_persona_id or row.persona_id, strategy=row.branch_strategy, archived=False)
+        if not patterns:
+            patterns = self.list_candidate_patterns(repo=row.repo, persona=row.assigned_persona_id or row.persona_id, strategy=row.branch_strategy)
+        return self._suggest_from_patterns(patterns, {'repo': row.repo, 'persona_id': row.assigned_persona_id or row.persona_id, 'strategy': row.branch_strategy, 'mode': 'replay', 'run_id': run_id})
+
+    def suggest_for_branch_set(self, run_id: int) -> dict:
+        row = self.session.get(IntegrationRun, run_id)
+        if not row:
+            raise IntegrationClientError(f'Run {run_id} not found')
+        patterns = self.list_patterns(repo=row.repo, archived=False)
+        if not patterns:
+            patterns = self.list_candidate_patterns(repo=row.repo)
+        return self._suggest_from_patterns(patterns, {'repo': row.repo, 'persona_id': row.assigned_persona_id or row.persona_id, 'strategy': row.branch_strategy, 'mode': 'branch_set', 'run_id': run_id})
+
+    def maybe_attach_pattern_recommendations(self, payload: dict, *, repo: str = '', persona_id: str = '', strategy: str = '') -> dict:
+        payload = dict(payload)
+        payload['pattern_recommendations'] = self.suggest_for_new_mission(repo=repo, persona_id=persona_id, strategy=strategy)
+        return payload
 
     def get_cross_root_persona_summary(self) -> dict:
         return self.get_persona_trends(window='all')

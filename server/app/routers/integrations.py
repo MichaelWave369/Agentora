@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.db import get_session
 from app.integrations.agentception_client import AgentCeptionClient
 from app.integrations.phios_client import IntegrationClientError, PhiOSClient
-from app.integrations.schemas import ApplyPolicyTemplateRequest, BranchSetCreateRequest, ContextPackRequest, DecisionStateRequest, LaunchMissionRequest, PersonaBranchSetCreateRequest, PersonaPolicyCheckRequest, PortfolioDecisionRequest, PrepareMissionRequest, ReplayDraftRequest, ReplayLaunchRequest, SoftwareTaskRequest, WritebackRequest
+from app.integrations.schemas import ApplyPolicyTemplateRequest, BranchSetCreateRequest, ContextPackRequest, DecisionStateRequest, LaunchMissionRequest, PatternActionRequest, PersonaBranchSetCreateRequest, PersonaPolicyCheckRequest, PortfolioDecisionRequest, PrepareMissionRequest, ReplayDraftRequest, ReplayLaunchRequest, SoftwareTaskRequest, WritebackRequest
 from app.models import IntegrationRun, IntegrationSetting, Message, Run
 from app.services.adapters.integrations import statuses
 from app.services.integration_orchestrator import IntegrationOrchestrator
@@ -508,6 +508,71 @@ def integration_drilldown_recommendations(persona_id: str | None = None, strateg
 @router.get('/api/integrations/drilldown/policy-blocks')
 def integration_drilldown_policy_blocks(persona_id: str | None = None, limit: int = 200, offset: int = 0, session: Session = Depends(get_session)):
     return IntegrationOrchestrator(session).get_drilldown_audit(event_type='policy_blocked_action', persona_id=persona_id, limit=limit, offset=offset)
+
+
+@router.get('/api/integrations/memory/patterns')
+def integration_memory_patterns(repo: str | None = None, persona: str | None = None, strategy: str | None = None, promoted_only: bool = False, archived: bool | None = None, session: Session = Depends(get_session)):
+    return {'patterns': IntegrationOrchestrator(session).list_patterns(repo=repo, persona=persona, strategy=strategy, promoted_only=promoted_only, archived=archived)}
+
+
+@router.get('/api/integrations/memory/patterns/candidates')
+def integration_memory_pattern_candidates(repo: str | None = None, persona: str | None = None, strategy: str | None = None, window: str = '30d', session: Session = Depends(get_session)):
+    return {'candidates': IntegrationOrchestrator(session).list_candidate_patterns(repo=repo, persona=persona, strategy=strategy, window=window)}
+
+
+@router.post('/api/integrations/memory/patterns/{pattern_id}/promote')
+def integration_memory_pattern_promote(pattern_id: int, payload: PatternActionRequest, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).promote_pattern(pattern_id, payload.note)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/api/integrations/memory/patterns/{pattern_id}/reject')
+def integration_memory_pattern_reject(pattern_id: int, payload: PatternActionRequest, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).reject_pattern(pattern_id, payload.note)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/api/integrations/memory/patterns/{pattern_id}/archive')
+def integration_memory_pattern_archive(pattern_id: int, payload: PatternActionRequest, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).archive_pattern(pattern_id, payload.note)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/memory/summaries')
+def integration_memory_summaries(repo: str | None = None, persona: str | None = None, strategy: str | None = None, promoted_only: bool = False, archived: bool | None = None, session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).get_pattern_summaries(repo=repo, persona=persona, strategy=strategy, promoted_only=promoted_only, archived=archived)
+
+
+@router.get('/api/integrations/memory/summaries/cross-repo')
+def integration_memory_summaries_cross_repo(session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).get_cross_repo_memory_summary()
+
+
+@router.get('/api/integrations/memory/suggestions/new-mission')
+def integration_memory_suggest_new(repo: str = '', persona_id: str = '', strategy: str = '', session: Session = Depends(get_session)):
+    return IntegrationOrchestrator(session).suggest_for_new_mission(repo=repo, persona_id=persona_id, strategy=strategy)
+
+
+@router.get('/api/integrations/memory/suggestions/replay')
+def integration_memory_suggest_replay(run_id: int, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).suggest_for_replay(run_id)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get('/api/integrations/memory/suggestions/branch-set')
+def integration_memory_suggest_branch_set(run_id: int, session: Session = Depends(get_session)):
+    try:
+        return IntegrationOrchestrator(session).suggest_for_branch_set(run_id)
+    except IntegrationClientError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get('/api/integrations/cohorts')

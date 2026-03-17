@@ -452,6 +452,34 @@ class ApplyPolicyTemplateRequest(BaseModel):
     template_name: str
 
 
+class MissionPatternMemoryRecord(BaseModel):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    pattern_type: str
+    pattern_key: str
+    repo_scope: str = ''
+    persona_scope: str = ''
+    strategy_scope: str = ''
+    source_run_count: int = 0
+    supporting_run_ids_json: str = '[]'
+    evidence_summary: str = ''
+    average_score: float = 0.0
+    average_risk: float = 0.0
+    pr_rate: float = 0.0
+    writeback_success_rate: float = 0.0
+    override_rate: float = 0.0
+    confidence_level: str = 'low'
+    promoted_by_operator: bool = False
+    promotion_note: str = ''
+    archived: bool = False
+    metadata_json: str = '{}'
+
+
+class PatternActionRequest(BaseModel):
+    note: str = ''
+
+
 class LineageNode(BaseModel):
     id: int
     parent_run_id: int | None = None

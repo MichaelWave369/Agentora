@@ -722,6 +722,33 @@ def _software_missions_page():
                 st.json({'persona_trends_export': safe_api_get('/api/integrations/exports/persona-trends?window=30d', 'export trends'), 'persona_matrix_export': safe_api_get('/api/integrations/exports/persona-matrix?window=30d', 'export matrix'), 'audit_export': safe_api_get(f'/api/integrations/exports/audit-summary?root_run_id={root_guess}', 'export audit summary')})
             with st.expander('Drill-down Analytics (Phase K)', expanded=False):
                 st.json({'matrix_cell_runs': safe_api_get('/api/integrations/drilldown/persona-matrix?window=30d', 'drilldown matrix'), 'trend_runs': safe_api_get('/api/integrations/drilldown/persona-trends?window=30d', 'drilldown trends'), 'policy_blocks': safe_api_get('/api/integrations/drilldown/policy-blocks', 'drilldown policy blocks')})
+            with st.expander('Mission Memory Patterns (Phase L)', expanded=False):
+                candidates = safe_api_get('/api/integrations/memory/patterns/candidates?window=30d', 'pattern candidates')
+                patterns = safe_api_get('/api/integrations/memory/patterns', 'patterns')
+                cross = safe_api_get('/api/integrations/memory/summaries/cross-repo', 'cross-repo memory')
+                st.json({'candidates': candidates, 'patterns': patterns, 'cross_repo_summary': cross})
+                cand_rows = candidates.get('candidates', []) if isinstance(candidates, dict) else []
+                if cand_rows:
+                    idx = st.selectbox('candidate pattern index', options=list(range(len(cand_rows))))
+                    if st.button('Promote Candidate Pattern'):
+                        # materialize candidate via lightweight path: derive -> no id until promoted; create by applying first into in-memory list via existing endpoint expectations
+                        st.info('Promote via API after candidate persistence path is available from automation flow.')
+                pat_rows = patterns.get('patterns', []) if isinstance(patterns, dict) else []
+                pat_ids = [p.get('id') for p in pat_rows if p.get('id')]
+                selected_pattern = st.selectbox('existing pattern id', options=pat_ids) if pat_ids else None
+                note_p = st.text_input('pattern action note', value='')
+                cpa, cpr, cpar = st.columns(3)
+                with cpa:
+                    if selected_pattern and st.button('Promote Pattern'):
+                        st.json(safe_api_post(f'/api/integrations/memory/patterns/{selected_pattern}/promote', {'note': note_p}, 'promote pattern'))
+                with cpr:
+                    if selected_pattern and st.button('Reject Pattern'):
+                        st.json(safe_api_post(f'/api/integrations/memory/patterns/{selected_pattern}/reject', {'note': note_p}, 'reject pattern'))
+                with cpar:
+                    if selected_pattern and st.button('Archive Pattern'):
+                        st.json(safe_api_post(f'/api/integrations/memory/patterns/{selected_pattern}/archive', {'note': note_p}, 'archive pattern'))
+            with st.expander('Future Mission Suggestions (Phase L)', expanded=False):
+                st.json({'new_mission': safe_api_get('/api/integrations/memory/suggestions/new-mission', 'new mission suggestions'), 'replay': safe_api_get(f'/api/integrations/memory/suggestions/replay?run_id={root_guess}', 'replay suggestions'), 'branch_set': safe_api_get(f'/api/integrations/memory/suggestions/branch-set?run_id={root_guess}', 'branch set suggestions')})
             branches = portfolio.get('branches', []) if isinstance(portfolio, dict) else []
             options = [b.get('run_id') for b in branches if b.get('run_id') and b.get('run_id') != root_guess]
             target = st.selectbox('branch decision target', options=options) if options else None

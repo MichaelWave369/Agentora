@@ -592,3 +592,36 @@ Analytics Summary -> Explanation -> Drill-down Runs -> Audit Trail -> Operator D
 ### Heuristic caveat
 
 Recommendations and explanations remain heuristic operator aids and must not be treated as objective truth.
+
+## PhiOS + AgentCeption integration (Phase L)
+
+Phase L introduces sovereign cross-repo mission memory patterns and operator-controlled recommendation feedback loops.
+
+### Phase L capabilities
+
+- Derived candidate mission patterns from historical persona/strategy outcomes.
+- Operator-controlled pattern lifecycle (promote, reject, archive) with audit trail events.
+- Cross-repo memory summaries for recurring personas/strategies and low-risk/recovery evidence.
+- Future-mission suggestion helpers for new missions, replay, and branch sets.
+- Clear distinction between historical evidence and current operator choice through heuristic notes and supporting pattern evidence.
+
+### Phase L routes
+
+- `GET /api/integrations/memory/patterns`
+- `GET /api/integrations/memory/patterns/candidates`
+- `POST /api/integrations/memory/patterns/{pattern_id}/promote`
+- `POST /api/integrations/memory/patterns/{pattern_id}/reject`
+- `POST /api/integrations/memory/patterns/{pattern_id}/archive`
+- `GET /api/integrations/memory/summaries`
+- `GET /api/integrations/memory/summaries/cross-repo`
+- `GET /api/integrations/memory/suggestions/new-mission`
+- `GET /api/integrations/memory/suggestions/replay`
+- `GET /api/integrations/memory/suggestions/branch-set`
+
+### Lifecycle
+
+Historical Runs -> Candidate Patterns -> Operator Promotion -> Future Suggestions -> Operator Approval
+
+### Heuristic caveat
+
+Pattern memory and suggestions remain heuristic/operator aids and never auto-apply without explicit operator approval.

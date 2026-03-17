@@ -484,3 +484,76 @@ def test_export_and_drilldown_routes(monkeypatch):
     blocks = client.get('/api/integrations/drilldown/policy-blocks')
     assert blocks.status_code == 200
     assert 'events' in blocks.json()
+
+
+def test_pattern_candidate_derivation_and_memory_routes(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='PatternRoot', objective='pattern derive')
+    client.post(f'/api/integrations/runs/{source}/persona-branch-set', json={'specs': [{'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer', 'preset': 'conservative_fix'}, {'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer', 'preset': 'conservative_fix'}]})
+
+    candidates = client.get('/api/integrations/memory/patterns/candidates?window=30d')
+    assert candidates.status_code == 200
+    assert 'candidates' in candidates.json()
+
+    patterns = client.get('/api/integrations/memory/patterns')
+    assert patterns.status_code == 200
+
+    summaries = client.get('/api/integrations/memory/summaries/cross-repo')
+    assert summaries.status_code == 200
+    assert 'strongest_recurring_personas' in summaries.json()
+
+
+def test_pattern_promote_reject_archive_and_audit(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='PatternActionRoot', objective='promote pattern')
+    # seed one pattern by importing payload fragment through export/import path
+    from app.db import Session, engine
+    from app.models import MissionPatternMemory
+    with Session(engine) as session:
+        row = MissionPatternMemory(pattern_type='persona_strategy_combo', pattern_key='persona:skeptic|strategy:conservative_fix', source_run_count=3, persona_scope='skeptic', strategy_scope='conservative_fix', evidence_summary='seed', average_score=70.0, average_risk=1.5)
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        pid = row.id
+
+    promote = client.post(f'/api/integrations/memory/patterns/{pid}/promote', json={'note': 'good pattern'})
+    assert promote.status_code == 200
+    assert promote.json()['promoted_by_operator'] is True
+
+    reject = client.post(f'/api/integrations/memory/patterns/{pid}/reject', json={'note': 'not now'})
+    assert reject.status_code == 200
+    assert reject.json()['promoted_by_operator'] is False
+
+    archive = client.post(f'/api/integrations/memory/patterns/{pid}/archive', json={'note': 'outdated'})
+    assert archive.status_code == 200
+    assert archive.json()['archived'] is True
+
+    events = client.get(f'/api/integrations/runs/{source}/decision-events')
+    assert events.status_code == 200
+
+
+def test_memory_suggestions_and_export_import_patterns(monkeypatch):
+    _enable_mock(monkeypatch)
+    client = make_client()
+    source = _launch_mock_run(client, title='SuggestRoot', objective='suggest next')
+    client.post(f'/api/integrations/runs/{source}/persona-branch-set', json={'specs': [{'persona_id': 'skeptic', 'overlay': 'skeptic_reviewer', 'preset': 'conservative_fix'}]})
+
+    new_s = client.get('/api/integrations/memory/suggestions/new-mission?repo=owner/repo')
+    assert new_s.status_code == 200
+    assert 'suggestions' in new_s.json()
+
+    replay_s = client.get(f'/api/integrations/memory/suggestions/replay?run_id={source}')
+    assert replay_s.status_code == 200
+
+    branch_s = client.get(f'/api/integrations/memory/suggestions/branch-set?run_id={source}')
+    assert branch_s.status_code == 200
+
+    exported = client.get('/api/integrations/export')
+    assert exported.status_code == 200
+    assert 'mission_patterns' in exported.json()
+
+    imported = client.post('/api/integrations/import', json=exported.json())
+    assert imported.status_code == 200
+    assert 'imported_mission_patterns' in imported.json()
