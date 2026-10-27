@@ -59,7 +59,7 @@ jobs:
             ollama/ollama:latest
           docker exec devboard-cloud-ollama ollama pull qwen3:0.6b
 
-      - name: Propose HTML with small cloud-hosted CPU model and verify
+      - name: Qwen chooses bounded theme; trusted HTML builder and verifier run
         if: ${{ inputs.mode == 'ollama_cpu' }}
         working-directory: server
         run: |
