@@ -193,3 +193,44 @@ def test_workflow_is_manual_only_least_permission_and_uploads_no_held_html():
     assert "docker exec devboard-cloud-ollama ollama pull qwen3:0.6b" in content
     assert "if: " + "$" + "{{ always() }}" in content
     assert "workflow_dispatch" in content
+
+
+def test_hosted_workflow_runs_python_from_actual_server_package_root():
+    """Guard the precise workflow regression: repository-root app.py shadows app/."""
+    workflow = r1e_cloud.ROOT / ".github/workflows/development-board-cloud-trial.yml"
+    lines = workflow.read_text(encoding="utf-8")
+    assert "PYTHONPATH: ." in lines
+    assert lines.count("working-directory: server") == 3
+    assert "mkdir -p ../cloud-artifacts" in lines
+    assert "--mode fixture --output-dir ../cloud-artifacts" in lines
+    assert "--mode ollama_cpu --output-dir ../cloud-artifacts" in lines
+    assert (r1e_cloud.ROOT / "app.py").is_file()  # shadows the package when run at repo root
+    assert (r1e_cloud.ROOT / "server/app/__init__.py").is_file()
+
+
+def test_exact_python_module_launch_from_hosted_working_directory(tmp_path):
+    """Actually execute BOTH plan and builder/verifier, as the Actions shell does."""
+    import os
+    server = r1e_cloud.ROOT / "server"
+    env = dict(os.environ, PYTHONPATH=".", GITHUB_ACTIONS="true",
+               GITHUB_EVENT_NAME="workflow_dispatch",
+               PYTHONDONTWRITEBYTECODE="1")
+    command = [sys.executable, "-m", "app.services.development_board.r1e_cloud"]
+    plan = subprocess.run(
+        command + ["plan", "--mode", "fixture"], cwd=server,
+        env=env, capture_output=True, text=True, timeout=20,
+    )
+    assert plan.returncode == 0, plan.stderr
+    assert json.loads(plan.stdout)["mode"] == "fixture"
+    output = tmp_path / "cloud-artifacts"
+    output.mkdir()
+    run = subprocess.run(
+        command + ["run", "--mode", "fixture", "--output-dir", str(output)],
+        cwd=server, env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert run.returncode == 0, run.stderr + run.stdout
+    receipt = json.loads((output / "cloud-report.json").read_text(encoding="utf-8"))
+    assert receipt["status"] == "STATIC_REVIEW_READY_NOT_AUTHORIZED"
+    assert receipt["eligible_for_merge"] is False
+    assert (output / "index.html").is_file()
+    assert hashlib.sha256((output / "index.html").read_bytes()).hexdigest() == receipt["artifact_sha256"]
