@@ -191,5 +191,5 @@ def test_workflow_is_manual_only_least_permission_and_uploads_no_held_html():
     assert "persist-credentials: false" in content
     assert "actions/upload-artifact@v4" in content
     assert "docker exec devboard-cloud-ollama ollama pull qwen3:0.6b" in content
-    assert "if: \${{ always() }}" in content
+    assert "if: " + "$" + "{{ always() }}" in content
     assert "workflow_dispatch" in content
