@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 
 import requests
 
-from development_board_ui import render_development_board
+from app.development_board_ui import render_development_board
 
 try:
     import streamlit as st
