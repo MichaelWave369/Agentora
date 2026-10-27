@@ -65,6 +65,77 @@ def render_development_board(st, api_get) -> None:
             })
     else:
         st.info("No sample fixture available. No live evidence is implied.")
-    st.caption("NEXT: scoped local executor and separate verifier adapters, "
-               "exact-SHA proof, human-observed Code Brown usability gate. "
-               "No automatic release authority.")
+    st.caption("R0 remains read-only: no automatic release authority.")
+    render_handoff_pilot(st)
+
+
+def render_handoff_pilot(st) -> None:
+    """Deliberate, user-clicked local evidence comparison. No job dispatch."""
+    import json
+
+    from app.services.development_board.r1_handoff import (
+        fetch_local_gitporch, preview_handoff,
+    )
+
+    st.subheader("R1-A · Exact-commit evidence handoff")
+    st.warning(
+        "REVIEW-ONLY. GitPorch and PhiBot source claims are not authenticated. "
+        "Even matching PASS reports cannot authorize merging or deployment."
+    )
+    st.caption(
+        "Requires GitPorch running on your computer. Set "
+        "AGENTORA_DEVBOARD_GITPORCH_READ_ENABLED=1 in your local environment "
+        "to enable a manual, loopback-only GET. Nothing runs automatically."
+    )
+    if st.button("Read local GitPorch PhiRunners status", key="devboard_gitporch_read"):
+        st.session_state["devboard_gitporch_read"] = fetch_local_gitporch()
+    gp_result = st.session_state.get("devboard_gitporch_read")
+    if isinstance(gp_result, dict):
+        st.json({
+            "connection": gp_result.get("connection", "UNKNOWN"),
+            "reason": gp_result.get("reason", ""),
+            "health": (gp_result.get("snapshot") or {}).get("health"),
+            "jobs_returned": len((gp_result.get("snapshot") or {}).get("jobs", [])),
+        })
+    st.caption(
+        "Use the GitPorch local repo slug and the matching GitHub owner/repo. "
+        "The exact 40-character SHA must identify the same code in both places."
+    )
+    local_repo = st.text_input("GitPorch local repository", value="", key="devboard_r1_local_repo")
+    github_repo = st.text_input("GitHub owner/repository", value="", key="devboard_r1_gh_repo")
+    pr_text = st.text_input("PhiBot draft PR number", value="", key="devboard_r1_pr")
+    sha = st.text_input("Exact 40-character commit SHA", value="", key="devboard_r1_sha")
+    phibot_json = st.text_area(
+        "Paste a redacted PhiBot steward:verify JSON report (session only)",
+        value="", key="devboard_r1_pb_report",
+    )
+    st.caption(
+        "Never paste GitHub tokens, local credentials or private issue contents. "
+        "A copied report is user-supplied, not a live authenticated GitHub check."
+    )
+    if st.button("Compare exact-commit reports", key="devboard_r1_compare"):
+        try:
+            pb = json.loads(phibot_json) if phibot_json.strip() else None
+        except (ValueError, TypeError):
+            pb = None
+        pr = int(pr_text) if pr_text.isdecimal() else None
+        snapshot = gp_result.get("snapshot") if isinstance(gp_result, dict) else None
+        st.session_state["devboard_r1_result"] = preview_handoff({
+            "local_repo": local_repo,
+            "github_repo": github_repo,
+            "pr_number": pr,
+            "commit_sha": sha,
+            "gitporch": snapshot,
+            "phibot": pb,
+        })
+    result = st.session_state.get("devboard_r1_result")
+    if result:
+        st.json(result)
+        st.caption(
+            "REVIEW_READY_NOT_AUTHORIZED means both imported sources agree on one "
+            "SHA and report passing checks, not that their claims are authentic "
+            "or current. Human review remains mandatory."
+        )
+    else:
+        st.info("No real handoff compared yet. R0 demo receipts do not qualify.")
+
