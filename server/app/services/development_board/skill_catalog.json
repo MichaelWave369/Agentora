@@ -1,0 +1,111 @@
+{
+  "schema_version": "development-board-skills-v0.1",
+  "source_status": "DESIGN_RECOVERED_NOT_SOURCE_IMPORTED",
+  "authority_model": "ROLES_NOT_GRANTS",
+  "skills": [
+    {
+      "id": "master-spec-builder",
+      "legacy_id": "parallax-master-spec-builder",
+      "name": "Master Spec Builder",
+      "stage": "SPECIFY",
+      "description": "Draft testable requirements, constraints and approval requests.",
+      "requires": [
+        "spec_revision",
+        "acceptance_criteria",
+        "operator_spec_approval"
+      ]
+    },
+    {
+      "id": "implementation-forge",
+      "legacy_id": "parallax-implementation-forge",
+      "name": "Implementation Forge",
+      "stage": "BUILD",
+      "description": "Submit bounded changes against a frozen approved specification.",
+      "requires": [
+        "submitted_commit_sha",
+        "change_summary",
+        "test_run_reference"
+      ]
+    },
+    {
+      "id": "wayne-rider-proving-ground",
+      "legacy_id": "wayne-rider-proving-ground",
+      "name": "Wayne Rider Proving Ground",
+      "stage": "VERIFY",
+      "description": "Independently challenge the submitted exact commit and spec digest.",
+      "requires": [
+        "independent_verifier",
+        "verified_commit_sha",
+        "verified_spec_digest",
+        "observed_test_evidence"
+      ]
+    },
+    {
+      "id": "drift-compass",
+      "legacy_id": "parallax-drift-compass",
+      "name": "Drift Compass",
+      "stage": "REVIEW",
+      "description": "Check implementation against operator intent and exclusions.",
+      "requires": [
+        "intent_diff",
+        "risk_notes"
+      ]
+    },
+    {
+      "id": "horizon-roadmap",
+      "legacy_id": "parallax-horizon-roadmap",
+      "name": "Horizon Roadmap",
+      "stage": "PLAN",
+      "description": "Rank the NOW / NEXT / LATER backlog and dependencies.",
+      "requires": [
+        "priority_plan",
+        "dependencies"
+      ]
+    },
+    {
+      "id": "wave-rider-possibility-loom",
+      "legacy_id": "wave-rider-possibility-loom",
+      "name": "Wave Rider Possibility Loom",
+      "stage": "EXPLORE",
+      "description": "Generate tradeoff-aware alternatives without quietly expanding scope.",
+      "requires": [
+        "alternatives",
+        "tradeoffs"
+      ]
+    },
+    {
+      "id": "constellation-chamber",
+      "legacy_id": "parallax-constellation-chamber",
+      "name": "Constellation Chamber",
+      "stage": "INTEGRATE",
+      "description": "Identify cross-repository impact and compatibility contracts.",
+      "requires": [
+        "impact_map",
+        "interface_contracts"
+      ]
+    },
+    {
+      "id": "field-bridge",
+      "legacy_id": "parallax-field-bridge",
+      "name": "Field Bridge",
+      "stage": "FIELD_TEST",
+      "description": "Assess device usability, local-first needs and field constraints.",
+      "requires": [
+        "observed_human_test",
+        "operational_limits"
+      ]
+    },
+    {
+      "id": "arc-rider-continuity-ark",
+      "legacy_id": "arc-rider-continuity-ark",
+      "name": "Arc Rider Continuity Ark",
+      "stage": "PRESERVE",
+      "description": "Preserve decisions, receipts, pending questions and safe handoffs.",
+      "requires": [
+        "decision_history",
+        "handoff_bundle",
+        "export_check"
+      ]
+    }
+  ]
+}
