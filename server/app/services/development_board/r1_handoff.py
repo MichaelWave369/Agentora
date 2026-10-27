@@ -24,7 +24,7 @@ def _bad(*reasons: str) -> dict[str, Any]:
 
 def inspect_gitporch(snapshot: Any, local_repo: str, commit_sha: str) -> dict[str, Any]:
     """Compare the latest retained per-lane jobs to a requested SHA, without promoting them."""
-    if not GITPORCH_REPO.fullmatch(local_repo or "") or not SHA40.fullmatch(commit_sha or ""):
+    if (not isinstance(local_repo, str) or not isinstance(commit_sha, str) or\n            not GITPORCH_REPO.fullmatch(local_repo) or not SHA40.fullmatch(commit_sha)):
         return _bad("INVALID_REPO_OR_SHA")
     if not isinstance(snapshot, dict) or (
         snapshot.get("service"), snapshot.get("version"), snapshot.get("mode")
@@ -162,7 +162,7 @@ def preview_handoff(payload: Any) -> dict[str, Any]:
 def fetch_local_gitporch() -> dict[str, Any]:
     """Operator-click-only, explicitly enabled, loopback-only HTTP GET; no URL input."""
     if os.getenv("AGENTORA_DEVBOARD_GITPORCH_READ_ENABLED", "").lower() not in ("1", "true"):
-        return {"connection": "DISABLED", "reason": "SET_AGED_DEVBOARD_FLAG_TO_OPT_IN"}
+        return {"connection": "DISABLED", "reason": "SET_AGENTORA_DEVBOARD_GITPORCH_READ_ENABLED_TO_OPT_IN"}
     value = os.getenv("AGENTORA_DEVBOARD_GITPORCH_PORT", "3690")
     if not value.isdecimal() or not 1024 <= int(value) <= 65535:
         return {"connection": "UNAVAILABLE", "reason": "INVALID_GITPORCH_PORT"}
