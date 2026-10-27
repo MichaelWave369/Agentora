@@ -84,6 +84,24 @@ def render_development_board(st, api_get) -> None:
         language="powershell",
     )
 
+    st.subheader("R1-C · Local Ollama model proposal")
+    st.info(
+        "Operator-run CLI only. A local Ollama model proposes one untrusted static "
+        "HTML document in a new scratch folder. The separate verifier checks "
+        "the frozen spec and exact artifact bytes. This is not PhiBot draft-PR "
+        "execution, a secure sandbox, or permission to merge."
+    )
+    st.caption(
+        "See docs/DEVELOPMENT_BOARD_R1C_OLLAMA.md. You must explicitly approve "
+        "the frozen specification digest and local model call in your own terminal. "
+        "No web or Streamlit action launches the model or writes to a repo."
+    )
+    st.code(
+        "python -m app.services.development_board.r1c_cli plan "
+        "examples/development-board/r1b-fixture-spec.json",
+        language="powershell",
+    )
+
 
 def render_handoff_pilot(st) -> None:
     """Deliberate, user-clicked local evidence comparison. No job dispatch."""
