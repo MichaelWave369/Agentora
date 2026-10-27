@@ -11,7 +11,11 @@ import json
 import sys
 from pathlib import Path
 
-from r1b_contract import read_spec, spec_digest
+if __package__:
+    from .r1b_contract import read_spec, spec_digest
+else:
+    # The worker is intentionally launched as a standalone -S subprocess too.
+    from r1b_contract import read_spec, spec_digest
 
 
 def build_fixture(spec: dict[str, str], digest: str) -> bytes:

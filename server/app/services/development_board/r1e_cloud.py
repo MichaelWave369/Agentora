@@ -17,8 +17,8 @@ from typing import Any
 
 from .r1b_contract import frozen_bytes, read_spec, spec_digest
 from .r1b_cli import run_pilot as fixed_pilot
-from .r1c_cli import run_pilot as model_pilot
-from .r1d_field import recheck_workspace
+from .r1f_cloud_theme import run_theme_pilot as model_pilot, recheck_theme as recheck_workspace
+from .r1f_theme_worker import THEMES
 
 ROOT = Path(__file__).resolve().parents[4]
 SPEC_PATH = ROOT / "examples" / "development-board" / "r1b-fixture-spec.json"
@@ -68,7 +68,7 @@ def plan_cloud(mode: str) -> dict[str, Any]:
         "spec": "examples/development-board/r1b-fixture-spec.json",
         "frozen_spec_sha256": spec_digest(spec),
         "trigger": "MANUAL_WORKFLOW_DISPATCH_ONLY",
-        "builder": "FIXED_HTML_WORKER" if mode == "fixture" else "EPHEMERAL_OLLAMA_QWEN3_0_6B",
+        "builder": "FIXED_HTML_WORKER" if mode == "fixture" else "OLLAMA_THEME_CHOICE_AND_FIXED_SAFE_TEMPLATE",
         "verifier": "SEPARATE_LOCAL_STATIC_CHECK_PROCESS",
         "model_download": mode == "ollama_cpu",
         "environment": "EPHEMERAL_GITHUB_ACTIONS_RUNNER",
@@ -109,6 +109,14 @@ def run_cloud(mode: str, output_dir: Path, *, head_sha: str = "",
             )
         if not isinstance(observed, dict) or observed.get("status") != "REVIEW_READY_NOT_AUTHORIZED":
             result = _held(mode, "BUILDER_OR_VERIFIER_HELD", sha)
+            if isinstance(observed, dict):
+                source_reason = observed.get("reason")
+                source_stage = observed.get("failed_stage")
+                if (isinstance(source_reason, str) and 1 <= len(source_reason) <= 64
+                        and all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" for c in source_reason)):
+                    result["bounded_origin_reason"] = source_reason
+                if source_stage in ("PRECHECK", "WORKSPACE", "MODEL_OR_TEMPLATE", "ARTIFACT", "INDEPENDENT_VERIFIER"):
+                    result["origin_stage"] = source_stage
         elif (observed.get("spec_digest") != digest or
               observed.get("eligible_for_merge") is not False or
               observed.get("automatic_merge") is not False or
@@ -116,7 +124,8 @@ def run_cloud(mode: str, output_dir: Path, *, head_sha: str = "",
               observed.get("repository_writes", "NONE") != "NONE"):
             result = _held(mode, "BOUNDARY_OR_SPEC_MISMATCH", sha)
         elif mode == "ollama_cpu" and (observed.get("model") != ALLOWED_MODELS["ollama_cpu"]
-                                       or observed.get("model_output") != "UNTRUSTED_STATIC_HTML_PROPOSAL"):
+                                       or observed.get("model_contribution") != "BOUNDED_THEME_ENUM_ONLY"
+                                       or observed.get("theme") not in THEMES):
             result = _held(mode, "MODEL_IDENTITY_OR_OUTPUT_UNVERIFIED", sha)
         else:
             location = Path(observed["workspace"])
@@ -154,6 +163,9 @@ def run_cloud(mode: str, output_dir: Path, *, head_sha: str = "",
                             else "untrusted-model-proposal.html.txt"
                         ),
                         "model": ALLOWED_MODELS["ollama_cpu"] if mode == "ollama_cpu" else None,
+                        "model_contribution": "BOUNDED_THEME_ENUM_ONLY" if mode == "ollama_cpu" else "NONE",
+                        "deterministic_markup_builder": True,
+                        "theme": observed.get("theme") if mode == "ollama_cpu" else None,
                         "qualification": "GITHUB_HOSTED_SELF_REPORTED_NOT_ATTESTED",
                         "manual_trigger_claim": "WORKFLOW_DISPATCH",
                         "human_visual_review": "NOT_PERFORMED",
