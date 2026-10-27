@@ -9,6 +9,7 @@ from app.routers import health, ollama, agents, teams, runs, tools, exports, sna
 from app.routers import marketplace, multimodal, voice, analytics, integrations, lan, studio, band, arena, gathering, legacy, cosmos, open_cosmos, garden, world_garden, capsules, workers, memory, team, actions, workflows, operator, system
 from app.services.mission_watcher import mission_watcher
 from app.services.mission_compactor import mission_compactor
+from app.routers import development_board
 
 
 @asynccontextmanager
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(workflows.router)
     app.include_router(operator.router)
     app.include_router(system.router)
+    app.include_router(development_board.router)
     return app
 
 

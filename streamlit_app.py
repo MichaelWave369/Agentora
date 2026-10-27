@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 
 import requests
 
+
 try:
     import streamlit as st
 except Exception:
@@ -55,6 +56,8 @@ ROOT = Path(__file__).resolve().parent
 SERVER_DIR = ROOT / 'server'
 if str(SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(SERVER_DIR))
+
+from app.development_board_ui import render_development_board
 
 ACTIVE_MODE = 'embedded'
 
@@ -796,7 +799,7 @@ def render_dashboard() -> None:
     st.caption('Local-first operating studio • private by default • general-availability build')
     st.info(f"API Mode: {ACTIVE_MODE.upper()} | DB: {st.session_state['db_url']}")
 
-    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'World Garden (experimental)', 'Software Missions', 'Core'])
+    page = st.sidebar.radio('Navigate', ['Dashboard', 'Studio', 'Band', 'Arena', 'Gathering', 'Legacy', 'Cosmos', 'Open Cosmos', 'The Eternal Garden', 'World Garden (experimental)', 'Software Missions', 'Development Board (R0)', 'Core'])
     st.sidebar.markdown("<span class='agentora-pill'>NO CLOUD REQUIRED</span>", unsafe_allow_html=True)
 
     if page == 'Dashboard':
@@ -821,6 +824,8 @@ def render_dashboard() -> None:
         _world_garden_page()
     elif page == 'Software Missions':
         _software_missions_page()
+    elif page == 'Development Board (R0)':
+        render_development_board(st, safe_api_get)
     else:
         _core_page()
 
