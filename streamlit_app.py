@@ -6,7 +6,6 @@ from urllib.parse import urlencode
 
 import requests
 
-from app.development_board_ui import render_development_board
 
 try:
     import streamlit as st
@@ -57,6 +56,8 @@ ROOT = Path(__file__).resolve().parent
 SERVER_DIR = ROOT / 'server'
 if str(SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(SERVER_DIR))
+
+from app.development_board_ui import render_development_board
 
 ACTIVE_MODE = 'embedded'
 
