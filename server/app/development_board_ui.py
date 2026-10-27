@@ -67,6 +67,22 @@ def render_development_board(st, api_get) -> None:
         st.info("No sample fixture available. No live evidence is implied.")
     st.caption("R0 remains read-only: no automatic release authority.")
     render_handoff_pilot(st)
+    st.subheader("R1-B · Controlled scratch builder/verifier")
+    st.info(
+        "Operator CLI only. The builder and independently implemented verifier run as "
+        "two real local child processes, but this is a deterministic HTML fixture, "
+        "not an autonomous coding agent or OS sandbox. No GitHub writes or merges."
+    )
+    st.caption(
+        "Open docs/DEVELOPMENT_BOARD_R1B_WORKERS.md. Review the supplied JSON spec, "
+        "copy the digest from the read-only plan step, then run the explicit local "
+        "command yourself. The dashboard does not dispatch subprocesses."
+    )
+    st.code(
+        "python -m app.services.development_board.r1b_cli plan "
+        "examples/development-board/r1b-fixture-spec.json",
+        language="powershell",
+    )
 
 
 def render_handoff_pilot(st) -> None:
