@@ -1,0 +1,76 @@
+name: Phi Development Board Cloud Trial
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Choose fixture (default) or experimental Ollama CPU proposal'
+        required: true
+        type: choice
+        options:
+          - fixture
+          - ollama_cpu
+        default: fixture
+
+# This workflow is deliberately never triggered by push, PR, or a schedule.
+# A click on Run workflow approves only the public example spec and cloud run.
+permissions:
+  contents: read
+
+jobs:
+  cloud-trial:
+    name: Manual cloud builder + independent verifier
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: server
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Check out public example without persisting GitHub credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Prepare Python on temporary GitHub runner
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Show immutable example spec and bounded execution plan
+        run: |
+          python -m app.services.development_board.r1e_cloud plan --mode "${{ inputs.mode }}"
+          mkdir -p cloud-artifacts
+
+      - name: Generate and independently verify fixed HTML demo
+        if: ${{ inputs.mode == 'fixture' }}
+        run: |
+          python -m app.services.development_board.r1e_cloud run --mode fixture --output-dir cloud-artifacts
+
+      - name: Start experimental Ollama only on this ephemeral runner
+        if: ${{ inputs.mode == 'ollama_cpu' }}
+        run: |
+          docker pull ollama/ollama:latest
+          docker run --detach --rm --name devboard-cloud-ollama \
+            --publish 127.0.0.1:11434:11434 \
+            --cpus=2 --memory=4g --pids-limit=256 \
+            --security-opt=no-new-privileges --cap-drop=ALL \
+            ollama/ollama:latest
+          docker exec devboard-cloud-ollama ollama pull qwen3:0.6b
+
+      - name: Propose HTML with small cloud-hosted CPU model and verify
+        if: ${{ inputs.mode == 'ollama_cpu' }}
+        run: |
+          python -m app.services.development_board.r1e_cloud run --mode ollama_cpu --output-dir cloud-artifacts
+
+      - name: Attach report and accepted artifacts for manual inspection
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: devboard-cloud-${{ inputs.mode }}-${{ github.run_id }}
+          path: cloud-artifacts/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Stop temporary Ollama container
+        if: ${{ always() && inputs.mode == 'ollama_cpu' }}
+        run: docker stop devboard-cloud-ollama || true

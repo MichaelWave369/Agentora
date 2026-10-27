@@ -119,6 +119,24 @@ def render_development_board(st, api_get) -> None:
         "Code Brown observation. No repository writes or merge rights."
     )
 
+    st.subheader("R1-E · Browser-only GitHub cloud trial")
+    st.success(
+        "No local installations required for this optional demonstration. "
+        "GitHub Actions runs the public fixture builder and verifier on a temporary "
+        "cloud runner. An optional CPU Ollama run is manual and experimental."
+    )
+    st.markdown(
+        "[Open Agentora's manual cloud trial in GitHub Actions]"
+        "(https://github.com/MichaelWave369/Agentora/actions/workflows/"
+        "development-board-cloud-trial.yml)"
+    )
+    st.caption(
+        "After the R1-E PR is merged, click Run workflow and leave mode=fixture "
+        "for the first run. Download the receipt and demo from the run's Artifacts. "
+        "The workflow never merges or deploys anything. "
+        "See docs/DEVELOPMENT_BOARD_R1E_CLOUD.md."
+    )
+
 
 def render_handoff_pilot(st) -> None:
     """Deliberate, user-clicked local evidence comparison. No job dispatch."""
