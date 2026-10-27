@@ -24,7 +24,8 @@ def _bad(*reasons: str) -> dict[str, Any]:
 
 def inspect_gitporch(snapshot: Any, local_repo: str, commit_sha: str) -> dict[str, Any]:
     """Compare the latest retained per-lane jobs to a requested SHA, without promoting them."""
-    if (not isinstance(local_repo, str) or not isinstance(commit_sha, str) or\n            not GITPORCH_REPO.fullmatch(local_repo) or not SHA40.fullmatch(commit_sha)):
+    if (not isinstance(local_repo, str) or not isinstance(commit_sha, str) or
+            not GITPORCH_REPO.fullmatch(local_repo) or not SHA40.fullmatch(commit_sha)):
         return _bad("INVALID_REPO_OR_SHA")
     if not isinstance(snapshot, dict) or (
         snapshot.get("service"), snapshot.get("version"), snapshot.get("mode")
