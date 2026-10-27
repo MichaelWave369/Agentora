@@ -1,5 +1,7 @@
 # Φ Development Board R0: nine-skill, review-only pilot
 
+**R1-A update:** A separate, explicitly operator-invoked, review-only local GitPorch + PhiBot exact-SHA comparison is now documented in [DEVELOPMENT_BOARD_R1_LOCAL_HANDOFF.md](DEVELOPMENT_BOARD_R1_LOCAL_HANDOFF.md). The R0 core semantics below remain unchanged.
+
 **Current scope:** An original, local-first planning and evidence-inspection surface inside Agentora. The nine-role catalog, receipt contract, API and Streamlit board are implemented. **This does not execute coding agents, run tests, verify GitHub, grant rights, merge, deploy, or store approved specs.**
 
 ## What R0 provides
