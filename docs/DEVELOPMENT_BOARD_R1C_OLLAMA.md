@@ -1,5 +1,7 @@
 # Φ Development Board R1-C: local Ollama proposal lane
 
+**New guided field-test option:** [DEVELOPMENT_BOARD_R1D_FIELD.md](DEVELOPMENT_BOARD_R1D_FIELD.md) provides an operator-confirmed, single-command Windows local model preflight, run, and receipt recheck. The lower-level R1-C commands below remain supported.
+
 **Scope:** This rung adds a real, opt-in local model-generated static HTML proposal to Agentora's controlled scratch builder/verifier design. It does **not** connect to PhiBot's governed PR writer yet, and it is not an autonomous repo-coding worker, a secure sandbox, an independent signed verifier, or permission to merge. GitHub, GitPorch and PhiOS are not contacted.
 
 ## First run on your own machine
