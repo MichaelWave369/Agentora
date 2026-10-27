@@ -14,7 +14,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from r1b_contract import read_spec, spec_digest
+if __package__:
+    from .r1b_contract import read_spec, spec_digest
+else:
+    # The explicit subprocess runs this worker as a script with -S.
+    from r1b_contract import read_spec, spec_digest
 
 MODEL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,79}$")
 MAX_RESPONSE = 32768
