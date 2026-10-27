@@ -67,9 +67,10 @@ def inspect_gitporch(snapshot: Any, local_repo: str, commit_sha: str) -> dict[st
 
 def inspect_phibot(report: Any, github_repo: str, pr_number: int, commit_sha: str) -> dict[str, Any]:
     """Compare PhiBot's GitHub CI observation export to one exact PR/SHA."""
-    if (not GITHUB_REPO.fullmatch(github_repo or "") or
+    if (not isinstance(github_repo, str) or not isinstance(commit_sha, str) or
+            not GITHUB_REPO.fullmatch(github_repo) or
             type(pr_number) is not int or not 1 <= pr_number <= 10_000_000 or
-            not SHA40.fullmatch(commit_sha or "")):
+            not SHA40.fullmatch(commit_sha)):
         return _bad("INVALID_GITHUB_SCOPE")
     if not isinstance(report, dict) or (
         report.get("schema"), report.get("mode")
