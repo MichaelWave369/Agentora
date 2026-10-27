@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      PYTHONPATH: server
+      PYTHONPATH: .
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - name: Check out public example without persisting GitHub credentials
@@ -37,14 +37,16 @@ jobs:
           python-version: '3.12'
 
       - name: Show immutable example spec and bounded execution plan
+        working-directory: server
         run: |
           python -m app.services.development_board.r1e_cloud plan --mode "${{ inputs.mode }}"
-          mkdir -p cloud-artifacts
+          mkdir -p ../cloud-artifacts
 
       - name: Generate and independently verify fixed HTML demo
         if: ${{ inputs.mode == 'fixture' }}
+        working-directory: server
         run: |
-          python -m app.services.development_board.r1e_cloud run --mode fixture --output-dir cloud-artifacts
+          python -m app.services.development_board.r1e_cloud run --mode fixture --output-dir ../cloud-artifacts
 
       - name: Start experimental Ollama only on this ephemeral runner
         if: ${{ inputs.mode == 'ollama_cpu' }}
@@ -59,8 +61,9 @@ jobs:
 
       - name: Propose HTML with small cloud-hosted CPU model and verify
         if: ${{ inputs.mode == 'ollama_cpu' }}
+        working-directory: server
         run: |
-          python -m app.services.development_board.r1e_cloud run --mode ollama_cpu --output-dir cloud-artifacts
+          python -m app.services.development_board.r1e_cloud run --mode ollama_cpu --output-dir ../cloud-artifacts
 
       - name: Attach report and accepted artifacts for manual inspection
         if: ${{ always() }}
