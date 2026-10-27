@@ -1,0 +1,7 @@
+{
+  "schema": "agentora.devboard.r1b.fixture-spec.v1",
+  "title": "Field Workshop Sample",
+  "headline": "Build, verify, then ask a human.",
+  "description": "This is a disposable local HTML fixture used to prove that separate worker processes can hand off one exact artifact without granting merge authority.",
+  "button_label": "Inspect the details"
+}
