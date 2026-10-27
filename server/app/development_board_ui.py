@@ -101,6 +101,23 @@ def render_development_board(st, api_get) -> None:
         "examples/development-board/r1b-fixture-spec.json",
         language="powershell",
     )
+    st.subheader("R1-D · Guided Windows field trial")
+    st.info(
+        "One interactive local command combines the spec approval, installed "
+        "Ollama model preflight, scratch proposal, separate verifier and local "
+        "receipt recheck. It must run on YOUR Windows PC, not this hosted page."
+    )
+    st.code(
+        "python -m app.services.development_board.r1d_field guided "
+        "examples/development-board/r1b-fixture-spec.json "
+        "--model qwen3.5:9b",
+        language="powershell",
+    )
+    st.caption(
+        "See docs/DEVELOPMENT_BOARD_R1D_FIELD.md. A local self-reported "
+        "verification is not independent security attestation or a human "
+        "Code Brown observation. No repository writes or merge rights."
+    )
 
 
 def render_handoff_pilot(st) -> None:
