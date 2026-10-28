@@ -166,6 +166,23 @@ def render_development_board(st, api_get) -> None:
         "This is exact fixture contract inspection, not code review approval."
     )
 
+    st.subheader("R1-K · Sovereign Cell architecture contract")
+    st.info(
+        "A strict, review-only manifest describes nine organs, 3/6/9 tiers, "
+        "nine engineering principles, and actual source-file evidence. "
+        "The present multi-process, mixed cloud/local workflow is NOT certified "
+        "as a single-runtime or fully restorable sovereign cell."
+    )
+    st.markdown(
+        "[Run the manual Sovereign Cell manifest review]"
+        "(https://github.com/MichaelWave369/Agentora/actions/workflows/"
+        "development-board-sovereign-cell.yml)"
+    )
+    st.caption(
+        "See docs/DEVELOPMENT_BOARD_R1K_SOVEREIGN_CELL.md. "
+        "One declaration is not functional proof, human approval or merge authority."
+    )
+
 
 def render_handoff_pilot(st) -> None:
     """Deliberate, user-clicked local evidence comparison. No job dispatch."""
