@@ -152,23 +152,23 @@ def test_actual_cloud_cli_and_manual_gate(tmp_path):
     cmd = [sys.executable, "-m", "app.services.development_board.r1k_sovereign_cell",
            "--output-dir", str(out)]
     environment = {
-        **os.environ, "PYTHONPATH": "server", "GITHUB_ACTIONS": "true",
+        **os.environ, "PYTHONPATH": ".", "GITHUB_ACTIONS": "true",
         "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_SHA": "a" * 40,
     }
-    first = subprocess.run(cmd, cwd=cell.ROOT, env=environment,
+    first = subprocess.run(cmd, cwd=cell.ROOT / "server", env=environment,
                            capture_output=True, text=True, timeout=20)
     assert first.returncode == 0, first.stderr + first.stdout
     exported = json.loads((out / "sovereign-cell-review.json").read_text())
     assert exported["status"] == "NINE_ORGANS_DECLARED_REVIEW_ONLY"
     assert exported["repository_writes"] is False
     # Fail rather than overwrite any previous operator review artifact.
-    again = subprocess.run(cmd, cwd=cell.ROOT, env=environment,
+    again = subprocess.run(cmd, cwd=cell.ROOT / "server", env=environment,
                            capture_output=True, text=True, timeout=20)
     assert again.returncode == 2
     assert (out / "sovereign-cell-review.json").is_file()
     new = tmp_path / "new"
     new.mkdir()
-    denied = subprocess.run(cmd[:-1] + [str(new)], cwd=cell.ROOT,
+    denied = subprocess.run(cmd[:-1] + [str(new)], cwd=cell.ROOT / "server",
                             env={**environment, "GITHUB_EVENT_NAME": "push"},
                             capture_output=True, text=True, timeout=20)
     assert denied.returncode == 2
