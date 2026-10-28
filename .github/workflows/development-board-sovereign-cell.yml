@@ -1,0 +1,39 @@
+name: Phi Development Board R1-K Sovereign Cell Contract
+
+on:
+  workflow_dispatch:
+
+# No push, pull_request, schedule, model, GitHub writes or deployment.
+# The manifest is a declaration and source-file hash inventory only.
+permissions:
+  contents: read
+
+jobs:
+  cell-review:
+    name: Inspect nine organs and sovereignty gaps without grants
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Read-only checkout of declared cell files
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Use hosted Python standard library only
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check exact manifest, evidence paths, and SHA-256 receipts
+        working-directory: server
+        run: |
+          mkdir ../r1k-artifacts
+          python -m app.services.development_board.r1k_sovereign_cell --output-dir ../r1k-artifacts
+
+      - name: Upload review-only source hash and gap receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentora-r1k-cell-review-${{ github.run_id }}
+          path: r1k-artifacts/sovereign-cell-review.json
+          if-no-files-found: error
+          retention-days: 7
