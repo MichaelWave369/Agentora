@@ -40,7 +40,7 @@ ALLOWED_FILES = (
     ".github/workflows/",
     "examples/development-board/",
 )
-PATH = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,180}$")
+PATH = re.compile(r"^[a-zA-Z0-9.][a-zA-Z0-9._/-]{0,180}$")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 MAX_MANIFEST_BYTES = 12 * 1024
 MAX_EVIDENCE_BYTES = 256 * 1024
