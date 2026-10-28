@@ -149,6 +149,23 @@ def render_development_board(st, api_get) -> None:
         "design_cpu. See docs/DEVELOPMENT_BOARD_R1G_CLOUD_DESIGN.md."
     )
 
+    st.subheader("R1-H · Read-only coding task handoff for PhiBot")
+    st.info(
+        "Manual draft_review cloud mode packages one toy Python change preview, "
+        "source SHA-256 and zero-authority receipt. Copy the artifact's base64url "
+        "line into PhiBot's separate browser-only R1-H inspector workflow. "
+        "Neither system writes code, creates PRs, or invokes Reality Gate."
+    )
+    st.markdown(
+        "[Open PhiBot's manual read-only task inspector]"
+        "(https://github.com/MichaelWave369/PhiBot/actions/workflows/"
+        "r1h-readonly-inspection.yml)"
+    )
+    st.caption(
+        "See docs/DEVELOPMENT_BOARD_R1H_PHIBOT_HANDOFF.md. "
+        "This is exact fixture contract inspection, not code review approval."
+    )
+
 
 def render_handoff_pilot(st) -> None:
     """Deliberate, user-clicked local evidence comparison. No job dispatch."""
