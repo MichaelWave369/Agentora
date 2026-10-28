@@ -12,7 +12,11 @@ import sys
 from html.parser import HTMLParser
 from pathlib import Path
 
-from r1b_contract import read_spec, spec_digest
+if __package__:
+    from .r1b_contract import read_spec, spec_digest
+else:
+    # Standalone -S subprocess is the production verifier invocation.
+    from r1b_contract import read_spec, spec_digest
 
 FORBIDDEN = frozenset({"script", "iframe", "object", "embed", "form", "link", "img", "base"})
 VOID = frozenset({"meta", "br", "hr", "input", "wbr", "area"})
