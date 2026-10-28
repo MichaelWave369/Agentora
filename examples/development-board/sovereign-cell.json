@@ -1,0 +1,136 @@
+{
+  "schema": "phi369.sovereign-cell.manifest.v0.1",
+  "cell": {
+    "id": "agentora_development_board",
+    "purpose": "Prepare and inspect bounded software-development proposals without automatically granting repository writes, releases, or merges.",
+    "scope": "SINGLE_DEVELOPMENT_BOARD_CAPABILITY_NOT_WHOLE_REPOSITORY",
+    "maturity_claim": "DESIGN_PILOT_NOT_SOVEREIGN_CERTIFIED"
+  },
+  "declared_architecture": {
+    "deployment": "MIXED_LOCAL_AND_GITHUB_ACTIONS_MANUAL",
+    "runtime": "MULTI_PROCESS_WITH_SEPARATE_VERIFIERS",
+    "single_process": "NOT_DEMONSTRATED",
+    "local_first": "PARTIALLY_DEMONSTRATED",
+    "automatic_recovery": "NOT_DEMONSTRATED"
+  },
+  "tiers": {
+    "being": [
+      "face",
+      "mind",
+      "memory"
+    ],
+    "function": [
+      "hands",
+      "body",
+      "shield"
+    ],
+    "sovereignty": [
+      "pulse",
+      "continuity",
+      "seed"
+    ]
+  },
+  "organs": {
+    "face": {
+      "responsibility": "Human-facing Development Board controls and disclosure",
+      "evidence_paths": [
+        "server/app/development_board_ui.py"
+      ]
+    },
+    "mind": {
+      "responsibility": "Bounded design and workflow orchestration",
+      "evidence_paths": [
+        "server/app/services/development_board/r1e_cloud.py"
+      ]
+    },
+    "memory": {
+      "responsibility": "Frozen specifications and review-only receipt structures",
+      "evidence_paths": [
+        "server/app/services/development_board/r1h_packet.py"
+      ]
+    },
+    "hands": {
+      "responsibility": "Explicit read-only evidence handoffs",
+      "evidence_paths": [
+        "server/app/services/development_board/r1_handoff.py"
+      ]
+    },
+    "body": {
+      "responsibility": "Declared manual GitHub cloud runtime",
+      "evidence_paths": [
+        ".github/workflows/development-board-cloud-trial.yml"
+      ]
+    },
+    "shield": {
+      "responsibility": "Validation rules and non-granting receipt contract",
+      "evidence_paths": [
+        "server/app/services/development_board/contract.py"
+      ]
+    },
+    "pulse": {
+      "responsibility": "Observed CI and design verification tests",
+      "evidence_paths": [
+        "server/tests/test_development_board_r1g.py"
+      ]
+    },
+    "continuity": {
+      "responsibility": "Documented review handoff; full restore not demonstrated",
+      "evidence_paths": [
+        "docs/DEVELOPMENT_BOARD_R1H_PHIBOT_HANDOFF.md"
+      ]
+    },
+    "seed": {
+      "responsibility": "Documented reusable trial pattern; self-replication not demonstrated",
+      "evidence_paths": [
+        "docs/DEVELOPMENT_BOARD_R1G_CLOUD_DESIGN.md"
+      ]
+    }
+  },
+  "principles": {
+    "one_module": {
+      "assessment": "PARTIAL",
+      "note": "One bounded capability, but not a self-contained deployable binary."
+    },
+    "one_manifest": {
+      "assessment": "PARTIAL",
+      "note": "This pilot is one canonical declaration, not yet reused by every runtime."
+    },
+    "one_runtime": {
+      "assessment": "NOT_DEMONSTRATED",
+      "note": "The workflow deliberately uses separate builder and verifier processes."
+    },
+    "one_recovery_path": {
+      "assessment": "NOT_DEMONSTRATED",
+      "note": "No fully qualified single-step restore is available."
+    },
+    "local_first": {
+      "assessment": "PARTIAL",
+      "note": "Local worker paths exist, but cloud-first manual trials are not fully local."
+    },
+    "observable_by_default": {
+      "assessment": "PARTIAL",
+      "note": "Actions logs and review receipts exist; complete telemetry is not qualified."
+    },
+    "secure_by_default": {
+      "assessment": "PARTIAL",
+      "note": "No-write policies and bounded validators exist; no general security attestation."
+    },
+    "easy_to_inspect": {
+      "assessment": "PARTIAL",
+      "note": "Source and receipt artifacts are available for review."
+    },
+    "easy_to_restore": {
+      "assessment": "NOT_DEMONSTRATED",
+      "note": "A full restoration from one independent backup artifact has not been shown."
+    }
+  },
+  "authority": {
+    "repository_write": false,
+    "automatic_merge": false,
+    "deploy": false,
+    "issue_creation": false,
+    "agent_spawn": false,
+    "release_authorized": false,
+    "sovereignty_certified": false
+  }
+}
