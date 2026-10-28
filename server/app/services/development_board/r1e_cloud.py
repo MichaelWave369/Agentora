@@ -19,12 +19,14 @@ from .r1b_contract import frozen_bytes, read_spec, spec_digest
 from .r1b_cli import run_pilot as fixed_pilot
 from .r1f_cloud_theme import run_theme_pilot as model_pilot, recheck_theme as recheck_workspace
 from .r1f_theme_worker import THEMES
+from .r1g_design_worker import CHOICES as DESIGN_CHOICES
+from .r1g_cloud_design import run_design_pilot, recheck_design
 
 ROOT = Path(__file__).resolve().parents[4]
 SPEC_PATH = ROOT / "examples" / "development-board" / "r1b-fixture-spec.json"
-MODES = frozenset(("fixture", "ollama_cpu"))
+MODES = frozenset(("fixture", "ollama_cpu", "design_cpu"))
 MAX_ARTIFACT_BYTES = 12 * 1024
-ALLOWED_MODELS = {"ollama_cpu": "qwen3:0.6b"}
+ALLOWED_MODELS = {"ollama_cpu": "qwen3:0.6b", "design_cpu": "qwen3:0.6b"}
 
 
 def _write_new(path: Path, data: bytes) -> None:
@@ -68,9 +70,11 @@ def plan_cloud(mode: str) -> dict[str, Any]:
         "spec": "examples/development-board/r1b-fixture-spec.json",
         "frozen_spec_sha256": spec_digest(spec),
         "trigger": "MANUAL_WORKFLOW_DISPATCH_ONLY",
-        "builder": "FIXED_HTML_WORKER" if mode == "fixture" else "OLLAMA_THEME_CHOICE_AND_FIXED_SAFE_TEMPLATE",
+        "builder": ("FIXED_HTML_WORKER" if mode == "fixture" else
+                    "OLLAMA_THEME_CHOICE_AND_FIXED_SAFE_TEMPLATE" if mode == "ollama_cpu" else
+                    "OLLAMA_THREE_DESIGN_CHOICES_AND_FIXED_RESPONSIVE_TEMPLATE"),
         "verifier": "SEPARATE_LOCAL_STATIC_CHECK_PROCESS",
-        "model_download": mode == "ollama_cpu",
+        "model_download": mode != "fixture",
         "environment": "EPHEMERAL_GITHUB_ACTIONS_RUNNER",
         "eligible_for_merge": False,
         "automatic_merge": False,
@@ -78,7 +82,8 @@ def plan_cloud(mode: str) -> dict[str, Any]:
 
 
 def run_cloud(mode: str, output_dir: Path, *, head_sha: str = "",
-              fixed_runner=None, model_runner=None, rechecker=None) -> dict[str, Any]:
+              fixed_runner=None, model_runner=None, rechecker=None,
+              design_runner=None, design_rechecker=None) -> dict[str, Any]:
     """Run a bounded fixed spec and only export an artifact on passing checks.
 
     Test seams are injectable without contacting any model in unit tests.
@@ -98,14 +103,20 @@ def run_cloud(mode: str, output_dir: Path, *, head_sha: str = "",
     fixed_runner = fixed_runner or fixed_pilot
     model_runner = model_runner or model_pilot
     rechecker = rechecker or recheck_workspace
+    design_runner = design_runner or run_design_pilot
+    design_rechecker = design_rechecker or recheck_design
     result = _held(mode, "NOT_EXECUTED", sha)
     accepted: dict[str, Any] | None = None
     try:
         if mode == "fixture":
             observed = fixed_runner(SPEC_PATH, digest)
-        else:
+        elif mode == "ollama_cpu":
             observed = model_runner(
                 SPEC_PATH, digest, model=ALLOWED_MODELS["ollama_cpu"], port=11434,
+            )
+        else:
+            observed = design_runner(
+                SPEC_PATH, digest, model=ALLOWED_MODELS["design_cpu"], port=11434,
             )
         if not isinstance(observed, dict) or observed.get("status") != "REVIEW_READY_NOT_AUTHORIZED":
             result = _held(mode, "BUILDER_OR_VERIFIER_HELD", sha)
@@ -115,7 +126,9 @@ def run_cloud(mode: str, output_dir: Path, *, head_sha: str = "",
                 if (isinstance(source_reason, str) and 1 <= len(source_reason) <= 64
                         and all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_" for c in source_reason)):
                     result["bounded_origin_reason"] = source_reason
-                if source_stage in ("PRECHECK", "WORKSPACE", "MODEL_OR_TEMPLATE", "ARTIFACT", "INDEPENDENT_VERIFIER"):
+                if source_stage in ("PRECHECK", "WORKSPACE", "MODEL_OR_TEMPLATE", "ARTIFACT",
+                                    "INDEPENDENT_VERIFIER", "MODEL_OR_RENDERER", "DECISION",
+                                    "HTML_VERIFIER", "DESIGN_VERIFIER"):
                     result["origin_stage"] = source_stage
         elif (observed.get("spec_digest") != digest or
               observed.get("eligible_for_merge") is not False or
@@ -127,6 +140,14 @@ def run_cloud(mode: str, output_dir: Path, *, head_sha: str = "",
                                        or observed.get("model_contribution") != "BOUNDED_THEME_ENUM_ONLY"
                                        or observed.get("theme") not in THEMES):
             result = _held(mode, "MODEL_IDENTITY_OR_OUTPUT_UNVERIFIED", sha)
+        elif mode == "design_cpu" and (
+                observed.get("model") != ALLOWED_MODELS["design_cpu"]
+                or observed.get("model_contribution") != "THREE_BOUNDED_ENUM_DECISIONS_ONLY"
+                or not isinstance(observed.get("choices"), dict)
+                or set(observed["choices"]) != set(DESIGN_CHOICES)
+                or any(observed["choices"][k] not in allowed
+                       for k, allowed in DESIGN_CHOICES.items())):
+            result = _held(mode, "DESIGN_MODEL_OR_DECISIONS_INVALID", sha)
         else:
             location = Path(observed["workspace"])
             if location.is_symlink() or not location.is_dir():
@@ -137,14 +158,23 @@ def run_cloud(mode: str, output_dir: Path, *, head_sha: str = "",
             if calculated_sha != observed.get("artifact_sha256"):
                 result = _held(mode, "ARTIFACT_HASH_CHANGED", sha)
             else:
-                if mode == "ollama_cpu":
-                    rechecked = rechecker(location)
+                if mode in ("ollama_cpu", "design_cpu"):
+                    rechecked = rechecker(location) if mode == "ollama_cpu" else design_rechecker(location)
                     if (not isinstance(rechecked, dict)
                             or rechecked.get("status") != "LOCAL_RECHECK_PASS_REVIEW_ONLY"
                             or rechecked.get("spec_digest") != digest
                             or rechecked.get("artifact_sha256") != calculated_sha
-                            or rechecked.get("eligible_for_merge") is not False):
+                            or rechecked.get("eligible_for_merge") is not False
+                            or (mode == "design_cpu" and
+                                rechecked.get("choices") != observed["choices"])):
                         result = _held(mode, "INDEPENDENT_RECHECK_HELD", sha)
+                    elif mode == "design_cpu":
+                        decision_raw = _read_file(location / "design-decision.json", 4096)
+                        if hashlib.sha256(decision_raw).hexdigest() != rechecked.get("decision_sha256"):
+                            result = _held(mode, "DECISION_HASH_CHANGED", sha)
+                        else:
+                            accepted = {"sha256": calculated_sha, "raw": raw,
+                                        "decision_raw": decision_raw}
                     else:
                         accepted = {"sha256": calculated_sha, "raw": raw}
                 else:
@@ -160,10 +190,14 @@ def run_cloud(mode: str, output_dir: Path, *, head_sha: str = "",
                         "artifact_sha256": calculated_sha,
                         "artifact_export": (
                             "index.html" if mode == "fixture"
-                            else "untrusted-model-proposal.html.txt"
+                            else "untrusted-model-proposal.html.txt" if mode == "ollama_cpu"
+                            else "untrusted-design-proposal.html.txt"
                         ),
-                        "model": ALLOWED_MODELS["ollama_cpu"] if mode == "ollama_cpu" else None,
-                        "model_contribution": "BOUNDED_THEME_ENUM_ONLY" if mode == "ollama_cpu" else "NONE",
+                        "model": ALLOWED_MODELS[mode] if mode != "fixture" else None,
+                        "model_contribution": ("BOUNDED_THEME_ENUM_ONLY" if mode == "ollama_cpu" else
+                                               "THREE_BOUNDED_ENUM_DECISIONS_ONLY" if mode == "design_cpu"
+                                               else "NONE"),
+                        "design_choices": observed.get("choices") if mode == "design_cpu" else None,
                         "deterministic_markup_builder": True,
                         "theme": observed.get("theme") if mode == "ollama_cpu" else None,
                         "qualification": "GITHUB_HOSTED_SELF_REPORTED_NOT_ATTESTED",
@@ -186,6 +220,8 @@ def run_cloud(mode: str, output_dir: Path, *, head_sha: str = "",
     if accepted is not None and result["status"] == "STATIC_REVIEW_READY_NOT_AUTHORIZED":
         _write_new(output_dir / result["artifact_export"], accepted["raw"])
         _write_new(output_dir / "frozen-spec.json", frozen_bytes(spec) + b"\n")
+        if mode == "design_cpu":
+            _write_new(output_dir / "design-decision.json", accepted["decision_raw"])
     return result
 
 

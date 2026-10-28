@@ -202,7 +202,7 @@ def test_hosted_workflow_runs_python_from_actual_server_package_root():
     workflow = r1e_cloud.ROOT / ".github/workflows/development-board-cloud-trial.yml"
     lines = workflow.read_text(encoding="utf-8")
     assert "PYTHONPATH: ." in lines
-    assert lines.count("working-directory: server") == 3
+    assert lines.count("working-directory: server") == 4
     assert "mkdir -p ../cloud-artifacts" in lines
     assert "--mode fixture --output-dir ../cloud-artifacts" in lines
     assert "--mode ollama_cpu --output-dir ../cloud-artifacts" in lines

@@ -131,10 +131,22 @@ def render_development_board(st, api_get) -> None:
         "development-board-cloud-trial.yml)"
     )
     st.caption(
-        "After the R1-E PR is merged, click Run workflow and leave mode=fixture "
-        "for the first run. Download the receipt and demo from the run's Artifacts. "
-        "The workflow never merges or deploys anything. "
+        "On GitHub, click Run workflow and leave mode=fixture for a deterministic "
+        "trial, or use ollama_cpu for the successful bounded Qwen theme selection. "
+        "Download review receipts from Artifacts. "
         "See docs/DEVELOPMENT_BOARD_R1E_CLOUD.md."
+    )
+    st.subheader("R1-G · Model-driven responsive cloud design")
+    st.info(
+        "New optional design_cpu mode: cloud Qwen3 picks an approved theme, "
+        "responsive layout and content emphasis. A deterministic HTML builder, "
+        "a separate HTML verifier and a separate exact design-contract verifier "
+        "must all agree before any review artifact is uploaded."
+    )
+    st.caption(
+        "27 possible bounded configurations. Nothing is installed locally, "
+        "published or merged. Run the cloud workflow manually and select "
+        "design_cpu. See docs/DEVELOPMENT_BOARD_R1G_CLOUD_DESIGN.md."
     )
 
 
