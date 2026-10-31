@@ -157,5 +157,75 @@ class HandoffTests(unittest.TestCase):
             handoff.assess(event, handoff.REPO, {"items": []})
 
 
+class CodeWorkflowIntegrationTests(unittest.TestCase):
+    def test_owner_code_label_requires_real_review_green_ci_and_exact_sha(self):
+        import devloop_automerge as gate
+        pr, files = candidate()
+        calls = []
+        def mock_api(token, path, payload=None, method=None):
+            calls.append((path, payload, method))
+            if path == "/repos/" + gate.REPO:
+                return {"allow_auto_merge": True}
+            if path == "/repos/" + gate.REPO + "/pulls/71":
+                return pr
+            if path.endswith("/pulls/71/files?per_page=100"):
+                return files
+            if path.endswith("/pulls/71/reviews?per_page=100"):
+                return [review()]
+            if path.endswith("/collaborators/independent/permission"):
+                return {"permission": "write"}
+            if path.endswith("/check-runs?per_page=100"):
+                runs = [{"name": name, "status": "completed", "conclusion": "success",
+                         "app": {"slug": "github-actions"}}
+                        for name in gate.REQUIRED]
+                return {"total_count": len(runs), "check_runs": runs}
+            if path.endswith("/pulls/71/merge"):
+                self.assertEqual(method, "PUT")
+                self.assertEqual(payload, {"sha": SHA, "merge_method": "squash"})
+                return {"merged": True}
+            raise AssertionError("unexpected API path " + path)
+        old_api, old_protected = gate.api, gate.protected
+        try:
+            gate.api = mock_api
+            gate.protected = lambda token: None
+            event = {"action": "labeled", "label": {"name": gate.CODE_LABEL},
+                     "sender": {"login": gate.OWNER},
+                     "pull_request": {"number": 71, "head": {"sha": SHA}}}
+            result = gate.run(event, "token", gate.REPO)
+            self.assertEqual(result, "R2_CODE_EXACT_HEAD_REVIEWED_CI_GREEN_MERGED")
+            self.assertEqual(sum(p.endswith("/merge") for p, _, _ in calls), 1)
+        finally:
+            gate.api, gate.protected = old_api, old_protected
+
+    def test_no_review_no_merge_even_with_owner_label_and_green_ci(self):
+        import devloop_automerge as gate
+        pr, files = candidate()
+        paths = []
+        def mock_api(token, path, payload=None, method=None):
+            paths.append(path)
+            if path == "/repos/" + gate.REPO:
+                return {"allow_auto_merge": True}
+            if path == "/repos/" + gate.REPO + "/pulls/71":
+                return pr
+            if path.endswith("/pulls/71/files?per_page=100"):
+                return files
+            if path.endswith("/pulls/71/reviews?per_page=100"):
+                return []
+            raise AssertionError("Unexpected write or check: " + path)
+        old_api, old_protected = gate.api, gate.protected
+        try:
+            gate.api = mock_api
+            gate.protected = lambda token: None
+            event = {"action": "labeled", "label": {"name": gate.CODE_LABEL},
+                     "sender": {"login": gate.OWNER},
+                     "pull_request": {"number": 71, "head": {"sha": SHA}}}
+            with self.assertRaises(gate.Block) as ctx:
+                gate.run(event, "token", gate.REPO)
+            self.assertEqual(str(ctx.exception), "R2_INDEPENDENT_WRITE_REVIEW_REQUIRED")
+            self.assertFalse(any(p.endswith("/merge") for p in paths))
+        finally:
+            gate.api, gate.protected = old_api, old_protected
+
+
 if __name__ == "__main__":
     unittest.main()
