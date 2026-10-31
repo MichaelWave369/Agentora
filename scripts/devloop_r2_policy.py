@@ -9,6 +9,8 @@ import re
 
 REPO = "MichaelWave369/Agentora"
 LABEL = "phi-code-automerge"
+SOLO_LABEL = "phi-solo-automerge"
+OWNER = "MichaelWave369"
 HOLDS = frozenset({"hold", "do-not-merge", "needs-review", "security-review"})
 # Deliberately tiny first code lane. No authentication, routing, backend,
 # dependencies, config, workflows, policy, or tests can use this gate.
@@ -69,11 +71,53 @@ def verify_code_pr(pr, expected_head, files):
     if not isinstance(sha, str) or not _SHA.fullmatch(sha) or sha != expected_head:
         raise CodeHeld("R2_HEAD_CHANGED")
     labels = {str(x.get("name", "")).lower() for x in pr.get("labels", [])}
-    if LABEL not in labels or HOLDS & labels or "phi-automerge" in labels:
+    if LABEL not in labels or HOLDS & labels or {"phi-automerge", SOLO_LABEL} & labels:
         raise CodeHeld("R2_LABEL_MISSING_OR_HELD")
     if pr.get("changed_files") != len(files):
         raise CodeHeld("R2_DIFF_COUNT_MISMATCH")
     return classify_files(files)
+
+
+def verify_solo_pr(pr, expected_head, files):
+    """Owner-authorized solo lane: intentionally narrower than reviewed R2.
+
+    This is NOT an independent review. No PR body, agent comment, report,
+    bot approval or check summary substitutes for the owner's label action.
+    """
+    if not isinstance(pr, dict) or pr.get("state") != "open" or pr.get("draft") is not False:
+        raise CodeHeld("R21_PR_NOT_OPEN_READY")
+    base = pr.get("base") or {}
+    head = pr.get("head") or {}
+    if base.get("ref") != "main" or (base.get("repo") or {}).get("full_name") != REPO:
+        raise CodeHeld("R21_BASE_NOT_MAIN")
+    if (head.get("repo") or {}).get("full_name") != REPO:
+        raise CodeHeld("R21_FORK_NOT_ELIGIBLE")
+    sha = head.get("sha")
+    if not isinstance(sha, str) or not _SHA.fullmatch(sha) or sha != expected_head:
+        raise CodeHeld("R21_HEAD_CHANGED")
+    if (pr.get("user") or {}).get("login") != OWNER:
+        raise CodeHeld("R21_PR_AUTHOR_NOT_OWNER")
+    labels_raw = pr.get("labels")
+    if not isinstance(labels_raw, list) or any(not isinstance(x, dict) for x in labels_raw):
+        raise CodeHeld("R21_LABEL_EVIDENCE_INVALID")
+    labels = {str(x.get("name", "")).lower() for x in labels_raw}
+    if (SOLO_LABEL not in labels or HOLDS & labels or
+            {LABEL, "phi-automerge"} & labels):
+        raise CodeHeld("R21_LABEL_MISSING_CONFLICT_OR_HELD")
+    if type(pr.get("changed_files")) is not int or pr["changed_files"] != 1:
+        raise CodeHeld("R21_FILE_COUNT_HELD")
+    if not isinstance(files, list) or len(files) != 1:
+        raise CodeHeld("R21_DIFF_INCOMPLETE")
+    classification = classify_files(files)
+    if classification["paths"] != ["web/src/components/Nav.tsx"]:
+        raise CodeHeld("R21_PATH_NOT_SOLO_ALLOWED")
+    if (classification["additions"] > 10 or classification["deletions"] > 10 or
+            classification["additions"] + classification["deletions"] > 16):
+        raise CodeHeld("R21_CHANGE_TOO_LARGE")
+    return {"lane": "SOLO_SOVEREIGN_R21",
+            "paths": classification["paths"],
+            "additions": classification["additions"],
+            "deletions": classification["deletions"]}
 
 
 def require_independent_review(api, token, number, head_sha, author_login):

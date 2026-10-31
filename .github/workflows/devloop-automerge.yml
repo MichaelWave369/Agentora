@@ -19,8 +19,8 @@ concurrency:
 jobs:
   govern:
     if: >-
-      (github.event.action == 'labeled' && (github.event.label.name == 'phi-automerge' || github.event.label.name == 'phi-code-automerge')) ||
-      (github.event.action == 'unlabeled' && (github.event.label.name == 'phi-automerge' || github.event.label.name == 'phi-code-automerge')) ||
+      (github.event.action == 'labeled' && (github.event.label.name == 'phi-automerge' || github.event.label.name == 'phi-code-automerge' || github.event.label.name == 'phi-solo-automerge')) ||
+      (github.event.action == 'unlabeled' && (github.event.label.name == 'phi-automerge' || github.event.label.name == 'phi-code-automerge' || github.event.label.name == 'phi-solo-automerge')) ||
       github.event.action == 'synchronize' ||
       github.event.action == 'converted_to_draft'
     runs-on: ubuntu-latest
