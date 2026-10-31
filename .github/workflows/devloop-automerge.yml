@@ -1,0 +1,34 @@
+name: Phi Development Loop - governed auto-merge pilot
+
+on:
+  pull_request_target:
+    types: [labeled, unlabeled, synchronize, converted_to_draft]
+
+# Privileged workflow always uses trusted base branch code, never the PR's code.
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: agentora-automerge-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  govern:
+    if: >-
+      (github.event.action == 'labeled' && github.event.label.name == 'phi-automerge') ||
+      (github.event.action == 'unlabeled' && github.event.label.name == 'phi-automerge') ||
+      github.event.action == 'synchronize' ||
+      github.event.action == 'converted_to_draft'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted base
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Apply governed GitHub-native auto-merge policy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/devloop_automerge.py
