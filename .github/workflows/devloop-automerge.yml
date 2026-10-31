@@ -19,8 +19,8 @@ concurrency:
 jobs:
   govern:
     if: >-
-      (github.event.action == 'labeled' && github.event.label.name == 'phi-automerge') ||
-      (github.event.action == 'unlabeled' && github.event.label.name == 'phi-automerge') ||
+      (github.event.action == 'labeled' && (github.event.label.name == 'phi-automerge' || github.event.label.name == 'phi-code-automerge')) ||
+      (github.event.action == 'unlabeled' && (github.event.label.name == 'phi-automerge' || github.event.label.name == 'phi-code-automerge')) ||
       github.event.action == 'synchronize' ||
       github.event.action == 'converted_to_draft'
     runs-on: ubuntu-latest
@@ -35,3 +35,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 scripts/devloop_automerge.py
+
+      - name: Save bounded merge decision receipt
+        if: \${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: devloop-merge-decision-\${{ github.event.pull_request.number }}-\${{ github.run_id }}
+          path: devloop-artifacts/merge-decision.json
+          retention-days: 30
+          if-no-files-found: warn
