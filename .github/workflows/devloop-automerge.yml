@@ -37,10 +37,10 @@ jobs:
         run: python3 scripts/devloop_automerge.py
 
       - name: Save bounded merge decision receipt
-        if: \${{ always() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: devloop-merge-decision-\${{ github.event.pull_request.number }}-\${{ github.run_id }}
+          name: devloop-merge-decision-${{ github.event.pull_request.number }}-${{ github.run_id }}
           path: devloop-artifacts/merge-decision.json
           retention-days: 30
           if-no-files-found: warn
