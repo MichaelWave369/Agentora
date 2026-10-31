@@ -53,3 +53,18 @@ The owner reapplied `phi-automerge` to trial PR #52 after merging the R0.1 token
 R0.2 introduces **bounded, non-secret diagnostic codes**: `AUTO_MERGE_ALREADY_CLEAN`, `GRAPHQL_TOKEN_ACCESS_REJECTED`, and `GRAPHQL_REJECTED_OTHER`. Only an exact sole GraphQL clean-status error activates the direct REST merge fallback. Any authorization or unknown error remains a HOLD. The fallback obtains extra `checks: read` permission but never checks out PR-head source, executes untrusted code, passes an admin-bypass flag or overrides protections.
 
 For the next real trial, after manually merging the R0.2 workflow PR with green CI and reviewing its privileged change, remove and re-add `phi-automerge` on still-open PR #52. Observe the latest Action run. If that run reports `GRAPHQL_TOKEN_ACCESS_REJECTED`, investigate repository Actions permissions rather than weakening the gate or injecting a broad PAT without separate operator review.
+
+## R0.3: green-first merge selection
+
+PR #52's next owner-labeled field run (ID 41241520899, October 31, 2026) reached GraphQL but held with \`GRAPHQL_REJECTED_OTHER\`. Its exact GraphQL error was not surfaced in the log. The real PR's three configured required CI contexts had all succeeded before the action. GitHub's official auto-merge documentation describes auto-merge as available when merge conditions are **not yet** satisfied; a PR that is ready can instead use a standard merge.
+
+R0.3 selects the merge path **before** making any GraphQL mutation:
+
+1. After verifying an owner-applied label event, exact PR head, same-repo branch, documentation-only changes, and active required-check ruleset, inspect all bounded check-run evidence for the exact SHA.
+2. If all three required GitHub Actions check contexts have passed, **do not call GraphQL**. Re-run the existing protected \`merge_already_clean\` checks (including fresh exact-head verification) and ask GitHub REST for a normal, SHA-pinned squash merge. GitHub's branch restrictions remain enforced.
+3. If required checks are missing, pending, or failed, attempt GitHub's native auto-merge mutation instead. This path remains unqualified until it succeeds in a real trial; any GitHub error holds.
+4. If check data is truncated or malformed or a check is from an unexpected GitHub App, hold immediately. Do not turn missing evidence into permission.
+
+The feature remains a **docs-only, owner-opt-in pilot**. In particular, a green workflow on the fix PR does not prove that the labeled test PR was merged by the bot. Only the new live test receipt can establish that outcome.
+
+**R0.3 field procedure:** manually review and merge the R0.3 implementation PR after its CI is green, then as owner remove and reapply \`phi-automerge\` on still-open documentation test PR #52. Check the exact \`govern\` run. If the result is \`EXACT_HEAD_REQUIRED_CI_GREEN_MERGED\`, verify the merge SHA and required checks through GitHub. Do not treat this as authorization to extend auto-merging to code PRs.

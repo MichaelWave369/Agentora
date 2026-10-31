@@ -210,13 +210,30 @@ def run(event, token, repo):
     if latest.get("head", {}).get("sha") != expected:
         raise Block("PR_CHANGED_DURING_RECHECK")
     verify_pr(latest, expected, files)
+    # GitHub's native auto-merge mutation is for PRs still waiting for checks.
+    # It is invalid to depend on an error string to identify already-green PRs.
+    # Read the exact-head check evidence BEFORE choosing the merge mechanism.
     try:
-        graphql(token, latest, True, expected)
-    except AlreadyClean:
-        # GitHub refuses to queue an already-green PR. A direct merge is safe
-        # only after independent exact-head check reads and live revalidation.
-        return merge_already_clean(token, number, expected, files)
-    return "NATIVE_SHA_BOUND_AUTO_MERGE_REQUESTED"
+        require_required_checks_green(token, expected)
+    except Block as exc:
+        if str(exc) not in ("REQUIRED_CHECK_NOT_GREEN", "REQUIRED_CHECK_MISSING"):
+            # Truncated, forged, or otherwise invalid check evidence is a HOLD,
+            # not permission to queue a merge or fall back to another action.
+            raise
+        # Required CI has not passed. Only ask GitHub to wait for conditions;
+        # never use the direct-merge route with failed or pending checks.
+        try:
+            graphql(token, latest, True, expected)
+        except AlreadyClean:
+            # Checks may complete between the first read and GraphQL request.
+            # Re-check every safety condition before any exact-head merge.
+            return merge_already_clean(token, number, expected, files)
+        return "NATIVE_SHA_BOUND_AUTO_MERGE_REQUESTED"
+    # Already green at the moment of authorization. Re-check all required
+    # contexts, ruleset, labels, diff, and head, then send GitHub a normal
+    # squash merge pinned to the immutable head SHA. GitHub still enforces
+    # every repository merge restriction.
+    return merge_already_clean(token, number, expected, files)
 
 def main():
     try:

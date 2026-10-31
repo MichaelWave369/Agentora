@@ -213,5 +213,105 @@ class DevLoopGateTests(unittest.TestCase):
             gate.api, gate.protected = old_api, old_protected
 
 
+    def test_owner_label_green_routes_direct_without_graphql(self):
+        old_api, old_protected = gate.api, gate.protected
+        pr, files = candidate()
+        calls = []
+        def fake_api(token, path, payload=None, method=None):
+            calls.append((path, payload, method))
+            if path == "/repos/" + gate.REPO:
+                return {"allow_auto_merge": True}
+            if path == "/repos/" + gate.REPO + "/pulls/52":
+                return pr
+            if path.endswith("/pulls/52/files?per_page=100"):
+                return files
+            if path.endswith("/check-runs?per_page=100"):
+                checks = [{"name": name, "status": "completed",
+                           "conclusion": "success", "app": {"slug": "github-actions"}}
+                          for name in sorted(gate.REQUIRED)]
+                return {"total_count": len(checks), "check_runs": checks}
+            if path.endswith("/pulls/52/merge"):
+                self.assertEqual(method, "PUT")
+                self.assertEqual(payload, {"sha": SHA, "merge_method": "squash"})
+                return {"merged": True, "sha": "b"*40}
+            raise AssertionError("unexpected API path (possibly GraphQL): " + path)
+        try:
+            gate.api = fake_api
+            gate.protected = lambda token: gate.verify_rules(rules())
+            event = {"action": "labeled", "label": {"name": gate.LABEL},
+                     "sender": {"login": gate.OWNER},
+                     "pull_request": {"number": 52, "head": {"sha": SHA}}}
+            self.assertEqual(gate.run(event, "token", gate.REPO),
+                             "EXACT_HEAD_REQUIRED_CI_GREEN_MERGED")
+            self.assertTrue(any(p.endswith("/merge") for p, _, _ in calls))
+            self.assertFalse(any(p == "/graphql" for p, _, _ in calls))
+        finally:
+            gate.api, gate.protected = old_api, old_protected
+
+    def test_pending_checks_use_queue_not_direct_merge(self):
+        old_api, old_protected, old_graphql = gate.api, gate.protected, gate.graphql
+        pr, files = candidate()
+        calls = []
+        def fake_api(token, path, payload=None, method=None):
+            calls.append(path)
+            if path == "/repos/" + gate.REPO:
+                return {"allow_auto_merge": True}
+            if path == "/repos/" + gate.REPO + "/pulls/52":
+                return pr
+            if path.endswith("/pulls/52/files?per_page=100"):
+                return files
+            if path.endswith("/check-runs?per_page=100"):
+                checks = [{"name": name, "status": "completed",
+                           "conclusion": "success", "app": {"slug": "github-actions"}}
+                          for name in sorted(gate.REQUIRED)]
+                checks[0]["status"] = "in_progress"
+                checks[0]["conclusion"] = None
+                return {"total_count": len(checks), "check_runs": checks}
+            raise AssertionError("no direct merge should be requested")
+        try:
+            gate.api = fake_api
+            gate.protected = lambda token: gate.verify_rules(rules())
+            gate.graphql = lambda token, pr, enable, head: calls.append("GRAPHQL_QUEUE")
+            event = {"action": "labeled", "label": {"name": gate.LABEL},
+                     "sender": {"login": gate.OWNER},
+                     "pull_request": {"number": 52, "head": {"sha": SHA}}}
+            self.assertEqual(gate.run(event, "token", gate.REPO),
+                             "NATIVE_SHA_BOUND_AUTO_MERGE_REQUESTED")
+            self.assertIn("GRAPHQL_QUEUE", calls)
+            self.assertFalse(any(p.endswith("/merge") for p in calls))
+        finally:
+            gate.api, gate.protected, gate.graphql = old_api, old_protected, old_graphql
+
+    def test_corrupt_check_evidence_blocks_without_graphql_or_merge(self):
+        old_api, old_protected, old_graphql = gate.api, gate.protected, gate.graphql
+        pr, files = candidate()
+        calls = []
+        def fake_api(token, path, payload=None, method=None):
+            calls.append(path)
+            if path == "/repos/" + gate.REPO:
+                return {"allow_auto_merge": True}
+            if path == "/repos/" + gate.REPO + "/pulls/52":
+                return pr
+            if path.endswith("/pulls/52/files?per_page=100"):
+                return files
+            if path.endswith("/check-runs?per_page=100"):
+                return {"total_count": 101, "check_runs": []}
+            raise AssertionError("invalid evidence must not reach merge")
+        try:
+            gate.api = fake_api
+            gate.protected = lambda token: gate.verify_rules(rules())
+            gate.graphql = lambda *args: calls.append("GRAPHQL_QUEUE")
+            event = {"action": "labeled", "label": {"name": gate.LABEL},
+                     "sender": {"login": gate.OWNER},
+                     "pull_request": {"number": 52, "head": {"sha": SHA}}}
+            with self.assertRaises(gate.Block) as ctx:
+                gate.run(event, "token", gate.REPO)
+            self.assertEqual(str(ctx.exception), "CHECK_RUN_EVIDENCE_INCOMPLETE")
+            self.assertNotIn("GRAPHQL_QUEUE", calls)
+            self.assertFalse(any(p.endswith("/merge") for p in calls))
+        finally:
+            gate.api, gate.protected, gate.graphql = old_api, old_protected, old_graphql
+
+
 if __name__ == "__main__":
     unittest.main()
