@@ -1,0 +1,33 @@
+name: Phi Development Loop R2 - post-merge handoff
+
+on:
+  pull_request:
+    types: [closed]
+
+# Receipt only. No write token, secret, model runtime, or auto-dispatch.
+permissions:
+  contents: read
+
+jobs:
+  handoff:
+    if: ${{ github.event.pull_request.merged == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted main scripts only
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Check explicit task approvals from the pre-merge base commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/devloop_r2_handoff.py
+      - name: Store read-only handoff receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: devloop-next-rung-${{ github.event.pull_request.number }}-${{ github.run_id }}
+          path: devloop-artifacts/next-rung.json
+          retention-days: 30
+          if-no-files-found: warn
