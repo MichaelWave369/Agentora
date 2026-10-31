@@ -117,5 +117,101 @@ class DevLoopGateTests(unittest.TestCase):
         finally:
             gate.api = original
 
+    def test_graphql_clean_vs_permission_errors(self):
+        old = gate.api
+        pr = {"node_id": "PR_test"}
+        def response_api(token, path, payload=None, method=None):
+            return {"data": {"enablePullRequestAutoMerge": None},
+                    "errors": [{"type": "UNPROCESSABLE",
+                                "message": "Pull request Pull request is in clean status"}]}
+        try:
+            gate.api = response_api
+            with self.assertRaises(gate.AlreadyClean):
+                gate.graphql("token", pr, True, SHA)
+            gate.api = lambda *args, **kwargs: {
+                "data": {"enablePullRequestAutoMerge": None},
+                "errors": [{"message": "Resource not accessible by integration"}]}
+            with self.assertRaises(gate.Block) as ctx:
+                gate.graphql("token", pr, True, SHA)
+            self.assertEqual(str(ctx.exception), "GRAPHQL_TOKEN_ACCESS_REJECTED")
+        finally:
+            gate.api = old
+
+    def test_direct_merge_exact_head_only_after_required_green(self):
+        old_api, old_protected = gate.api, gate.protected
+        pr, files = candidate()
+        calls = []
+        def fake_api(token, path, payload=None, method=None):
+            calls.append((path, payload, method))
+            if path.endswith("/check-runs?per_page=100"):
+                return {"total_count": 3, "check_runs": [
+                    {"name": name, "status": "completed", "conclusion": "success",
+                     "app": {"slug": "github-actions"}} for name in sorted(gate.REQUIRED)]}
+            if path.endswith("/pulls/52"):
+                return pr
+            if path.endswith("/pulls/52/merge"):
+                self.assertEqual(payload, {"sha": SHA, "merge_method": "squash"})
+                self.assertEqual(method, "PUT")
+                return {"merged": True, "sha": "b" * 40}
+            raise AssertionError("unexpected API path: " + path)
+        try:
+            gate.api = fake_api
+            gate.protected = lambda token: gate.verify_rules(rules())
+            result = gate.merge_already_clean("token", 52, SHA, files)
+            self.assertEqual(result, "EXACT_HEAD_REQUIRED_CI_GREEN_MERGED")
+            self.assertEqual(sum(p.endswith("/merge") for p, _, _ in calls), 1)
+        finally:
+            gate.api, gate.protected = old_api, old_protected
+
+    def test_direct_merge_refuses_failed_or_missing_checks(self):
+        old_api, old_protected = gate.api, gate.protected
+        pr, files = candidate()
+        for failure in ("missing", "failed", "forged"):
+            calls = []
+            def fake_api(token, path, payload=None, method=None):
+                calls.append(path)
+                if path.endswith("/check-runs?per_page=100"):
+                    runs = [{"name": name, "status": "completed",
+                             "conclusion": "success", "app": {"slug": "github-actions"}}
+                            for name in sorted(gate.REQUIRED)]
+                    if failure == "missing":
+                        runs = runs[:2]
+                    if failure == "failed":
+                        runs[0]["conclusion"] = "failure"
+                    if failure == "forged":
+                        runs[0]["app"]["slug"] = "other-app"
+                    return {"total_count": len(runs), "check_runs": runs}
+                raise AssertionError("unexpected write or live PR read")
+            try:
+                gate.api = fake_api
+                gate.protected = lambda token: gate.verify_rules(rules())
+                with self.subTest(failure=failure), self.assertRaises(gate.Block):
+                    gate.merge_already_clean("token", 52, SHA, files)
+                self.assertFalse(any(p.endswith("/merge") for p in calls))
+            finally:
+                gate.api, gate.protected = old_api, old_protected
+
+    def test_direct_merge_refuses_replaced_head(self):
+        old_api, old_protected = gate.api, gate.protected
+        pr, files = candidate()
+        def fake_api(token, path, payload=None, method=None):
+            if path.endswith("/check-runs?per_page=100"):
+                return {"total_count": 3, "check_runs": [
+                    {"name": name, "status": "completed", "conclusion": "success",
+                     "app": {"slug": "github-actions"}} for name in sorted(gate.REQUIRED)]}
+            if path.endswith("/pulls/52"):
+                altered = dict(pr)
+                altered["head"] = {"sha": "b"*40, "repo": {"full_name": gate.REPO}}
+                return altered
+            raise AssertionError("must never send merge request")
+        try:
+            gate.api = fake_api
+            gate.protected = lambda token: gate.verify_rules(rules())
+            with self.assertRaises(gate.Block):
+                gate.merge_already_clean("token", 52, SHA, files)
+        finally:
+            gate.api, gate.protected = old_api, old_protected
+
+
 if __name__ == "__main__":
     unittest.main()
