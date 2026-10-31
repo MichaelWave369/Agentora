@@ -93,5 +93,29 @@ class DevLoopGateTests(unittest.TestCase):
         finally:
             gate.api = original
 
+    def test_hidden_settings_is_not_misreported_as_disabled(self):
+        original = gate.api
+        calls = []
+        def fake_api(token, path, payload=None):
+            calls.append(path)
+            if "/pulls/3" in path:
+                pr, _ = candidate()
+                return dict(pr, number=3)
+            if path == "/repos/" + gate.REPO:
+                return {"full_name": gate.REPO}  # contents:read-only token
+            raise AssertionError("unexpected request")
+        gate.api = fake_api
+        try:
+            event = {"action": "labeled", "label": {"name": gate.LABEL},
+                     "sender": {"login": gate.OWNER},
+                     "pull_request": {"number": 3, "head": {"sha": SHA}}}
+            with self.assertRaises(gate.Block) as ctx:
+                gate.run(event, "fake", gate.REPO)
+            self.assertEqual(str(ctx.exception),
+                             "AUTO_MERGE_SETTING_HIDDEN_CHECK_TOKEN_CONTENTS_WRITE")
+            self.assertEqual(len(calls), 2)
+        finally:
+            gate.api = original
+
 if __name__ == "__main__":
     unittest.main()

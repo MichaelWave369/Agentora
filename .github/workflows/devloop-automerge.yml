@@ -5,8 +5,10 @@ on:
     types: [labeled, unlabeled, synchronize, converted_to_draft]
 
 # Privileged workflow always uses trusted base branch code, never the PR's code.
+# GitHub's repository GET exposes merge settings only with contents:write.
+# No PR-head checkout or code execution: all policy logic comes from trusted main.
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 concurrency:

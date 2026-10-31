@@ -135,7 +135,11 @@ def run(event, token, repo):
     if (event.get("sender") or {}).get("login") != OWNER:
         raise Block("NOT_OWNER_LABEL_EVENT")
     metadata = api(token, "/repos/" + REPO)
-    if metadata.get("allow_auto_merge") is not True:
+    if not isinstance(metadata, dict) or "allow_auto_merge" not in metadata:
+        # GitHub omits merge-related fields from GET /repos unless the token
+        # has both contents:read and contents:write. Missing != disabled.
+        raise Block("AUTO_MERGE_SETTING_HIDDEN_CHECK_TOKEN_CONTENTS_WRITE")
+    if metadata["allow_auto_merge"] is not True:
         raise Block("NATIVE_AUTO_MERGE_DISABLED")
     protected(token)
     if type(pr.get("changed_files")) is not int or not 1 <= pr["changed_files"] <= 10:
