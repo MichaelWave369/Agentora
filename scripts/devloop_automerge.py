@@ -10,6 +10,7 @@ REPO = "MichaelWave369/Agentora"
 OWNER = "MichaelWave369"
 LABEL = "phi-automerge"
 CODE_LABEL = "phi-code-automerge"
+SOLO_LABEL = "phi-solo-automerge"
 REQUIRED = {"backend (3.12)", "backend (3.13)", "web"}
 HELD = {"hold", "do-not-merge", "needs-review", "security-review"}
 
@@ -62,7 +63,7 @@ def verify_pr(pr, expected_head, files):
     if not isinstance(sha, str) or not re.fullmatch("[a-f0-9]{40}", sha) or sha != expected_head:
         raise Block("PR_HEAD_CHANGED")
     labels = {x.get("name", "").lower() for x in pr.get("labels", [])}
-    if LABEL not in labels or HELD & labels:
+    if LABEL not in labels or HELD & labels or {CODE_LABEL, SOLO_LABEL} & labels:
         raise Block("LABEL_MISSING_OR_HELD")
     if (not isinstance(files, list) or not 1 <= len(files) <= 10 or
             pr.get("changed_files") != len(files)):
@@ -185,12 +186,12 @@ def run(event, token, repo):
     action = event.get("action")
     event_label = (event.get("label") or {}).get("name")
     current_labels = {x.get("name", "").lower() for x in pr.get("labels", [])}
-    if action in ("synchronize", "converted_to_draft") or (action == "unlabeled" and event_label in (LABEL, CODE_LABEL)):
-        if pr.get("auto_merge") and (LABEL in current_labels or CODE_LABEL in current_labels or (action == "unlabeled" and event_label in (LABEL, CODE_LABEL))):
+    if action in ("synchronize", "converted_to_draft") or (action == "unlabeled" and event_label in (LABEL, CODE_LABEL, SOLO_LABEL)):
+        if pr.get("auto_merge") and (LABEL in current_labels or CODE_LABEL in current_labels or SOLO_LABEL in current_labels or (action == "unlabeled" and event_label in (LABEL, CODE_LABEL, SOLO_LABEL))):
             graphql(token, pr, False)
             return "AUTO_MERGE_REVOKED"
         return "NO_ACTIVE_AUTO_MERGE"
-    if action != "labeled" or event_label not in (LABEL, CODE_LABEL):
+    if action != "labeled" or event_label not in (LABEL, CODE_LABEL, SOLO_LABEL):
         raise Block("NO_OPT_IN_EVENT")
     if (event.get("sender") or {}).get("login") != OWNER:
         raise Block("NOT_OWNER_LABEL_EVENT")
@@ -202,6 +203,39 @@ def run(event, token, repo):
     if metadata["allow_auto_merge"] is not True:
         raise Block("NATIVE_AUTO_MERGE_DISABLED")
     protected(token)
+    if event_label == SOLO_LABEL:
+        # R2.1: separate owner-authorized solo lane. This does not count as
+        # an independent review and never attempts to queue pending CI.
+        from devloop_r2_policy import CodeHeld, verify_solo_pr
+        try:
+            if type(pr.get("changed_files")) is not int or pr["changed_files"] != 1:
+                raise CodeHeld("R21_FILE_COUNT_HELD")
+            files = api(token, "/repos/" + REPO + "/pulls/" + str(number) + "/files?per_page=100")
+            expected = (snapshot.get("head") or {}).get("sha")
+            verify_solo_pr(pr, expected, files)
+            # In solo mode, owner authorization happens AFTER all required
+            # check runs have succeeded on this exact immutable commit.
+            require_required_checks_green(token, expected)
+            latest = api(token, "/repos/" + REPO + "/pulls/" + str(number))
+            verify_solo_pr(latest, expected, files)
+            if (latest.get("base") or {}).get("sha") != (pr.get("base") or {}).get("sha"):
+                raise CodeHeld("R21_BASE_MOVED_AFTER_AUTHORIZATION")
+            # Re-fetch the live diff. A changed merge base can change the
+            # effective diff even when the head SHA has not changed.
+            fresh_files = api(token, "/repos/" + REPO + "/pulls/" + str(number) + "/files?per_page=100")
+            verify_solo_pr(latest, expected, fresh_files)
+            if fresh_files != files:
+                raise CodeHeld("R21_DIFF_CHANGED_DURING_RECHECK")
+            require_required_checks_green(token, expected)
+            protected(token)
+            response = api(token, "/repos/" + REPO + "/pulls/" + str(number) +
+                           "/merge", {"sha": expected, "merge_method": "squash"},
+                           method="PUT")
+            if not isinstance(response, dict) or response.get("merged") is not True:
+                raise CodeHeld("R21_MERGE_NOT_CONFIRMED")
+            return "R21_SOLO_EXACT_HEAD_CI_GREEN_MERGED"
+        except CodeHeld as exc:
+            raise Block(str(exc)) from None
     if event_label == CODE_LABEL:
         # Separate R2 lane: explicit owner label + independent current-SHA
         # collaborator approval. Never queue a code merge on pending CI.
@@ -277,7 +311,7 @@ def write_audit(event, decision, disposition):
         "head_sha": sha if isinstance(sha, str) and re.fullmatch("[a-f0-9]{40}", sha) else None,
         "event_action": event.get("action") if event.get("action") in
             {"labeled", "unlabeled", "synchronize", "converted_to_draft"} else "unknown",
-        "lane": "code" if label == CODE_LABEL else "docs" if label == LABEL else "unspecified",
+        "lane": "solo" if label == SOLO_LABEL else "code" if label == CODE_LABEL else "docs" if label == LABEL else "unspecified",
         "disposition": disposition,
         "decision": decision[:128],
         "recorded_utc": datetime.now(timezone.utc).isoformat(),
