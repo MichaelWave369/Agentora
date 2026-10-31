@@ -51,3 +51,9 @@ Replace example number and SHA with the real prospective source PR, **never use 
 - R0 still has an unqualified *pending-CI native GraphQL* path. R2 intentionally only merges already-green code; errors remain holds, not excuses to weaken checks.
 
 **Ledger Above Ego. An approval is evidence for a narrow action, not an invitation to start building whatever an agent dreams up.**
+
+## Read-only online code advisory
+
+The additional `Phi Development Loop R2 - code candidate advisory` GitHub Actions workflow reacts to PR openings, changes, reopening, draft-to-ready transitions and review submissions/dismissals. It checks out **only trusted main**, then fetches PR metadata, its bounded changed-file list and any current-SHA independent reviewer evidence through read-only GitHub APIs. It publishes a 30-day `devloop-r2-advisory-...` JSON artifact with `LOW_RISK_UI_CANDIDATE` or an explicit out-of-scope reason. An advisory report is **not** CI approval, a security review, or permission to merge. The actual code merge gate independently performs fresh required-CI, review, author and exact-head checks after the owner applies the label. The advisory cannot modify a PR or invoke a merge.
+
+The workflow intentionally does not download or execute model weights or candidate source. If a user modifies a PR after an approval, the review must be repeated on the changed SHA. The advisory's receipt is a convenience, not a durable signed audit.
