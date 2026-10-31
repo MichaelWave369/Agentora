@@ -9,6 +9,7 @@ from urllib.error import HTTPError, URLError
 REPO = "MichaelWave369/Agentora"
 OWNER = "MichaelWave369"
 LABEL = "phi-automerge"
+CODE_LABEL = "phi-code-automerge"
 REQUIRED = {"backend (3.12)", "backend (3.13)", "web"}
 HELD = {"hold", "do-not-merge", "needs-review", "security-review"}
 
@@ -184,12 +185,12 @@ def run(event, token, repo):
     action = event.get("action")
     event_label = (event.get("label") or {}).get("name")
     current_labels = {x.get("name", "").lower() for x in pr.get("labels", [])}
-    if action in ("synchronize", "converted_to_draft") or (action == "unlabeled" and event_label == LABEL):
-        if pr.get("auto_merge") and (LABEL in current_labels or (action == "unlabeled" and event_label == LABEL)):
+    if action in ("synchronize", "converted_to_draft") or (action == "unlabeled" and event_label in (LABEL, CODE_LABEL)):
+        if pr.get("auto_merge") and (LABEL in current_labels or CODE_LABEL in current_labels or (action == "unlabeled" and event_label in (LABEL, CODE_LABEL))):
             graphql(token, pr, False)
             return "AUTO_MERGE_REVOKED"
         return "NO_ACTIVE_AUTO_MERGE"
-    if action != "labeled" or event_label != LABEL:
+    if action != "labeled" or event_label not in (LABEL, CODE_LABEL):
         raise Block("NO_OPT_IN_EVENT")
     if (event.get("sender") or {}).get("login") != OWNER:
         raise Block("NOT_OWNER_LABEL_EVENT")
@@ -201,6 +202,33 @@ def run(event, token, repo):
     if metadata["allow_auto_merge"] is not True:
         raise Block("NATIVE_AUTO_MERGE_DISABLED")
     protected(token)
+    if event_label == CODE_LABEL:
+        # Separate R2 lane: explicit owner label + independent current-SHA
+        # collaborator approval. Never queue a code merge on pending CI.
+        from devloop_r2_policy import CodeHeld, verify_code_pr, require_independent_review
+        try:
+            if type(pr.get("changed_files")) is not int or not 1 <= pr["changed_files"] <= 2:
+                raise CodeHeld("R2_DIFF_COUNT_HELD")
+            files = api(token, "/repos/" + REPO + "/pulls/" + str(number) + "/files?per_page=100")
+            expected = (snapshot.get("head") or {}).get("sha")
+            verify_code_pr(pr, expected, files)
+            # Zero implicit approval from a model, checks, or owner label alone.
+            author = (pr.get("user") or {}).get("login")
+            require_independent_review(api, token, number, expected, author)
+            require_required_checks_green(token, expected)
+            latest = api(token, "/repos/" + REPO + "/pulls/" + str(number))
+            verify_code_pr(latest, expected, files)
+            require_independent_review(api, token, number, expected, author)
+            require_required_checks_green(token, expected)
+            protected(token)
+            response = api(token, "/repos/" + REPO + "/pulls/" + str(number) +
+                           "/merge", {"sha": expected, "merge_method": "squash"},
+                           method="PUT")
+            if not isinstance(response, dict) or response.get("merged") is not True:
+                raise CodeHeld("R2_MERGE_NOT_CONFIRMED")
+            return "R2_CODE_EXACT_HEAD_REVIEWED_CI_GREEN_MERGED"
+        except CodeHeld as exc:
+            raise Block(str(exc)) from None
     if type(pr.get("changed_files")) is not int or not 1 <= pr["changed_files"] <= 10:
         raise Block("FILE_COUNT_INELIGIBLE")
     files = api(token, "/repos/" + REPO + "/pulls/" + str(number) + "/files?per_page=100")
@@ -235,17 +263,48 @@ def run(event, token, repo):
     # every repository merge restriction.
     return merge_already_clean(token, number, expected, files)
 
+def write_audit(event, decision, disposition):
+    """Bounded, nonsecret per-event receipt, uploaded even after a policy hold."""
+    from datetime import datetime, timezone
+    event = event if isinstance(event, dict) else {}
+    pr = event.get("pull_request") or {}
+    sha = (pr.get("head") or {}).get("sha")
+    label = (event.get("label") or {}).get("name")
+    payload = {
+        "schema": "agentora.devloop.merge-decision.v2",
+        "repository": REPO,
+        "pr_number": pr.get("number") if type(pr.get("number")) is int else None,
+        "head_sha": sha if isinstance(sha, str) and re.fullmatch("[a-f0-9]{40}", sha) else None,
+        "event_action": event.get("action") if event.get("action") in
+            {"labeled", "unlabeled", "synchronize", "converted_to_draft"} else "unknown",
+        "lane": "code" if label == CODE_LABEL else "docs" if label == LABEL else "unspecified",
+        "disposition": disposition,
+        "decision": decision[:128],
+        "recorded_utc": datetime.now(timezone.utc).isoformat(),
+        "source": "trusted-main-github-actions",
+    }
+    os.makedirs("devloop-artifacts", exist_ok=True)
+    with open("devloop-artifacts/merge-decision.json", "w", encoding="utf-8") as stream:
+        json.dump(payload, stream, sort_keys=True, indent=2)
+        stream.write("\n")
+
+
 def main():
+    event = {}
+    outcome, decision = "HELD", "INVALID_RUNTIME_INPUT"
     try:
         with open(os.environ["GITHUB_EVENT_PATH"], encoding="utf-8") as stream:
             event = json.load(stream)
-        result = run(event, os.environ["GH_TOKEN"], os.environ.get("GITHUB_REPOSITORY"))
-        print(result)
+        decision = run(event, os.environ["GH_TOKEN"], os.environ.get("GITHUB_REPOSITORY"))
+        outcome = "SUCCESS"
+        print(decision)
         return 0
     except (Block, KeyError, ValueError, OSError) as err:
-        reason = str(err) if isinstance(err, Block) else "INVALID_RUNTIME_INPUT"
-        print("::error::DEVLOOP_HELD " + reason, file=sys.stderr)
+        decision = str(err) if isinstance(err, Block) else "INVALID_RUNTIME_INPUT"
+        print("::error::DEVLOOP_HELD " + decision, file=sys.stderr)
         return 1
+    finally:
+        write_audit(event, decision, outcome)
 
 if __name__ == "__main__":
     raise SystemExit(main())
