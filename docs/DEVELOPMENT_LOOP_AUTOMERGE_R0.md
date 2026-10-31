@@ -34,6 +34,14 @@ First test a harmless documentation-only PR and preserve the PR and Actions run 
 
 ## Scope and constraints
 
-The label must have been applied by MichaelWave369; the remote PR still must have that label. The workflow checks out trusted main, never the proposed PR head. Its GitHub token requests only contents read and pull-requests write. It never runs model-generated instructions, never grants a model merge permissions, and never exposes secrets to PR content.
+The label must have been applied by MichaelWave369; the remote PR still must have that label. The workflow checks out trusted main, never the proposed PR head. Its trusted-base GitHub Actions token requests `contents: write` and `pull-requests: write`, because GitHub's repository metadata API **omits** `allow_auto_merge` without contents write access. This is broader privilege than R0 originally requested. The workflow does not check out a PR head, run PR-provided code, perform source writes, or attempt to bypass branch rules. If merge settings are unavailable, the gate reports a distinct missing-permission error rather than claiming the setting is disabled. It never runs model-generated instructions, never grants a model merge permissions, and never exposes secrets to PR content.
 
 This is intentionally only the first controlled pilot. Later rungs can add independent code review, risk classifications, repair queue integration, per-repo policies, and post-merge next-rung dispatch, each separately field qualified. Extending this implementation to general code merges without additional controls is not recommended.
+
+## R0 field trial diagnosis: token-visible merge settings
+
+The first owner-labeled documentation trial was held with `NATIVE_AUTO_MERGE_DISABLED` despite repository-level auto-merge being enabled. GitHub only exposes merge settings in its REST repository object when the calling token holds **both contents read and write**. The original workflow used `contents: read` plus `pull-requests: write`; the absence of `allow_auto_merge` was misclassified as a disabled setting. The corrective PR gives this one trusted-base workflow `contents: write`, adds a regression test for missing fields, and reports `AUTO_MERGE_SETTING_HIDDEN_CHECK_TOKEN_CONTENTS_WRITE` for missing data.
+
+After merging the corrective PR manually, **remove and re-apply** the `phi-automerge` label on the still-open documentation test PR as repository owner. This generates a new labeled event with the corrected trusted-main implementation. Do **not** bypass or manually merge the test PR merely because its earlier gate failed.
+
+A second real trial is still required. If the next run fails at the GraphQL mutation, retain the fail-closed behavior and inspect only sanitized diagnostics rather than broadening privileges again without evidence.
