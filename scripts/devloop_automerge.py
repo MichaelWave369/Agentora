@@ -15,10 +15,16 @@ HELD = {"hold", "do-not-merge", "needs-review", "security-review"}
 class Block(Exception):
     pass
 
-def api(token, path, payload=None):
+class AlreadyClean(Block):
+    """GitHub declines auto-merge when all required conditions already passed."""
+    pass
+
+def api(token, path, payload=None, method=None):
     data = None if payload is None else json.dumps(payload).encode("utf-8")
+    if method not in (None, "GET", "POST", "PUT"):
+        raise Block("UNSUPPORTED_REQUEST_METHOD")
     request = Request("https://api.github.com" + path, data=data,
-        method="POST" if data is not None else "GET",
+        method=method or ("POST" if data is not None else "GET"),
         headers={"Authorization": "Bearer " + token,
                  "Accept": "application/vnd.github+json",
                  "X-GitHub-Api-Version": "2022-11-28",
@@ -111,8 +117,61 @@ def graphql(token, pr, enable, head=None):
         variables = {"id": node}
         field = "disablePullRequestAutoMerge"
     result = api(token, "/graphql", {"query": query, "variables": variables})
-    if not isinstance(result, dict) or result.get("errors") or not (result.get("data") or {}).get(field):
-        raise Block("GRAPHQL_MUTATION_REJECTED")
+    if not isinstance(result, dict):
+        raise Block("GRAPHQL_RESPONSE_INVALID")
+    errors = result.get("errors") or []
+    if errors:
+        # Never print arbitrary GitHub response text or caller-controlled content.
+        if (len(errors) == 1 and isinstance(errors[0], dict) and
+                "clean status" in str(errors[0].get("message", "")).lower()):
+            raise AlreadyClean("AUTO_MERGE_ALREADY_CLEAN")
+        if any("resource not accessible" in str(e.get("message", "")).lower()
+               for e in errors if isinstance(e, dict)):
+            raise Block("GRAPHQL_TOKEN_ACCESS_REJECTED")
+        raise Block("GRAPHQL_REJECTED_OTHER")
+    if not (result.get("data") or {}).get(field):
+        raise Block("GRAPHQL_SUCCESS_NOT_CONFIRMED")
+
+def require_required_checks_green(token, sha):
+    """Read exact-commit CI check runs; missing, failing or incomplete means HOLD."""
+    data = api(token, "/repos/" + REPO + "/commits/" + sha +
+               "/check-runs?per_page=100")
+    if (not isinstance(data, dict) or type(data.get("total_count")) is not int
+            or data["total_count"] >= 100 or
+            not isinstance(data.get("check_runs"), list) or
+            len(data["check_runs"]) != data["total_count"]):
+        raise Block("CHECK_RUN_EVIDENCE_INCOMPLETE")
+    observed = {name: [] for name in REQUIRED}
+    for item in data["check_runs"]:
+        name = item.get("name")
+        if name in REQUIRED:
+            # Do not accept a forged same-name context from another check app.
+            if (item.get("app") or {}).get("slug") != "github-actions":
+                raise Block("REQUIRED_CHECK_WRONG_SOURCE")
+            observed[name].append(item)
+    for name, items in observed.items():
+        if not items:
+            raise Block("REQUIRED_CHECK_MISSING")
+        if any(i.get("status") != "completed" or
+               i.get("conclusion") != "success" for i in items):
+            raise Block("REQUIRED_CHECK_NOT_GREEN")
+
+
+def merge_already_clean(token, number, expected, files):
+    """Merge only the exact already-approved docs head, with GitHub rules enforced."""
+    require_required_checks_green(token, expected)
+    protected(token)
+    latest = api(token, "/repos/" + REPO + "/pulls/" + str(number))
+    if not isinstance(latest, dict):
+        raise Block("REVALIDATED_PR_INVALID")
+    verify_pr(latest, expected, files)
+    response = api(token, "/repos/" + REPO + "/pulls/" + str(number) +
+                   "/merge", {"sha": expected, "merge_method": "squash"},
+                   method="PUT")
+    if not isinstance(response, dict) or response.get("merged") is not True:
+        raise Block("EXACT_HEAD_DIRECT_MERGE_NOT_CONFIRMED")
+    return "EXACT_HEAD_REQUIRED_CI_GREEN_MERGED"
+
 
 def run(event, token, repo):
     if repo != REPO:
@@ -150,7 +209,13 @@ def run(event, token, repo):
     latest = api(token, "/repos/" + REPO + "/pulls/" + str(number))
     if latest.get("head", {}).get("sha") != expected:
         raise Block("PR_CHANGED_DURING_RECHECK")
-    graphql(token, latest, True, expected)
+    verify_pr(latest, expected, files)
+    try:
+        graphql(token, latest, True, expected)
+    except AlreadyClean:
+        # GitHub refuses to queue an already-green PR. A direct merge is safe
+        # only after independent exact-head check reads and live revalidation.
+        return merge_already_clean(token, number, expected, files)
     return "NATIVE_SHA_BOUND_AUTO_MERGE_REQUESTED"
 
 def main():
