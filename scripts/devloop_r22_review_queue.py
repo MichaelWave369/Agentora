@@ -333,7 +333,7 @@ def markdown(data):
                 f"- [#{row['number']}]({row['url']}): \`{row['head_sha']}\` "
                 f"({md_escape(row['classification'])})"
             )
-    else:
+    elif not data.get("error"):
         lines.append("**No open PRs in this bounded snapshot.**")
     lines += [
         "",
