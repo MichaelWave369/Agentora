@@ -63,6 +63,7 @@ def test_owner_applied_label_does_not_mark_queue_as_merge_permission():
     (("hold",), "HELD"),
     (("phi-solo-automerge", "phi-automerge"), "HELD"),
     (("security-review",), "HELD"),
+    (("phi-code-automerge",), "HELD"),
 ])
 def test_conflicts_are_never_presented_as_eligible(names, expected):
     row = q.evaluate(sample_pr(labels=names), nav_file(), {"state": "GREEN"}, True)
