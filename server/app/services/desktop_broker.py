@@ -29,7 +29,7 @@ from app.services.desktop_bridge import (
 
 PROTOCOL_VERSION = 1
 MAX_LINE = 8192
-MAX_TARGETS = 200
+MAX_TARGETS = 16
 CHALLENGE_RE = re.compile(r"[0-9a-f]{64}\Z")
 TOKEN_RE = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -86,7 +86,7 @@ class LocalDesktopBroker:
                     "name": _safe_console_text(target.name) if self.expose_labels else "",
                 }
                 for target in observation.targets.values()
-                if "Click" in target.actions
+                if "Click" in target.actions and len(target.ref) <= 80
             ]
             return {
                 "snapshot_id": observation.snapshot_id,
