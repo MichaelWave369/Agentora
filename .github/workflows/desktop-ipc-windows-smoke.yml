@@ -1,0 +1,33 @@
+name: desktop-ipc-windows-smoke
+
+on:
+  pull_request:
+    paths:
+      - "server/app/services/desktop_local_ipc.py"
+      - "server/tests/test_desktop_local_ipc.py"
+      - ".github/workflows/desktop-ipc-windows-smoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "server/app/services/desktop_local_ipc.py"
+      - "server/tests/test_desktop_local_ipc.py"
+      - ".github/workflows/desktop-ipc-windows-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-named-pipe-mock:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test runner only
+        run: python -m pip install pytest==8.3.3
+      - name: Test local AF_PIPE protocol against mock backend
+        env:
+          PYTHONPATH: server
+        run: python -m pytest -q server/tests/test_desktop_local_ipc.py
