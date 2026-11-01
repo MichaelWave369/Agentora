@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import tempfile
 import stat
 import sys
 from threading import Thread
@@ -19,6 +20,17 @@ from app.services.desktop_local_ipc import (
 
 APP = "Calculator"
 KEY = bytes(range(32))
+
+
+@pytest.fixture
+def short_home(monkeypatch):
+    """AF_UNIX paths have a ~108-byte limit; use a short private test HOME."""
+    if os.name == "nt":
+        yield
+        return
+    with tempfile.TemporaryDirectory(prefix="phiipc-", dir=tempfile.gettempdir()) as folder:
+        monkeypatch.setenv("HOME", folder)
+        yield
 
 
 def make_broker():
@@ -64,9 +76,7 @@ def failure(code, callback):
     assert exc.value.code == code
 
 
-def test_authenticated_ping_never_observes(monkeypatch, tmp_path):
-    if os.name != "nt":
-        monkeypatch.setenv("HOME", str(tmp_path))
+def test_authenticated_ping_never_observes(short_home):
     broker, calls = make_broker()
     with ReadOnlyLocalIpc(broker, KEY) as server:
         reply = ask_once(server, KEY.hex(), "ping")
@@ -74,9 +84,7 @@ def test_authenticated_ping_never_observes(monkeypatch, tmp_path):
         assert calls == []
 
 
-def test_observe_returns_refs_without_labels_by_default(monkeypatch, tmp_path):
-    if os.name != "nt":
-        monkeypatch.setenv("HOME", str(tmp_path))
+def test_observe_returns_refs_without_labels_by_default(short_home):
     broker, calls = make_broker()
     with ReadOnlyLocalIpc(broker, KEY) as server:
         result = ask_once(server, KEY.hex(), "observe")
@@ -99,8 +107,6 @@ def test_extra_request_keys_rejected():
 
 
 def test_requires_read_only_policy(monkeypatch, tmp_path):
-    if os.name != "nt":
-        monkeypatch.setenv("HOME", str(tmp_path))
     bridge = DesktopBridge(DesktopPolicy(frozenset({APP}), enable_click=True))
     broker = LocalDesktopBroker(bridge, APP)
     failure("read_only_bridge_required", lambda: ReadOnlyLocalIpc(broker, KEY))
@@ -113,9 +119,7 @@ def test_refuses_malformed_secret_and_address():
     failure("ipc_request_not_supported", lambda: request_ipc("bad", KEY.hex(), "click"))
 
 
-def test_wrong_session_key_denied_without_observation(monkeypatch, tmp_path):
-    if os.name != "nt":
-        monkeypatch.setenv("HOME", str(tmp_path))
+def test_wrong_session_key_denied_without_observation(short_home):
     broker, calls = make_broker()
     with ReadOnlyLocalIpc(broker, KEY) as server:
         wrong = bytes(reversed(KEY)).hex()
@@ -135,7 +139,7 @@ def test_oversized_or_corrupt_payload_rejected():
     failure("ipc_invalid_json", lambda: _decode(b"not-json"))
 
 
-def test_private_socket_permissions_unix(monkeypatch, tmp_path):
+def test_private_socket_permissions_unix(short_home):
     if os.name == "nt":
         pytest.skip("Windows named pipe has no filesystem mode")
     monkeypatch.setenv("HOME", str(tmp_path))
