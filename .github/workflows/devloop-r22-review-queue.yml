@@ -1,0 +1,35 @@
+name: Phi Development Loop R2.2 - Solo Review Queue
+
+on:
+  workflow_dispatch:
+
+# Browser-only manual snapshot. No merge, labels, PR edits, models or dispatch.
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+jobs:
+  review-queue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout trusted main for read-only queue
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Build read-only exact-head review queue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/devloop_r22_review_queue.py
+
+      - name: Preserve queue JSON even on held evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: devloop-r22-review-queue-${{ github.run_id }}
+          path: devloop-artifacts/review-queue.json
+          retention-days: 30
+          if-no-files-found: warn
