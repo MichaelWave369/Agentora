@@ -177,12 +177,12 @@ class ReadOnlyLocalIpc:
 
 
 def request_ipc(address: str, secret_hex: str, operation: str) -> dict[str, Any]:
-    family = _validate_address(address)
+    if operation not in ("ping", "observe"):
+        raise DesktopBridgeError("ipc_request_not_supported")
     if (not isinstance(secret_hex, str)
             or not TOKEN_PATTERN.fullmatch(secret_hex)):
         raise DesktopBridgeError("invalid_session_secret")
-    if operation not in ("ping", "observe"):
-        raise DesktopBridgeError("ipc_request_not_supported")
+    family = _validate_address(address)
     try:
         with closing(Client(address=address, family=family, authkey=bytes.fromhex(secret_hex))) as conn:
             conn.send_bytes(_encode({"v": VERSION, "op": operation}))
