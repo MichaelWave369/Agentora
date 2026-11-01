@@ -142,7 +142,6 @@ def test_oversized_or_corrupt_payload_rejected():
 def test_private_socket_permissions_unix(short_home):
     if os.name == "nt":
         pytest.skip("Windows named pipe has no filesystem mode")
-    monkeypatch.setenv("HOME", str(tmp_path))
     broker, _ = make_broker()
     with ReadOnlyLocalIpc(broker, KEY) as server:
         path = Path(server.address)
