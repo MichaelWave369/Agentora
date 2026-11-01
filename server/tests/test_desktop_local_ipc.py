@@ -107,11 +107,32 @@ def test_requires_read_only_policy(monkeypatch, tmp_path):
 
 
 def test_refuses_malformed_secret_and_address():
-    failure("invalid_session_secret", lambda: request_ipc("invalid", "test", "ping")
-            ) if False else None
+    failure("invalid_session_secret", lambda: request_ipc("invalid", "test", "ping"))
     failure("invalid_ipc_address", lambda: _validate_address("localhost:9999"))
     failure("invalid_ipc_address", lambda: _validate_address("http://127.0.0.1"))
     failure("ipc_request_not_supported", lambda: request_ipc("bad", KEY.hex(), "click"))
+
+
+def test_wrong_session_key_denied_without_observation(monkeypatch, tmp_path):
+    if os.name != "nt":
+        monkeypatch.setenv("HOME", str(tmp_path))
+    broker, calls = make_broker()
+    with ReadOnlyLocalIpc(broker, KEY) as server:
+        wrong = bytes(reversed(KEY)).hex()
+        thread = Thread(target=server.serve_one, daemon=True)
+        thread.start()
+        try:
+            failure("ipc_unavailable_or_rejected",
+                    lambda: request_ipc(server.address, wrong, "observe"))
+        finally:
+            thread.join(timeout=5)
+            assert not thread.is_alive()
+        assert calls == []
+
+
+def test_oversized_or_corrupt_payload_rejected():
+    failure("ipc_frame_too_large", lambda: _decode(b"x" * 4097))
+    failure("ipc_invalid_json", lambda: _decode(b"not-json"))
 
 
 def test_private_socket_permissions_unix(monkeypatch, tmp_path):
