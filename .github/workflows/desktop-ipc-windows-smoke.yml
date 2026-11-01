@@ -30,4 +30,4 @@ jobs:
       - name: Test local AF_PIPE protocol against mock backend
         env:
           PYTHONPATH: server
-        run: python -m pytest -q server/tests/test_desktop_local_ipc.py
+        run: python -m pytest --noconftest -q server/tests/test_desktop_local_ipc.py
