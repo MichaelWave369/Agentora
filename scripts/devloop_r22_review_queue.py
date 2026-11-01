@@ -293,7 +293,7 @@ def snapshot(get, token):
 
 def md_escape(value):
     text = str(value).replace("\n", " ").replace("\r", " ")
-    for char in ("\\", "|", "<", ">", "[", "]", "\`", "*", "_"):
+    for char in ("\\", "|", "<", ">", "[", "]", "`", "*", "_"):
         text = text.replace(char, "\\" + char)
     return text[:220]
 
