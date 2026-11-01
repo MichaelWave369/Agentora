@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import AppShell from './components/AppShell'
 import Dashboard from './pages/Dashboard'
 import ReviewQueue from './pages/ReviewQueue'
+import ReviewDashboard from './pages/ReviewDashboard'
 import Agents from './pages/Agents'
 import Teams from './pages/Teams'
 import Marketplace from './pages/Marketplace'
@@ -27,6 +28,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Routes>
           <Route path='/' element={<Dashboard/>}/>
           <Route path='/review-queue' element={<ReviewQueue/>}/>
+          <Route path='/review-dashboard' element={<ReviewDashboard/>}/>
           <Route path='/studio-mode' element={<StudioMode/>}/>
           <Route path='/band-mode' element={<BandMode/>}/>
           <Route path='/arena-mode' element={<ArenaMode/>}/>
