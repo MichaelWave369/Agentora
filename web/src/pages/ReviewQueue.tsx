@@ -174,8 +174,8 @@ export default function ReviewQueue() {
       const check = checkEvidence(checks)
       const category = classify(p, files)
       const labels = new Set((p.labels || []).map(l => l.name.toLowerCase()))
-      const conflicting = APPROVAL_LABELS.filter(label => labels.has(label)).length > 1 ||
-        HOLDS.some(label => labels.has(label))
+      const conflicting = APPROVAL_LABELS.some(label => labels.has(label) &&
+        label !== category.label) || HOLDS.some(label => labels.has(label))
       let status = 'OWNER REVIEW REQUIRED'
       let next = 'Inspect exact diff and SHA, then personally apply ' + category.label
       if (category.lane === 'MANUAL') {
