@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "apps": {
+    "Calculator": {
+      "observe": true,
+      "click": false
+    }
+  }
+}
