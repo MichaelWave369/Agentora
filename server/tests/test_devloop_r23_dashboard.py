@@ -211,9 +211,12 @@ def test_full_assembly_does_not_promote_queue_to_authorization(monkeypatch):
         "open_pr_count": 0, "rows": [], "can_merge": False,
     })
     monkeypatch.setattr(d, "history", lambda get, fetch, token, kind: (
-        [{"verification": "VERIFIED_BOT_MERGE"}] if kind == "merge" else
-        [{"verification": "BOT_MERGE_VERIFIED",
-          "decision": "NO_PREAPPROVED_NEXT_RUNG"}] if kind == "handoff" else []
+        [{"run_id": 91, "url": "https://github.com/MichaelWave369/Agentora/actions/runs/91",
+          "verification": "VERIFIED_BOT_MERGE", "decision": "R21_SOLO_EXACT_HEAD_CI_GREEN_MERGED"}]
+        if kind == "merge" else
+        [{"run_id": 92, "url": "https://github.com/MichaelWave369/Agentora/actions/runs/92",
+          "verification": "BOT_MERGE_VERIFIED", "decision": "NO_PREAPPROVED_NEXT_RUNG"}]
+        if kind == "handoff" else []
     ))
     result = d.assemble(lambda t, p: None, lambda t, a: b"", "token")
     assert result["can_merge"] is False
