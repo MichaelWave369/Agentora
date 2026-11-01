@@ -232,8 +232,9 @@ def evaluate(pr, files, checks, rules_present, review=None):
     }
     if lane == "manual":
         row["status"], row["next_action"] = "OUT_OF_SCOPE", "Manual review and merge; no auto-label"
-    elif HOLDS & labels or len(set(LABELS.values()) & labels) > 1:
-        row["status"], row["next_action"] = "HELD", "Resolve hold/conflicting labels and re-review"
+    elif (HOLDS & labels or
+          any(value != authorization_label for value in (set(LABELS.values()) & labels))):
+        row["status"], row["next_action"] = "HELD", "Resolve hold/wrong-lane labels and re-review"
     elif not rules_present:
         row["status"], row["next_action"] = "RULES_UNVERIFIED", "Verify active main-branch required checks"
     elif checks.get("state") != "GREEN":
