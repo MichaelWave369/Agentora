@@ -187,7 +187,10 @@ class WindowsRestrictedReadOnlyPipe:
                 _verify_client_sid(connection.fileno(), self.modules, self.owner_sid)
                 request = _decode(connection.recv_bytes(MAX_FRAME))
                 if request["op"] == "ping":
-                    data = self.broker.dispatch({"op": "ping"})
+                    data = dict(self.broker.dispatch({"op": "ping"}))
+                    # Version marker prevents accidentally using the R5 pipe.
+                    # This is a compatibility marker, NOT cryptographic attestation.
+                    data["transport"] = "r6_windows_sid_pipe"
                 elif request["op"] == "observe":
                     data = self.broker.dispatch({"op": "observe"})
                 else:
