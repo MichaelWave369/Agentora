@@ -11,7 +11,8 @@ from app.services import desktop_windows_field_validation as field
 
 
 def ping(allowed=False):
-    return {"protocol": 1, "mode": "local", "click_enabled": allowed}
+    return {"protocol": 1, "mode": "local",
+            "transport": "r6_windows_sid_pipe", "click_enabled": allowed}
 
 
 def observation(snapshot="sabc123", count=1, expose=False):
@@ -183,3 +184,74 @@ def test_readiness_cli_is_offline(capsys):
     assert field.main(["doctor"]) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["ready_for_autonomous_desktop_actions"] is False
+
+
+@pytest.mark.skipif(os.name != "nt", reason="real R6 pipe requires Windows")
+def test_real_windows_r6_pipe_sequential_observations_are_read_only():
+    """Actual Windows pipe, real ACL/SID checks, fake accessibility backend."""
+    from threading import Thread
+
+    from app.services.desktop_bridge import (
+        AgentDesktopCLI, DesktopBridge, DesktopPolicy, LocalAudit,
+    )
+    from app.services.desktop_broker import LocalDesktopBroker
+    from app.services.desktop_windows_restricted_ipc import WindowsRestrictedReadOnlyPipe
+
+    addresses = iter(["salpha1", "sbeta2"])
+    invoked = []
+
+    def runner(argv):
+        invoked.append(tuple(argv))
+        if argv[0] != "snapshot":
+            raise AssertionError("Unexpected mutating command")
+        sid = next(addresses)
+        return {
+            "version": "2.5",
+            "command": "snapshot",
+            "ok": True,
+            "data": {
+                "app": "Calculator",
+                "complete": True,
+                "snapshot_id": sid,
+                "tree": {
+                    "role": "window",
+                    "children": [{
+                        "role": "button",
+                        "ref_id": f"@{sid}:e7",
+                        "name": "7",
+                        "available_actions": ["Click"],
+                    }],
+                },
+            },
+        }
+
+    bridge = DesktopBridge(
+        DesktopPolicy(frozenset({"Calculator"}), enable_click=False),
+        cli=AgentDesktopCLI(runner=runner),
+        audit=LocalAudit(),
+    )
+    broker = LocalDesktopBroker(bridge, "Calculator")
+    key = bytes(range(32))
+    with WindowsRestrictedReadOnlyPipe(broker, key) as server:
+        def process_requests():
+            for _ in range(3):
+                assert server.serve_one() is True
+
+        worker = Thread(target=process_requests, daemon=True)
+        worker.start()
+        try:
+            result = field.perform_probe(
+                server.address,
+                key.hex(),
+                second_observation=True,
+                between=lambda: True,
+            )
+        finally:
+            worker.join(timeout=12)
+            assert not worker.is_alive(), "Windows R6 pipe did not drain requests"
+
+    assert result["observations_checked"] == 2
+    assert result["distinct_snapshot_ids"] is True
+    assert result["transport_identity_cryptographically_attested"] is False
+    assert result["autonomous_execution_authorized"] is False
+    assert [c[0] for c in invoked] == ["snapshot", "snapshot"]
