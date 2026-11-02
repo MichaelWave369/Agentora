@@ -48,7 +48,9 @@ MANUAL interaction with the application:
 The probe insists on:
 - A real interactive Windows terminal and the exact READ ONLY consent phrase.
 - A private R6 session key through a password prompt (never a CLI argument).
-- A broker ping stating clicks are disabled.
+- A broker ping stating clicks are disabled and identifying the R6 transport
+  version. This marker prevents accidental R5 use; it is NOT cryptographic
+  attestation and does not establish host/process integrity.
 - A valid bounded observation response with accessibility names fully redacted.
 - Distinct snapshot IDs before and after the optional manual action.
 
@@ -78,8 +80,10 @@ observation does not prove a user task succeeded.
 
     PYTHONPATH=server python -m pytest -q server/tests/test_desktop_windows_field_validation.py
 
-The Windows workflow adds the R7 tests alongside R6's actual pipe smoke
-tests, with no real desktop access. Full backend Python 3.12/3.13 and web
+The Windows workflow includes an R7 end-to-end test that opens the actual R6
+named pipe, verifies multiple sequential requests, and uses only a mocked
+accessibility backend. R6's separate Windows smoke test is also retained.
+Neither exercises a real desktop. Full backend Python 3.12/3.13 and web
 builds remain required.
 
 ## Next step
