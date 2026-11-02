@@ -119,24 +119,23 @@ def test_broker_ping_fail_closed(reply):
     assert calls == ["ping"]
 
 
-@pytest.mark.parametrize("bad", [
-    observation(expose=True),
-    observation("bad snapshot!"),
-    {**observation(), "truncated": True},
-    {**observation(), "count": -1},
-    {**observation(), "count": True},
-    {**observation(), "count": 0},
-    {**observation(), "items": "not-list"},
-    {**observation(), "items": [{"ref": "@sabc:e1", "role": "button", "name": "secret"}]},
-    {**observation(), "items": [{"ref": "x" * 90, "role": "button", "name": ""}]},
+@pytest.mark.parametrize("bad, expected_code", [
+    (observation(expose=True), "field_labels_or_schema_exposed"),
+    (observation("bad snapshot!"), "field_invalid_observation"),
+    ({**observation(), "truncated": True}, "field_invalid_observation"),
+    ({**observation(), "count": -1}, "field_invalid_observation"),
+    ({**observation(), "count": True}, "field_invalid_observation"),
+    ({**observation(), "count": 0}, "field_invalid_observation"),
+    ({**observation(), "items": "not-list"}, "field_invalid_observation"),
+    ({**observation(), "items": [{"ref": "@sabc:e1", "role": "button", "name": "secret"}]},
+     "field_labels_or_schema_exposed"),
+    ({**observation(), "items": [{"ref": "x" * 90, "role": "button", "name": ""}]},
+     "field_labels_or_schema_exposed"),
 ])
-def test_redaction_and_response_schema_are_enforced(bad):
+def test_redaction_and_response_schema_are_enforced(bad, expected_code):
     call, calls = make_requester([ping(), bad])
     expect(
-        "field_invalid_observation" if bad.get("labels_exposed") is not True
-        and (bad.get("items") == "not-list" or bad.get("count") in (-1, 0, True)
-             or bad.get("truncated") is True or "bad snapshot" in str(bad.get("snapshot_id")))
-        else "field_labels_or_schema_exposed",
+        expected_code,
         lambda: field.perform_probe("local-address", "TEST_ONLY_PRIVATE_SESSION", call),
     )
     assert calls == ["ping", "observe"]
