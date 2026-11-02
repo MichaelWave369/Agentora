@@ -61,11 +61,14 @@ def _win():
 
 def _user_sid(modules: tuple) -> str:
     _, _, win32api, win32con, _, security, *_ = modules
-    with closing(security.OpenProcessToken(
+    token = security.OpenProcessToken(
         win32api.GetCurrentProcess(), win32con.TOKEN_QUERY
-    )) as token:
+    )
+    try:
         sid = security.GetTokenInformation(token, security.TokenUser)[0]
         return security.ConvertSidToStringSid(sid)
+    finally:
+        token.Close()
 
 
 def _security_attributes(modules: tuple, sid_text: str):
@@ -103,11 +106,14 @@ def _verify_client_sid(pipe_handle: int, modules: tuple, own_sid: str) -> None:
     try:
         security.ImpersonateNamedPipeClient(pipe_handle)
         impersonating = True
-        with closing(security.OpenThreadToken(
+        token = security.OpenThreadToken(
             win32api.GetCurrentThread(), win32con.TOKEN_QUERY, True
-        )) as token:
+        )
+        try:
             sid = security.GetTokenInformation(token, security.TokenUser)[0]
             client_sid = security.ConvertSidToStringSid(sid)
+        finally:
+            token.Close()
     except Exception:
         raise DesktopBridgeError("pipe_client_identity_unavailable") from None
     finally:
