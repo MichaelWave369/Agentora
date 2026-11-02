@@ -1,0 +1,61 @@
+name: desktop-r10-offline-field-lab-windows
+
+on:
+  pull_request:
+    paths:
+      - "tools/desktop-field-lab/FieldLab.ps1"
+      - ".github/workflows/desktop-r10-offline-field-lab-windows.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tools/desktop-field-lab/FieldLab.ps1"
+      - ".github/workflows/desktop-r10-offline-field-lab-windows.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-offline-preflight:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify sanitized offline preflight with no desktop access
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $isolated = Join-Path $env:RUNNER_TEMP ('phi-field-' + [guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $isolated | Out-Null
+          $env:USERPROFILE = $isolated
+          $json = & .\tools\desktop-field-lab\FieldLab.ps1 -Json
+          $report = $json | ConvertFrom-Json
+          if ($report.schema -ne 1 -or $report.mode -ne 'offline_preflight_only') {
+            throw 'Unexpected field lab report schema or mode'
+          }
+          foreach ($key in @(
+            'python_runtime_tested', 'pywin32_import_tested',
+            'actual_desktop_test_performed', 'cross_account_denial_verified',
+            'independent_security_review_complete',
+            'autonomous_execution_authorized', 'desktop_mutation_performed',
+            'system_configuration_modified', 'cloud_contact_performed',
+            'report_written_to_disk'
+          )) {
+            if ($report.$key -ne $false) {
+              throw "Forbidden readiness claim: $key"
+            }
+          }
+          if ($report.local_agentora_source_present -ne $true) {
+            throw 'Test repository source was not found'
+          }
+          if (Test-Path -LiteralPath (Join-Path $isolated '.agentora')) {
+            throw 'Field Lab unexpectedly created Agentora state'
+          }
+          $plan = (& .\tools\desktop-field-lab\FieldLab.ps1 -Plan) -join [Environment]::NewLine
+          if (-not $plan.Contains('NOT AUTHORIZED') -or
+              -not $plan.Contains('Ctrl+C') -or
+              -not $plan.Contains('SUPERVISED')) {
+            throw 'Field plan is missing consent or stop warnings'
+          }
+          if ((Get-ChildItem -LiteralPath $isolated -Force | Measure-Object).Count -gt 0) {
+            throw 'Field Lab wrote into isolated user profile'
+          }
