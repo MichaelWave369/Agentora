@@ -14,6 +14,7 @@ import os
 import re
 import secrets
 import sys
+import time
 from typing import Any, Callable
 
 from app.services.desktop_bridge import DesktopBridgeError
@@ -67,10 +68,40 @@ def _inspect_observation(reply: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _request_when_pipe_ready(address: str, secret_hex: str, operation: str) -> dict[str, Any]:
+    """Wait for the R6 single-instance pipe to rebind, without retrying auth.
+
+    The OS readiness probe carries no session key. Actual authenticated
+    requests still go through the unchanged R5 client protocol.
+    """
+    if os.name != "nt":
+        return request_ipc(address, secret_hex, operation)
+    try:
+        import pywintypes
+        import win32pipe
+    except ImportError:
+        raise DesktopBridgeError("field_windows_pipe_dependencies_missing") from None
+    for _ in range(25):
+        try:
+            win32pipe.WaitNamedPipe(address, 200)
+            break
+        except pywintypes.error as exc:
+            code = getattr(exc, "winerror", None)
+            if code is None and exc.args:
+                code = exc.args[0]
+            if code not in (2, 231):  # not found / busy between pipe instances
+                raise DesktopBridgeError("field_pipe_wait_rejected") from None
+            time.sleep(0.05)
+    else:
+        raise DesktopBridgeError("field_pipe_not_available")
+    # No retries of a rejected session key or failed authenticated response.
+    return request_ipc(address, secret_hex, operation)
+
+
 def perform_probe(
     address: str,
     secret_hex: str,
-    requester: Callable[[str, str, str], dict[str, Any]] = request_ipc,
+    requester: Callable[[str, str, str], dict[str, Any]] = _request_when_pipe_ready,
     *,
     second_observation: bool = False,
     between: Callable[[], bool] | None = None,
