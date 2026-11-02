@@ -27,8 +27,10 @@ MAX_COUNT = 100000
 
 def _inspect_ping(reply: dict[str, Any]) -> None:
     if (not isinstance(reply, dict)
+            or type(reply.get("protocol")) is not int
             or reply.get("protocol") != 1
             or reply.get("mode") != "local"
+            or reply.get("transport") != "r6_windows_sid_pipe"
             or reply.get("click_enabled") is not False):
         raise DesktopBridgeError("field_broker_policy_mismatch")
 
@@ -37,6 +39,8 @@ def _inspect_observation(reply: dict[str, Any]) -> dict[str, Any]:
     """Verify shape, redaction, bounds; never copy app UI content to receipts."""
     if not isinstance(reply, dict):
         raise DesktopBridgeError("field_invalid_observation")
+    if reply.get("labels_exposed") is not False:
+        raise DesktopBridgeError("field_labels_or_schema_exposed")
     snapshot = reply.get("snapshot_id")
     count = reply.get("count")
     items = reply.get("items")
@@ -46,7 +50,6 @@ def _inspect_observation(reply: dict[str, Any]) -> dict[str, Any]:
             or not isinstance(items, list) or len(items) > MAX_VISIBLE_ITEMS
             or count < len(items)
             or type(truncated) is not bool
-            or reply.get("labels_exposed") is not False
             or truncated != (count > len(items))):
         raise DesktopBridgeError("field_invalid_observation")
     for item in items:
@@ -93,6 +96,8 @@ def perform_probe(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "probe": "r6_user_restricted_read_only_pipe",
         "broker_reports_click_disabled": True,
+        "r6_transport_marker_observed": True,
+        "transport_identity_cryptographically_attested": False,
         "labels_redacted": True,
         "observation_metadata_valid": True,
         "observations_checked": 2 if second_observation else 1,
