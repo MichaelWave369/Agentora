@@ -1,0 +1,35 @@
+name: desktop-r9-readiness-windows-smoke
+
+on:
+  pull_request:
+    paths:
+      - "server/app/services/desktop_operator_desk.py"
+      - "server/app/services/desktop_field_dashboard.py"
+      - "server/tests/test_desktop_field_dashboard.py"
+      - ".github/workflows/desktop-r9-readiness-windows-smoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "server/app/services/desktop_operator_desk.py"
+      - "server/app/services/desktop_field_dashboard.py"
+      - "server/tests/test_desktop_field_dashboard.py"
+      - ".github/workflows/desktop-r9-readiness-windows-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-readonly-dashboard:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install isolated test runner
+        run: python -m pip install pytest==8.3.3
+      - name: Test R9 read-only dashboard without desktop access
+        env:
+          PYTHONPATH: server
+        run: python -m pytest --noconftest -q server/tests/test_desktop_field_dashboard.py
