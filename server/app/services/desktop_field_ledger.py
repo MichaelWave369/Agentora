@@ -114,21 +114,32 @@ def validate_receipt(value: Any) -> dict[str, Any]:
     }
 
 
-def load_receipt(path: Path) -> dict[str, Any]:
-    """Bounded JSON load; arbitrary or extra fields are never preserved."""
+def read_receipt_data(path: Path) -> dict[str, Any]:
+    """Read at most 4096 bytes with nofollow where supported, then validate."""
     path = Path(path)
-    if path.is_symlink() or not path.is_file():
+    if path.is_symlink():
         raise DesktopBridgeError("field_receipt_file_denied")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
     try:
-        if path.stat().st_size > MAX_FILE:
-            raise DesktopBridgeError("field_receipt_file_denied")
-        data = path.read_bytes()
+        fd = os.open(path, flags)
+        with os.fdopen(fd, "rb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise DesktopBridgeError("field_receipt_file_denied")
+            data = stream.read(MAX_FILE + 1)
         if len(data) > MAX_FILE:
             raise DesktopBridgeError("field_receipt_file_denied")
         value = json.loads(data.decode("utf-8"))
     except (OSError, UnicodeError, ValueError):
         raise DesktopBridgeError("field_receipt_file_denied") from None
-    return validate_receipt(value)
+    validate_receipt(value)
+    return value
+
+
+def load_receipt(path: Path) -> dict[str, Any]:
+    """Expose only the five allowed summary fields to the caller."""
+    return validate_receipt(read_receipt_data(path))
 
 
 def _json(data: dict[str, Any]) -> str:
@@ -267,12 +278,11 @@ def main(argv: list[str] | None = None) -> int:
                 raise DesktopBridgeError("field_operator_cancelled")
             # Re-read after consent to reject a swapped or changed receipt.
             path = default_receipts_dir() / args.receipt
-            latest = load_receipt(path)
-            if latest != safe:
+            latest_data = read_receipt_data(path)
+            if validate_receipt(latest_data) != safe:
                 raise DesktopBridgeError("field_receipt_changed")
             record = FieldLedger(args.db).record(
-                json.loads(path.read_text(encoding="utf-8")),
-                status=args.status, issue=args.issue,
+                latest_data, status=args.status, issue=args.issue,
             )
             print("Recorded local self-report:", record["entry_id"])
             print("Autonomous execution authorization: FALSE")
