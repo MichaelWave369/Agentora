@@ -213,3 +213,49 @@ def test_entry_never_copies_upstream_labels_or_secrets(tmp_path):
     for forbidden in ("pipe\\\\", "password", "snapshot_id", "element_ref",
                       "session_key", "source_name", "raw_tree"):
         assert forbidden not in serialized
+
+
+def test_r7_sanitized_receipt_saving_is_opt_in_and_non_overwriting(tmp_path, monkeypatch):
+    from app.services import desktop_windows_field_validation as field
+    profile_key = "USERPROFILE" if os.name == "nt" else "HOME"
+    monkeypatch.setenv(profile_key, str(tmp_path))
+    report = sample_receipt()
+    dest = field.save_local_receipt(report, "calculator-field.json")
+    assert dest.name == "calculator-field.json"
+    assert dest.parent.name == "field-trials"
+    assert load_receipt(dest)["receipt_id"] == report["receipt_id"]
+    fails("field_receipt_exists",
+          lambda: field.save_local_receipt(report, "calculator-field.json"))
+    fails("field_receipt_filename_denied",
+          lambda: field.save_local_receipt(report, "../outside.json"))
+    fails("field_receipt_filename_denied",
+          lambda: field.save_local_receipt(report, "nested/file.json"))
+
+
+def test_r7_saving_refuses_receipt_with_sensitive_extra_fields(tmp_path, monkeypatch):
+    from app.services import desktop_windows_field_validation as field
+    profile_key = "USERPROFILE" if os.name == "nt" else "HOME"
+    monkeypatch.setenv(profile_key, str(tmp_path))
+    receipt = sample_receipt()
+    receipt["screen_contents"] = "sensitive text"
+    fails("field_receipt_schema_denied",
+          lambda: field.save_local_receipt(receipt, "safe.json"))
+    assert not (tmp_path / ".agentora" / "field-trials" / "safe.json").exists()
+
+
+def test_r7_interactive_default_uses_pipe_rebind_readiness():
+    from app.services import desktop_windows_field_validation as field
+    assert field.run_supervised.__kwdefaults__["requester"] is field._request_when_pipe_ready
+
+
+def test_local_receipt_is_not_an_execution_approval(tmp_path, monkeypatch):
+    from app.services import desktop_windows_field_validation as field
+    profile_key = "USERPROFILE" if os.name == "nt" else "HOME"
+    monkeypatch.setenv(profile_key, str(tmp_path))
+    receipt = sample_receipt()
+    dest = field.save_local_receipt(receipt, "observation.json")
+    ledger = FieldLedger(dest.parent / "journal.db")
+    entry = ledger.record(receipt, status="observed", issue="none")
+    assert entry["receipt"]["receipt_id"] == load_receipt(dest)["receipt_id"]
+    assert ledger.readiness()["ready_for_autonomous_desktop_actions"] is False
+    assert ledger.readiness()["external_security_review_verified"] is False
