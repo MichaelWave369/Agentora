@@ -13,6 +13,7 @@ import sys
 from typing import Any
 
 from app.services.desktop_inbox import ProposalError, ProposalInbox
+from app.services.desktop_field_dashboard import FieldReadinessDashboard, render_readiness
 
 
 class OperatorPolicy:
@@ -55,9 +56,20 @@ class OperatorPolicy:
 class OperatorDeskModel:
     """Headless controller for the GUI. It cannot issue any desktop actions."""
 
-    def __init__(self, inbox: ProposalInbox, policy: OperatorPolicy):
+    def __init__(
+        self, inbox: ProposalInbox, policy: OperatorPolicy,
+        field_db: Path | None = None,
+    ):
         self.inbox = inbox
         self.policy = policy
+        self.field_dashboard = FieldReadinessDashboard(field_db)
+
+    def field_readiness(self) -> dict[str, Any]:
+        """No inbox mutations or desktop actions, journal opened read-only."""
+        return self.field_dashboard.snapshot()
+
+    def field_readiness_text(self) -> str:
+        return render_readiness(self.field_readiness())
 
     def get(self, item_id: str) -> dict[str, Any]:
         return self.inbox.get(item_id)
@@ -146,6 +158,9 @@ def run_window(model: OperatorDeskModel) -> None:
     filter_box.pack(side="left", padx=10)
     tk.Button(bar, text="Refresh", command=lambda: refresh(),
               padx=16, relief="flat").pack(side="left")
+    tk.Button(bar, text="Field readiness (read-only)",
+              command=lambda: show_field_readiness(), padx=12,
+              relief="flat").pack(side="left", padx=8)
     summary = tk.StringVar(root, "Ready")
     tk.Label(bar, textvariable=summary, bg="#101925", fg="#96adba").pack(side="right")
 
@@ -249,6 +264,37 @@ def run_window(model: OperatorDeskModel) -> None:
             messagebox.showerror("Review denied", str(exc), parent=root)
             refresh()
 
+    def show_field_readiness() -> None:
+        """Open a separate read-only status window; no approval controls."""
+        panel = tk.Toplevel(root)
+        panel.title("Phi Field Readiness | Self-reports only")
+        panel.geometry("830x590")
+        panel.minsize(600, 380)
+        panel.configure(bg="#101925")
+        heading = tk.Frame(panel, bg="#101925")
+        heading.pack(fill="x", padx=18, pady=(14, 8))
+        tk.Label(heading, text="PHI FIELD READINESS",
+                 font=("Segoe UI", 16, "bold"),
+                 bg="#101925", fg="#cceafb").pack(side="left")
+        report = tk.Text(
+            panel, wrap="word", bg="#152334", fg="#e2edf8",
+            insertbackground="#e2edf8", relief="flat",
+            padx=14, pady=12, font=("Consolas", 10),
+            state="disabled",
+        )
+        report.pack(fill="both", expand=True, padx=18, pady=(0, 12))
+
+        def update_readiness() -> None:
+            content = model.field_readiness_text()
+            report.configure(state="normal")
+            report.delete("1.0", "end")
+            report.insert("1.0", content)
+            report.configure(state="disabled")
+
+        tk.Button(heading, text="Refresh local ledger", padx=12,
+                  command=update_readiness).pack(side="right")
+        update_readiness()
+
     def handoff() -> None:
         item_id = selected()
         if not item_id:
@@ -270,9 +316,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--db", type=Path, default=Path.home() / ".agentora" / "desktop-inbox.db")
     parser.add_argument("--policy", type=Path, required=True, help="Explicit per-app review policy")
+    parser.add_argument("--field-db", type=Path, help="Optional local R8 journal to view (read-only)")
     args = parser.parse_args(argv)
     try:
-        run_window(OperatorDeskModel(ProposalInbox(args.db), OperatorPolicy.load(args.policy)))
+        run_window(OperatorDeskModel(
+            ProposalInbox(args.db), OperatorPolicy.load(args.policy),
+            field_db=args.field_db,
+        ))
     except (ProposalError, OSError, ImportError) as exc:
         print(f"Operator Desk could not start: {exc}", file=sys.stderr)
         return 2
