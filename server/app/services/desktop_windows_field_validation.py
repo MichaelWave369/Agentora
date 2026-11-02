@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import getpass
 import json
 import os
+from pathlib import Path
 import re
 import secrets
 import sys
@@ -18,6 +19,9 @@ import time
 from typing import Any, Callable
 
 from app.services.desktop_bridge import DesktopBridgeError
+from app.services.desktop_field_ledger import (
+    FILE_RE, _private_dir, default_receipts_dir, validate_receipt,
+)
 from app.services.desktop_local_ipc import request_ipc
 from app.services.desktop_windows_restricted_ipc import doctor as windows_doctor
 
@@ -176,12 +180,42 @@ def _interactive() -> None:
         raise DesktopBridgeError("interactive_operator_required")
 
 
+def save_local_receipt(report: dict[str, Any], filename: str) -> Path:
+    """Only explicitly requested local, exclusive, sanitized JSON output."""
+    if not isinstance(filename, str) or not FILE_RE.fullmatch(filename):
+        raise DesktopBridgeError("field_receipt_filename_denied")
+    validate_receipt(report)
+    dest = _private_dir(default_receipts_dir()) / filename
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(dest, flags, 0o600)
+    except FileExistsError:
+        raise DesktopBridgeError("field_receipt_exists") from None
+    except OSError:
+        raise DesktopBridgeError("field_receipt_write_failed") from None
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            json.dump(report, output, indent=2, sort_keys=True)
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+    except (OSError, ValueError, UnicodeError):
+        try:
+            dest.unlink()
+        except OSError:
+            pass
+        raise DesktopBridgeError("field_receipt_write_failed") from None
+    return dest
+
+
 def run_supervised(
     address: str,
     *,
     ask: Callable[[str], str] = input,
     secret_prompt: Callable[[str], str] = getpass.getpass,
-    requester: Callable[[str, str, str], dict[str, Any]] = request_ipc,
+    requester: Callable[[str, str, str], dict[str, Any]] = _request_when_pipe_ready,
     two_observations: bool = False,
 ) -> dict[str, Any]:
     """Real local terminal consent required BEFORE accessing desktop metadata."""
@@ -214,6 +248,7 @@ def main(argv: list[str] | None = None) -> int:
     probe = sub.add_parser("probe", help="Explicit local observation through R6")
     probe.add_argument("--address", required=True, help="R6 local pipe address")
     probe.add_argument("--two-observations", action="store_true")
+    probe.add_argument("--receipt-file", help="Explicit local basename; never overwrite")
     args = parser.parse_args(argv)
     try:
         if args.command == "doctor":
@@ -223,6 +258,9 @@ def main(argv: list[str] | None = None) -> int:
                 args.address, two_observations=args.two_observations
             )
             print(json.dumps(report, indent=2, sort_keys=True))
+            if args.receipt_file is not None:
+                location = save_local_receipt(report, args.receipt_file)
+                print("Sanitized local receipt saved:", location)
         return 0
     except DesktopBridgeError as exc:
         print("Supervised R7 validation stopped: " + exc.code, file=sys.stderr)
