@@ -108,28 +108,33 @@ class LeaseLedger:
         self.path = Path(db_path)
         require(str(self.path) != ":memory:", "PERSISTENT_DB_REQUIRED")
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        old_mask = os.umask(0o077)
-        try:
-            with self._connection() as db:
-                db.execute("PRAGMA journal_mode=WAL")
-                db.execute("PRAGMA synchronous=FULL")
-                db.execute("""CREATE TABLE IF NOT EXISTS reservations (
-                    repository TEXT PRIMARY KEY, repository_id INTEGER NOT NULL,
-                    source_sha TEXT NOT NULL, request_sha256 TEXT NOT NULL,
-                    worker TEXT NOT NULL, token_digest TEXT NOT NULL,
-                    generation INTEGER NOT NULL, state TEXT NOT NULL,
-                    created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
-                    expires_ms INTEGER NOT NULL
-                )""")
-                db.execute("""CREATE TABLE IF NOT EXISTS lease_events (
-                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    repository TEXT NOT NULL, generation INTEGER NOT NULL,
-                    event_type TEXT NOT NULL, event_ms INTEGER NOT NULL,
-                    worker TEXT NOT NULL, source_sha TEXT NOT NULL
-                )""")
-                db.commit()
-        finally:
-            os.umask(old_mask)
+        require(not self.path.is_symlink(), "DB_SYMLINK_REJECTED")
+        flags = os.O_RDWR | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(self.path, flags, 0o600)
+        os.close(fd)
+        if os.name == "posix":
+            require((self.path.stat().st_mode & 0o077) == 0,
+                    "DB_PERMISSIONS_UNSAFE")
+        with self._connection() as db:
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("PRAGMA synchronous=FULL")
+            db.execute("""CREATE TABLE IF NOT EXISTS reservations (
+                repository TEXT PRIMARY KEY, repository_id INTEGER NOT NULL,
+                source_sha TEXT NOT NULL, request_sha256 TEXT NOT NULL,
+                worker TEXT NOT NULL, token_digest TEXT NOT NULL,
+                generation INTEGER NOT NULL, state TEXT NOT NULL,
+                created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
+                expires_ms INTEGER NOT NULL
+            )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS lease_events (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repository TEXT NOT NULL, generation INTEGER NOT NULL,
+                event_type TEXT NOT NULL, event_ms INTEGER NOT NULL,
+                worker TEXT NOT NULL, source_sha TEXT NOT NULL
+            )""")
+            db.commit()
 
     @contextmanager
     def _connection(self):
