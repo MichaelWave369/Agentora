@@ -25,3 +25,6 @@ Thumbs.db
 *.wav
 *.mp3
 stems/
+# Local fleet lease capabilities and intake receipts must never enter Git.
+local-fleet/
+local-fleet-intake/
