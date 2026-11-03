@@ -91,7 +91,7 @@ jobs:
           set -euo pipefail
           # No application secrets, GITHUB_TOKEN, Docker socket or workspace root
           # are mounted or passed into either container.
-          docker pull node:22-alpine
+          docker pull node:22-bookworm-slim
           SRC="$GITHUB_WORKSPACE/pilot-src"
           sandbox() {
             local verb="$1"
@@ -103,7 +103,7 @@ jobs:
               --tmpfs /work:rw,exec,nosuid,size=1536m,mode=1777 \
               --mount "type=bind,src=$SRC,dst=/src,readonly" \
               -e HOME=/tmp -e CI=true \
-              node:22-alpine \
+              node:22-bookworm-slim \
               sh -euc 'cp -R /src/. /work/ && cd /work && case "$1" in test) npm test ;; build) npm run build ;; *) exit 2 ;; esac' \
               sh "$verb"
           }
