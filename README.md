@@ -625,3 +625,7 @@ Historical Runs -> Candidate Patterns -> Operator Promotion -> Future Suggestion
 ### Heuristic caveat
 
 Pattern memory and suggestions remain heuristic/operator aids and never auto-apply without explicit operator approval.
+
+### Fleet R0.3: PhiMada local verification intake (read-only)
+
+The offline Fleet R0.3 validator can accept an operator-downloaded PhiMada Prime Rung 8 request into a held review receipt. It **does not run tests, dispatch agents, revalidate remote HEAD, approve or merge PRs**. See [Fleet R0.3 intake guide](docs/FLEET_R03_VERIFICATION_INTAKE.md) for the CLI, trust boundary, data contract and tests.
