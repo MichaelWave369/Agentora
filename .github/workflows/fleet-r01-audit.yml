@@ -1,0 +1,50 @@
+name: Fleet R0.1 Read-Only Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Pilot deeply audits six repositories; all deeply audits public owner repositories"
+        type: choice
+        required: true
+        options:
+          - pilot
+          - all
+        default: pilot
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fleet-r01-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Public repository evidence audit (no writes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout audited implementation from trusted branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run fleet audit unit contracts
+        run: python -m unittest discover -s server/tests -p test_fleet_r01_audit.py -v
+      - name: Scan public owner repositories
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python scripts/fleet_r01_audit.py --scope "${{ inputs.scope }}" --output-dir fleet-artifacts
+      - name: Upload report as private-free build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-r01-${{ inputs.scope }}-${{ github.run_id }}
+          path: fleet-artifacts/
+          if-no-files-found: warn
+          retention-days: 7
