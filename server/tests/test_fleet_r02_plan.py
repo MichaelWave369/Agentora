@@ -2,6 +2,8 @@
 import base64
 from datetime import datetime, timedelta, timezone
 import json
+import os
+from unittest.mock import patch
 from pathlib import Path
 import sys
 import unittest
@@ -88,7 +90,11 @@ class FleetR02Tests(unittest.TestCase):
         private = audit([row(visibility="private")])
         with self.assertRaisesRegex(plan.PlanHeld, "PRIVATE_INPUT_REJECTED"):
             plan.generate(private, fake_get, now=NOW)
-        result = plan.generate(private, fake_get, now=NOW, allow_private=True)
+        with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}):
+            with self.assertRaisesRegex(plan.PlanHeld, "PRIVATE_ACTIONS_PROHIBITED"):
+                plan.generate(private, fake_get, now=NOW, allow_private=True)
+        with patch.dict(os.environ, {"GITHUB_ACTIONS": "false"}):
+            result = plan.generate(private, fake_get, now=NOW, allow_private=True)
         self.assertFalse(result["public_output"])
         self.assertEqual(result["verified_complete_count"], 0)
 
