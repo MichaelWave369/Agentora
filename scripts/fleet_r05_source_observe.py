@@ -107,10 +107,11 @@ def _identity(response, info, branch):
         raise ObservationHeld("GITHUB_REPOSITORY_RESPONSE_INVALID")
     # All comparisons are exact: renamed, transferred, private or archived
     # repositories are held rather than silently accepted.
+    owner = response.get("owner")
     return (type(response.get("id")) is int and
             response["id"] == info["repository_id"] and
             response.get("full_name") == info["repository"] and
-            (response.get("owner") or {}).get("login") == leases.OWNER and
+            isinstance(owner, dict) and owner.get("login") == leases.OWNER and
             response.get("private") is False and
             response.get("archived") is False and
             response.get("default_branch") == branch)
