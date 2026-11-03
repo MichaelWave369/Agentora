@@ -1,0 +1,53 @@
+name: Fleet R0.2 Completion Plan (Review Only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Pilot first; all performs deep public checks for every owner repo"
+        type: choice
+        required: true
+        options:
+          - pilot
+          - all
+        default: pilot
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fleet-r02-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  review-plan:
+    name: Public fleet completion proposals (no writes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test R0.1 and R0.2 safety/contract behavior
+        run: |
+          python -m unittest discover -s server/tests -p 'test_fleet_r01_audit.py' -v
+          python -m unittest discover -s server/tests -p 'test_fleet_r02_plan.py' -v
+      - name: Generate source audit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/fleet_r01_audit.py --scope "${{ inputs.scope }}" --output-dir fleet-artifacts
+      - name: Build review-only completion plans from fresh audit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/fleet_r02_plan.py --input fleet-artifacts/fleet-audit.json --output-dir fleet-artifacts
+      - name: Publish bounded report artifact (not a public site)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-r02-${{ inputs.scope }}-${{ github.run_id }}
+          path: fleet-artifacts/
+          retention-days: 7
+          if-no-files-found: warn
