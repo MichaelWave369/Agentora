@@ -47,10 +47,14 @@ jobs:
           TASK_JSON: ${{ inputs.task_json || github.event.issue.body }}
         run: python3 scripts/autonomous_turn.py plan
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: autonomous-task-${{ github.run_id }}
-          path: turn-control/task.json
-          if-no-files-found: error
+          path: |
+            turn-control/task.json
+            turn-control/network-audit.jsonl
+            turn-control/hold.json
+          if-no-files-found: warn
           retention-days: 30
 
   owner-authorization:
@@ -70,10 +74,14 @@ jobs:
           TASK_JSON: ${{ needs.plan.outputs.task_json }}
         run: python3 scripts/autonomous_turn.py authorize
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: autonomous-authorization-${{ github.run_id }}
-          path: turn-control/authorization.json
-          if-no-files-found: error
+          path: |
+            turn-control/authorization.json
+            turn-control/network-audit.jsonl
+            turn-control/hold.json
+          if-no-files-found: warn
           retention-days: 30
 
   attempt-0:
@@ -156,5 +164,6 @@ jobs:
           path: |
             turn-control/turn-receipt.json
             turn-control/hold.json
+            turn-control/network-audit.jsonl
           if-no-files-found: warn
           retention-days: 30

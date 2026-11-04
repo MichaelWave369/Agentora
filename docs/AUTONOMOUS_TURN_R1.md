@@ -153,6 +153,11 @@ tails and final receipt or hold. Public check results and GitHub PR/run URLs
 provide the return surface; artifact retention is not permanent signed storage.
 Archive required evidence before expiration.
 
+Each trusted stage also retains a bounded network audit of repository-relative
+API paths, methods, status codes and request/response digests. Tokens, request
+body text, response body text and signed log URLs are excluded. GitHub's native
+PR/commit/check/run records remain the independently readable mutation trail.
+
 Branch names include task ID and run ID. Publisher retry reuses a matching
 commit/branch/PR only after full tree revalidation; diverged branches hold.
 Ref changes are non-forced and use the observed parent. A lost merge response
@@ -196,5 +201,30 @@ publisher, unattended task selection, auto-deployment, durable signed ledger or
 project-complete authority is introduced. Runtime permissions do not change
 repository policy. A reviewed infrastructure deployment and genuine owner
 approval are prerequisites, not simulated successes.
+
+## First real hosted intake receipt
+
+Infrastructure PR [#83](https://github.com/MichaelWave369/Agentora/pull/83) and
+PhiMada [#29](https://github.com/MichaelWave369/PhiMadaPrime/pull/29) were merged
+with green CI. The actual documentation request
+[#84](https://github.com/MichaelWave369/Agentora/issues/84) triggered
+[run 41798136177](https://github.com/MichaelWave369/Agentora/actions/runs/41798136177)
+at source `e1ac0b9558cfbc24802eb91f3361038028e27765`.
+
+The plan passed and retained artifact `autonomous-task-41798136177`
+(artifact ID `13306915150`, GitHub digest
+`sha256:7d31173d6092b2036ca8ebb0de4ec503a7bfa062b25adaf378f477c224e26877`).
+The task digest was
+`56ea2fc22a1544c3be7cf590240bcfbd82de5e1b8349f9e6f1db0e909c34c018`.
+Authorization job `126467105425` stopped with
+`OWNER_REVIEWER_CONFIGURATION_REQUIRED`. All worker/publisher/merge jobs were
+skipped. This is real fail-closed evidence; it is **not a successful turn**.
+The environment existed without the required owner reviewer configuration.
+Publisher credentials were not reached or verified. Configure the documented
+environment/App, then prepare a fresh current-source task. Do not reuse the old
+run's authorization or relabel a test result as completion.
+
+Field feedback adds always-retained plan/authorization hold receipts and a
+redacted API request audit. It changes no approval requirement or task allowlist.
 
 Ledger Above Ego. People Above Profit. Peace Above Drama.
