@@ -279,6 +279,17 @@ class FleetPilotTests(unittest.TestCase):
         self.assertNotIn("${{ inputs.target_repository }}", workflow)
         self.assertNotIn("${{ inputs.run_script }}", workflow)
 
+    def test_paperghost_held_codes_and_sandbox_limits_are_specific(self):
+        workflow = (Path(__file__).resolve().parents[2] / ".github" /
+                    "workflows" / "fleet-r08-paperghost-pilot.yml").read_text("utf8")
+        self.assertNotIn("FLEET_R06_HELD", workflow)
+        self.assertIn("FLEET_R08_HELD checkout SHA", workflow)
+        self.assertIn("FLEET_R08_HELD dependency resolution", workflow)
+        self.assertIn("--pids-limit 160 --memory 3g --cpus 2", workflow)
+        self.assertIn("/work:rw,exec,nosuid,size=2048m", workflow)
+        self.assertIn("timeout -k 10s 300s docker run --rm", workflow)
+        self.assertIn("retention-days: 7", workflow)
+
     def test_static_workflow_has_manual_only_and_networkless_runner(self):
         path = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "fleet-r08-paperghost-pilot.yml"
         yaml = path.read_text(encoding="utf-8")
