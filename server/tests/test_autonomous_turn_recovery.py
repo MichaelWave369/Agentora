@@ -111,13 +111,14 @@ class LateCiRecoveryTests(unittest.TestCase):
             self.assertFalse(any(path.endswith("/merge") for path,_,_ in self.api.calls))
 
     def test_wrong_original_state_or_missing_timeout_refuses(self):
-        for mode in ("not-final", "not-timeout", "repair-budget"):
+        for mode in ("not-final", "not-timeout", "repair-budget", "code-policy"):
             self.setUp()
             observed = deepcopy(self.obs)
             t = deepcopy(self.t)
             if mode == "not-final": self.api.run["status"] = "in_progress"
             if mode == "not-timeout": observed["state"] = "CI_PASSED"
             if mode == "repair-budget": t["max_repairs"] = 1
+            if mode == "code-policy": t["merge_policy"] = "reviewed-code"
             with self.subTest(mode=mode), self.assertRaises(c.Held):
                 self.check(task_override=t, observed=observed)
             self.assertFalse(any(path.endswith("/merge") for path,_,_ in self.api.calls))
