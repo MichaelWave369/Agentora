@@ -15,7 +15,7 @@
 
 First, review and manually merge the R2 implementation PR after normal CI is green. The implementation PR itself changes protected code/workflow files and is **not eligible** for either autonomous merge lane.
 
-For the first code-lane trial, have a **second trusted GitHub collaborator with write or admin access** review an independently created, tiny PR changing only one of the two allowlisted UI components. The author cannot count as the independent reviewer. Wait for the three required CI jobs to succeed; inspect the diff and review, then **as MichaelWave369** apply `phi-code-automerge`. The workflow verifies those requirements again before sending a SHA-pinned squash merge. Confirm both the GitHub merge record and the `devloop-merge-decision-...` artifact.
+For the first code-lane trial, have a **second trusted GitHub collaborator with write or admin access** review an independently created, tiny PR changing only one of the two allowlisted UI components. The author cannot count as the independent reviewer. Review approval is bound to the current PR commit SHA; after any source push, obtain a fresh approval before applying `phi-code-automerge`. Wait for the three required CI jobs to succeed; inspect the diff and review, then **as MichaelWave369** apply `phi-code-automerge`. The workflow verifies those requirements again before sending a SHA-pinned squash merge. Confirm both the GitHub merge record and the `devloop-merge-decision-...` artifact.
 
 If there is no independent reviewer with verified collaborator write permission, the lane correctly holds at `R2_INDEPENDENT_WRITE_REVIEW_REQUIRED`; do not invent a model approval or disable that check. You can still use the existing docs-only lane.
 
