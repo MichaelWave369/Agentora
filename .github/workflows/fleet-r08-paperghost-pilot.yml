@@ -1,0 +1,146 @@
+name: Fleet R0.8 PaperGhost Sandboxed Acceptance Pilot
+
+# Intentionally manual. No push, pull_request, schedule, or auto-dispatch.
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Exact 40-character HEAD SHA of MichaelWave369/PaperGhost"
+        required: true
+        type: string
+      confirmation:
+        description: "Type RUN_PAPERGHOST_TESTS to authorize this one bounded test/build pilot"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# GitHub concurrency coordinates this specific hosted pilot across runners.
+# It is separate from R0.4's single-filesystem SQLite leases.
+concurrency:
+  group: agentora-fleet-r08-paperghost-pilot
+  cancel-in-progress: false
+
+jobs:
+  paperghost-pilot:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout trusted Agentora verifier
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Install Python verifier runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact GitHub HEAD and explicit operator confirmation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PILOT_SHA: ${{ inputs.source_sha }}
+          PILOT_CONFIRM: ${{ inputs.confirmation }}
+        run: |
+          python scripts/fleet_r08_paperghost_pilot.py --output paperghost-control/preflight.json \
+            preflight --sha "$PILOT_SHA" --confirm "$PILOT_CONFIRM"
+
+      - name: Checkout fixed public pilot at exact commit
+        uses: actions/checkout@v4
+        with:
+          repository: MichaelWave369/PaperGhost
+          ref: ${{ inputs.source_sha }}
+          path: paperghost-src
+          persist-credentials: false
+          submodules: false
+          lfs: false
+          fetch-depth: 1
+
+      - name: Install Node 22 on host for no-scripts dependency resolution only
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Confirm checkout SHA and fetch dependencies without scripts
+        shell: bash
+        env:
+          PILOT_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          ACTUAL_SHA="$(git -C paperghost-src rev-parse HEAD)"
+          if [[ "$ACTUAL_SHA" != "$PILOT_SHA" ]]; then
+            echo "FLEET_R08_HELD checkout SHA does not match requested HEAD"
+            exit 1
+          fi
+          set +e
+          npm install --prefix paperghost-src --no-audit --no-fund --ignore-scripts
+          INSTALL_EXIT=$?
+          set -e
+          printf '{"checkout_sha":"%s","install_exit":%s,"test_exit":null,"build_exit":null}\n' \
+            "$ACTUAL_SHA" "$INSTALL_EXIT" > paperghost-control/steps.json
+          if [[ "$INSTALL_EXIT" -ne 0 ]]; then
+            echo "FLEET_R08_HELD dependency resolution failed"
+            exit 1
+          fi
+
+      - name: Execute fixed Vitest and TypeScript/Vite build in network-disabled containers
+        shell: bash
+        env:
+          PILOT_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          # PaperGhost build runs tsc -b then vite build; independent type-check is
+          # included in the fixed build script. No dynamically provided commands.
+          # No application secrets, GITHUB_TOKEN, Docker socket or workspace root
+          # are mounted or passed into either container.
+          docker pull node:22-bookworm-slim
+          SRC="$GITHUB_WORKSPACE/paperghost-src"
+          sandbox() {
+            local verb="$1"
+            timeout -k 10s 300s docker run --rm \
+              --network none --read-only --user 1000:1000 \
+              --cap-drop ALL --security-opt no-new-privileges \
+              --pids-limit 160 --memory 3g --cpus 2 \
+              --tmpfs /tmp:rw,nosuid,size=256m,mode=1777 \
+              --tmpfs /work:rw,exec,nosuid,size=2048m,mode=1777 \
+              --mount "type=bind,src=$SRC,dst=/src,readonly" \
+              -e HOME=/tmp -e CI=true \
+              node:22-bookworm-slim \
+              sh -euc 'cp -R /src/. /work/ && cd /work && case "$1" in test) npm test ;; build) npm run build ;; *) exit 2 ;; esac' \
+              sh "$verb"
+          }
+          set +e
+          sandbox test
+          TEST_EXIT=$?
+          sandbox build
+          BUILD_EXIT=$?
+          set -e
+          printf '{"checkout_sha":"%s","install_exit":0,"test_exit":%s,"build_exit":%s}\n' \
+            "$PILOT_SHA" "$TEST_EXIT" "$BUILD_EXIT" > paperghost-control/steps.json
+          # Do not decide success from test output until the host-side finalizer
+          # independently rechecks GitHub HEAD.
+
+      - name: Independently recheck HEAD and finalize bounded receipt
+        if: always()
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PILOT_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! -f paperghost-control/preflight.json ]]; then
+            echo "FLEET_R08_HELD no successful preflight receipt"
+            exit 1
+          fi
+          python scripts/fleet_r08_paperghost_pilot.py --output paperghost-control/final.json \
+            finalize --sha "$PILOT_SHA" --preflight paperghost-control/preflight.json \
+            --steps paperghost-control/steps.json
+
+      - name: Retain metadata receipts only (no source files or private data)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-r08-paperghost-${{ github.run_id }}
+          path: paperghost-control/
+          retention-days: 7
+          if-no-files-found: warn
