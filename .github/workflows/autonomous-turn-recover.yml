@@ -1,0 +1,148 @@
+name: Autonomous Turn R1 - late CI recovery
+run-name: Autonomous R1 recovery - fresh exact owner approval
+
+on:
+  workflow_dispatch:
+    inputs:
+      original_run_id:
+        description: "Original completed R1 Actions run ID (attempt-0 only)"
+        required: true
+        type: string
+      expected_pr_number:
+        description: "Original App-published PR number"
+        required: true
+        type: string
+      expected_head_sha:
+        description: "Original PR head commit SHA (40 lowercase hex)"
+        required: true
+        type: string
+      expected_task_sha256:
+        description: "Original task digest (64 lowercase hex)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  pull-requests: read
+
+concurrency:
+  group: agentora-r1-recover-${{ inputs.original_run_id }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: >-
+      github.repository == 'MichaelWave369/Agentora' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == 'MichaelWave369' &&
+      github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-task-${{ inputs.original_run_id }}
+          path: turn-control
+          run-id: ${{ inputs.original_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-worker-${{ inputs.original_run_id }}-0
+          path: turn-control
+          run-id: ${{ inputs.original_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-published-${{ inputs.original_run_id }}-0
+          path: turn-control
+          run-id: ${{ inputs.original_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-observed-${{ inputs.original_run_id }}-0
+          path: turn-control
+          run-id: ${{ inputs.original_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify original exact task and CI timeout
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORIGINAL_RUN_ID: ${{ inputs.original_run_id }}
+          EXPECTED_PR_NUMBER: ${{ inputs.expected_pr_number }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          EXPECTED_TASK_SHA256: ${{ inputs.expected_task_sha256 }}
+        run: python3 scripts/autonomous_turn_recover.py plan
+      - name: Retain redacted plan audit or hold
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-recovery-plan-${{ github.run_id }}
+          path: |
+            turn-control/network-audit.jsonl
+            turn-control/hold.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  finish:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment: autonomous-turn-owner
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-task-${{ inputs.original_run_id }}
+          path: turn-control
+          run-id: ${{ inputs.original_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-worker-${{ inputs.original_run_id }}-0
+          path: turn-control
+          run-id: ${{ inputs.original_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-published-${{ inputs.original_run_id }}-0
+          path: turn-control
+          run-id: ${{ inputs.original_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-observed-${{ inputs.original_run_id }}-0
+          path: turn-control
+          run-id: ${{ inputs.original_run_id }}
+          github-token: ${{ github.token }}
+      - name: Fresh owner review and existing trusted merge gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORIGINAL_RUN_ID: ${{ inputs.original_run_id }}
+          EXPECTED_PR_NUMBER: ${{ inputs.expected_pr_number }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          EXPECTED_TASK_SHA256: ${{ inputs.expected_task_sha256 }}
+        run: python3 scripts/autonomous_turn_recover.py finish
+      - name: Retain actual receipt or explicit hold
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-recovery-result-${{ github.run_id }}
+          path: |
+            turn-control/turn-receipt.json
+            turn-control/hold.json
+            turn-control/network-audit.jsonl
+          if-no-files-found: warn
+          retention-days: 30
