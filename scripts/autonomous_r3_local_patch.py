@@ -47,7 +47,8 @@ def load_task(path):
          "R3_TASK_ID")
     need(isinstance(task["source_sha"], str) and
          HEX40.fullmatch(task["source_sha"]), "R3_SOURCE_SHA")
-    need(task["target_path"] in LOW_RISK_UI, "R3_PATH_NOT_ALLOWLISTED")
+    need(isinstance(task["target_path"], str) and
+         task["target_path"] in LOW_RISK_UI, "R3_PATH_NOT_ALLOWLISTED")
     need(isinstance(task["before_sha256"], str) and
          HEX64.fullmatch(task["before_sha256"]), "R3_BEFORE_DIGEST")
     need(isinstance(task["instruction"], str) and
@@ -65,8 +66,9 @@ def load_task(path):
 
 
 def source_file(task, source, check=subprocess.check_output):
+    need(not source.is_symlink(), "R3_SOURCE_DIRECTORY")
     source = source.resolve()
-    need(source.is_dir() and not source.is_symlink(), "R3_SOURCE_DIRECTORY")
+    need(source.is_dir(), "R3_SOURCE_DIRECTORY")
     # No model instruction, GitHub API request or checkout can change the source SHA.
     head = check(["git", "-C", str(source), "rev-parse", "HEAD"], text=True).strip()
     need(head == task["source_sha"], "R3_SOURCE_DRIFT")
