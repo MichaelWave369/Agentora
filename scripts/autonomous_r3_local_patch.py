@@ -233,7 +233,7 @@ def initialize(source, destination, target_path, instruction, task_id):
          "R3_INIT_ID")
     need(not source.is_symlink() and source.is_dir(), "R3_SOURCE_DIRECTORY")
     root = source.resolve()
-    output = destination.absolute()
+    output = destination.resolve(strict=False)
     need(not output.is_relative_to(root) and
          destination.parent.is_dir() and
          not destination.is_symlink() and
