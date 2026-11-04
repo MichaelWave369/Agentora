@@ -629,3 +629,9 @@ Pattern memory and suggestions remain heuristic/operator aids and never auto-app
 ### Fleet R0.3: PhiMada local verification intake (read-only)
 
 The offline Fleet R0.3 validator can accept an operator-downloaded PhiMada Prime Rung 8 request into a held review receipt. It **does not run tests, dispatch agents, revalidate remote HEAD, approve or merge PRs**. See [Fleet R0.3 intake guide](docs/FLEET_R03_VERIFICATION_INTAKE.md) for the CLI, trust boundary, data contract and tests.
+
+## Fleet R0.8: Operator-approved PaperGhost sandbox acceptance pilot
+
+Agentora now includes a **second fixed-repository manual sandbox test runner**, this time for [PaperGhost](https://github.com/MichaelWave369/PaperGhost). A human opens [Fleet R0.8 PaperGhost Sandboxed Acceptance Pilot](.github/workflows/fleet-r08-paperghost-pilot.yml), provides PaperGhost's exact current `main` SHA and types `RUN_PAPERGHOST_TESTS`. Source preflight independently verifies GitHub owner, public repo ID `1443390000` and two HEAD observations; the source is checked out at exactly that SHA with credentials disabled. Dependency resolution disables lifecycle scripts. The fixed `npm test` (Vitest) and `npm run build` (TypeScript/Vite) run in resource-bounded, **network-disabled non-root Docker containers** without secrets or a Docker socket. Postflight rechecks HEAD and publishes seven-day metadata receipts containing host-recorded exit codes. **No auto dispatch, merge, deployment, product-complete or scientific authority.**
+
+This is **not** a general fleet executor, not automatically connected to R0.3 offline intake, and does not claim a signed artifact or reproducible dependencies. PR CI checks the runner code but **never launches the manual R0.8 job**. [Instructions and trust boundaries](docs/FLEET_R08_PAPERGHOST_PILOT.md).
