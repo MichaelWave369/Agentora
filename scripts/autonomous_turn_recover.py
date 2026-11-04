@@ -44,7 +44,8 @@ def inputs():
 def original_evidence(api, task, published, observed, value, sandbox,
                       original_run, pr_number, head_sha, task_sha):
     validate(task)
-    need(task_digest(task) == task_sha and task["max_repairs"] == 0 and
+    need(task_digest(task) == task_sha and task["merge_policy"] == "docs" and
+         task["max_repairs"] == 0 and
          value.get("attempt") == 0 and sandbox.get("attempt") == 0 and
          published.get("attempt") == 0 and observed.get("attempt") == 0,
          "RECOVERY_SCOPE_MISMATCH")
