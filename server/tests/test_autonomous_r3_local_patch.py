@@ -203,6 +203,45 @@ class R3LocalPatchTests(unittest.TestCase):
             finally:
                 shutil.rmtree(workspace)
 
+    def test_init_creates_freeze_outside_repo_and_never_overwrites(self):
+        with TemporaryDirectory() as tmp:
+            source=Path(tmp)/"source"
+            source.mkdir()
+            original=self.fixture(source)
+            spec=Path(tmp)/"task.json"
+            responses=iter([SOURCE+"\n",""])
+            with patch.object(r3.subprocess,"check_output",
+                              side_effect=lambda *a,**k:next(responses)):
+                value=r3.initialize(source,spec,FILE,
+                    "Add a helpful accessible label to this React navigation.",
+                    "r3-local-nav-test")
+            self.assertEqual(value["before_sha256"],c.digest(BEFORE.encode()))
+            self.assertEqual(r3.load_task(spec),value)
+            self.assertEqual(original.read_text(),BEFORE)
+            with self.assertRaises(c.Held):
+                r3.initialize(source,spec,FILE,
+                    "Add a helpful accessible label to this React navigation.",
+                    "r3-local-nav-test")
+            with self.assertRaises(c.Held):
+                r3.initialize(source,source/"unsafe.json",FILE,
+                    "Add a helpful accessible label to this React navigation.",
+                    "r3-local-nav-test")
+
+    def test_init_dirty_checkout_is_refused_without_creating_spec(self):
+        with TemporaryDirectory() as tmp:
+            source=Path(tmp)/"source"
+            source.mkdir()
+            self.fixture(source)
+            spec=Path(tmp)/"task.json"
+            responses=iter([SOURCE+"\n","?? new-file\n"])
+            with patch.object(r3.subprocess,"check_output",
+                              side_effect=lambda *a,**k:next(responses)):
+                with self.assertRaisesRegex(c.Held,"R3_INIT_DIRTY"):
+                    r3.initialize(source,spec,FILE,
+                        "Improve the navigation accessibility label.",
+                        "r3-local-nav-test")
+            self.assertFalse(spec.exists())
+
     def test_no_authorization_refuses_before_model_dispatch(self):
         with TemporaryDirectory() as tmp:
             spec=Path(tmp)/"task.json"
