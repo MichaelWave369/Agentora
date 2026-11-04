@@ -9,6 +9,7 @@ def render_development_board(st, api_get) -> None:
     )
     st.caption("Nine skill responsibilities, not nine permission grants. "
                "The original source files have not been imported.")
+    render_autonomous_turn(st)
 
     payload = api_get("/api/development-board/skills", "Development Board skill registry")
     skills = payload.get("skills", []) if isinstance(payload, dict) else []
@@ -182,6 +183,27 @@ def render_development_board(st, api_get) -> None:
         "See docs/DEVELOPMENT_BOARD_R1K_SOVEREIGN_CELL.md. "
         "One declaration is not functional proof, human approval or merge authority."
     )
+
+
+def render_autonomous_turn(st) -> None:
+    """Link to the governed hosted path; this page receives no credentials."""
+    st.subheader("Autonomous Turn R1 · governed GitHub task")
+    st.info(
+        "A separate hosted path can apply an exact approved edit, test it in a "
+        "restricted container, publish a PR and observe real CI. It requires "
+        "reviewed infrastructure, a repository-scoped publisher App and your "
+        "protected-environment approval of the exact task digest. This local "
+        "Development Board does not dispatch work or grant that approval."
+    )
+    st.markdown(
+        "[Prepare and inspect a task at the PhiMada Mission Board]"
+        "(https://michaelwave369.github.io/PhiMadaPrime/) · "
+        "[Setup and recovery guide]"
+        "(https://github.com/MichaelWave369/Agentora/blob/main/docs/AUTONOMOUS_TURN_R1.md) · "
+        "[Hosted execution and approval records]"
+        "(https://github.com/MichaelWave369/Agentora/actions/workflows/autonomous-turn-r1.yml)"
+    )
+    st.caption("MERGED, AUTOMATED CHECKS PASSED and PROJECT VERIFIED COMPLETE are distinct states.")
 
 
 def render_handoff_pilot(st) -> None:
