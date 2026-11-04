@@ -222,17 +222,71 @@ def execute(task, source, model, port, build=run_build, ask=ask_ollama):
     # Disposable workspace stays local. No git push or API credentials.
 
 
+
+def initialize(source, destination, target_path, instruction, task_id):
+    """Make a fresh frozen spec; never put it inside the tracked checkout."""
+    need(isinstance(target_path, str) and target_path in LOW_RISK_UI,
+         "R3_INIT_PATH")
+    need(isinstance(instruction, str) and 16 <= len(instruction) <= 1200,
+         "R3_INIT_INSTRUCTION")
+    need(isinstance(task_id, str) and TASK_RE.fullmatch(task_id),
+         "R3_INIT_ID")
+    need(not source.is_symlink() and source.is_dir(), "R3_SOURCE_DIRECTORY")
+    root = source.resolve()
+    output = destination.absolute()
+    need(not output.is_relative_to(root) and
+         destination.parent.is_dir() and
+         not destination.is_symlink() and
+         not destination.exists(), "R3_INIT_DESTINATION")
+    head = subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+    need(HEX40.fullmatch(head), "R3_INIT_GIT_SHA")
+    status = subprocess.check_output(
+        ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all"],
+        text=True)
+    need(status == "", "R3_INIT_DIRTY")
+    target = root/target_path
+    need(target.is_file() and not target.is_symlink() and
+         target.resolve().is_relative_to(root) and
+         all(not p.is_symlink() for p in [target, *target.parents] if p != root)
+         and target.stat().st_size <= MAX_FILE, "R3_INIT_TARGET")
+    raw = target.read_bytes()
+    raw.decode("utf-8", errors="strict")
+    task = {"schema": SCHEMA, "task_id": task_id, "source_sha": head,
+            "target_path": target_path, "before_sha256": digest(raw),
+            "instruction": instruction,
+            "acceptance": ["Only the authorized React component changes.",
+                           "The unchanged application routes still build.",
+                           "A human reviews the exact proposed diff."],
+            "max_changed_lines": 24, "max_patch_bytes": 6000}
+    # The whole object is frozen and reviewed in plan before any model call.
+    with destination.open("xb") as stream:
+        stream.write(canonical(task)+b"\n")
+    return task
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("stage", choices=("plan", "run"))
+    p.add_argument("stage", choices=("init", "plan", "run"))
     p.add_argument("spec", type=Path)
     p.add_argument("--source", type=Path, default=Path("."))
+    p.add_argument("--target-path", default="web/src/components/TemplateGallery.tsx")
+    p.add_argument("--task-id", default="r3-local-ui-pilot")
+    p.add_argument("--instruction", default=(
+        "Improve the accessibility of this component without changing "
+        "external routes, dependencies or other files."))
     p.add_argument("--model", default="qwen2.5-coder:7b")
     p.add_argument("--port", type=int, default=11434)
     p.add_argument("--approve-spec-digest")
     p.add_argument("--i-approve-local-model", action="store_true")
     a = p.parse_args()
     try:
+        if a.stage == "init":
+            created = initialize(a.source, a.spec, a.target_path,
+                                 a.instruction, a.task_id)
+            print(canonical({"path": str(a.spec), "state": "FROZEN_SPEC_CREATED",
+                             "frozen_spec_digest": task_digest(created)}).decode())
+            return 0
         task = load_task(a.spec)
         # Plan performs NO model call, no Docker call and no writes.
         before = source_file(task, a.source)
