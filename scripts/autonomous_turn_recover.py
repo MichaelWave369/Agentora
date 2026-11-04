@@ -83,6 +83,8 @@ def recovery_authority(api, task, original_run, pr_number, head_sha,
              for k in ("actor", "triggering_actor")),
          "RECOVERY_NOT_OWNER_DISPATCHED_TRUSTED_MAIN")
     environment = api(BASE+"/environments/"+ENVIRONMENT)
+    need(type(environment.get("id")) is int and
+         environment.get("name") == ENVIRONMENT, "RECOVERY_ENVIRONMENT_IDENTITY")
     reviewers = [r for rule in environment.get("protection_rules", [])
                  if rule.get("type") == "required_reviewers"
                  for r in rule.get("reviewers", [])]
