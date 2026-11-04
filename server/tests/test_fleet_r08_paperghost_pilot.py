@@ -274,7 +274,7 @@ class FleetPilotTests(unittest.TestCase):
         self.assertIn("permissions:\n  contents: read", workflow)
         self.assertNotIn("contents: write", workflow)
         self.assertNotIn("actions: write", workflow)
-        self.assertNotIn("GITHUB_TOKEN, Docker socket or workspace root\n", "")
+        self.assertIn("No application secrets, GITHUB_TOKEN, Docker socket", workflow)
         self.assertIn("-e HOME=/tmp -e CI=true", workflow)
         self.assertNotIn("${{ inputs.target_repository }}", workflow)
         self.assertNotIn("${{ inputs.run_script }}", workflow)
