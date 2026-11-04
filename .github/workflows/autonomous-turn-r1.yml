@@ -1,0 +1,160 @@
+name: Autonomous Turn R1
+run-name: Autonomous Turn R1 · owner task review
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      task_json:
+        description: "Bounded task JSON exported by PhiMada (data, never shell)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  pull-requests: read
+
+# One fixed repository. R0.4 local SQLite leases are deliberately not mistaken
+# for distributed locks across hosted runners.
+concurrency:
+  group: agentora-autonomous-turn-r1
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'issues' && github.event.issue.user.id == 247459237 &&
+        startsWith(github.event.issue.title, 'Autonomous R1 task:')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      task_sha256: ${{ steps.plan.outputs.task_sha256 }}
+      task_json: ${{ steps.plan.outputs.task_json }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TASK_JSON: ${{ inputs.task_json || github.event.issue.body }}
+        run: python3 scripts/autonomous_turn.py plan
+      - uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-task-${{ github.run_id }}
+          path: turn-control/task.json
+          if-no-files-found: error
+          retention-days: 30
+
+  owner-authorization:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    # Configure exactly MichaelWave369 as required reviewer. No automation in
+    # this system has deployments:write or an API path that submits approvals.
+    environment: autonomous-turn-owner
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          TASK_JSON: ${{ needs.plan.outputs.task_json }}
+        run: python3 scripts/autonomous_turn.py authorize
+      - uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-authorization-${{ github.run_id }}
+          path: turn-control/authorization.json
+          if-no-files-found: error
+          retention-days: 30
+
+  attempt-0:
+    needs: [plan, owner-authorization]
+    uses: ./.github/workflows/autonomous-turn-attempt.yml
+    with:
+      task_json: ${{ needs.plan.outputs.task_json }}
+      source_sha: ${{ needs.plan.outputs.source_sha }}
+      attempt: 0
+    secrets:
+      publisher_key: ${{ secrets.AUTONOMOUS_PUBLISH_APP_KEY }}
+
+  attempt-1:
+    needs: [plan, attempt-0]
+    if: needs.attempt-0.outputs.state == 'CI_FAILED'
+    uses: ./.github/workflows/autonomous-turn-attempt.yml
+    with:
+      task_json: ${{ needs.plan.outputs.task_json }}
+      source_sha: ${{ needs.plan.outputs.source_sha }}
+      attempt: 1
+      previous_head: ${{ needs.attempt-0.outputs.head_sha }}
+      observation_sha256: ${{ needs.attempt-0.outputs.observation_sha256 }}
+    secrets:
+      publisher_key: ${{ secrets.AUTONOMOUS_PUBLISH_APP_KEY }}
+
+  attempt-2:
+    needs: [plan, attempt-1]
+    if: needs.attempt-1.outputs.state == 'CI_FAILED'
+    uses: ./.github/workflows/autonomous-turn-attempt.yml
+    with:
+      task_json: ${{ needs.plan.outputs.task_json }}
+      source_sha: ${{ needs.plan.outputs.source_sha }}
+      attempt: 2
+      previous_head: ${{ needs.attempt-1.outputs.head_sha }}
+      observation_sha256: ${{ needs.attempt-1.outputs.observation_sha256 }}
+    secrets:
+      publisher_key: ${{ secrets.AUTONOMOUS_PUBLISH_APP_KEY }}
+
+  merge-gate:
+    needs: [plan, attempt-0, attempt-1, attempt-2]
+    if: >-
+      always() && !cancelled() &&
+      (needs.attempt-0.outputs.state == 'CI_PASSED' ||
+       needs.attempt-1.outputs.state == 'CI_PASSED' ||
+       needs.attempt-2.outputs.state == 'CI_PASSED')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+      checks: write
+    env:
+      TASK_JSON: ${{ needs.plan.outputs.task_json }}
+      EXPECTED_BUNDLE_SHA256: ${{ needs.attempt-2.outputs.bundle_sha256 || needs.attempt-1.outputs.bundle_sha256 || needs.attempt-0.outputs.bundle_sha256 }}
+      EXPECTED_PUBLISHED_SHA256: ${{ needs.attempt-2.outputs.published_sha256 || needs.attempt-1.outputs.published_sha256 || needs.attempt-0.outputs.published_sha256 }}
+      FINAL_ATTEMPT: ${{ needs.attempt-2.outputs.state == 'CI_PASSED' && '2' || needs.attempt-1.outputs.state == 'CI_PASSED' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-worker-${{ github.run_id }}-${{ env.FINAL_ATTEMPT }}
+          path: turn-control
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-published-${{ github.run_id }}-${{ env.FINAL_ATTEMPT }}
+          path: turn-control
+      - name: Independently revalidate owner, exact diff, CI and GitHub policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/autonomous_turn.py finish --attempt "$FINAL_ATTEMPT"
+      - name: Retain verified result or explicit hold
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-result-${{ github.run_id }}
+          path: |
+            turn-control/turn-receipt.json
+            turn-control/hold.json
+          if-no-files-found: warn
+          retention-days: 30

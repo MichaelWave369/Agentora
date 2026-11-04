@@ -629,3 +629,7 @@ Pattern memory and suggestions remain heuristic/operator aids and never auto-app
 ### Fleet R0.3: PhiMada local verification intake (read-only)
 
 The offline Fleet R0.3 validator can accept an operator-downloaded PhiMada Prime Rung 8 request into a held review receipt. It **does not run tests, dispatch agents, revalidate remote HEAD, approve or merge PRs**. See [Fleet R0.3 intake guide](docs/FLEET_R03_VERIFICATION_INTAKE.md) for the CLI, trust boundary, data contract and tests.
+
+### ΦMada / Agentora Autonomous Turn R1 (installation and field qualification required)
+
+The [Autonomous Turn R1 guide](docs/AUTONOMOUS_TURN_R1.md) describes one owner-approved exact-edit task through an isolated worker, separate App publisher, actual PR CI, bounded repair and trusted merge gate, with a public GitHub result returned to PhiMada. It requires separately reviewed infrastructure, a scoped publisher App and a genuine protected-environment owner review of the task digest. It is a deterministic bounded worker, not a general model coder. A green infrastructure PR alone does not qualify the hosted loop or complete a project.
