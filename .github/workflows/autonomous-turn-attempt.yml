@@ -1,0 +1,180 @@
+name: Autonomous Turn R1 · bounded attempt
+
+on:
+  workflow_call:
+    inputs:
+      task_json:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      attempt:
+        required: true
+        type: number
+      previous_head:
+        default: ''
+        type: string
+      observation_sha256:
+        default: ''
+        type: string
+    secrets:
+      publisher_key:
+        required: true
+    outputs:
+      state:
+        value: ${{ jobs.observe.outputs.state }}
+      head_sha:
+        value: ${{ jobs.publish.outputs.head_sha }}
+      observation_sha256:
+        value: ${{ jobs.observe.outputs.observation_sha256 }}
+      bundle_sha256:
+        value: ${{ jobs.worker.outputs.bundle_sha256 }}
+      published_sha256:
+        value: ${{ jobs.publish.outputs.published_sha256 }}
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+  pull-requests: read
+
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Read-only checkout token, no publisher key, merge token or environment.
+    permissions:
+      contents: read
+    outputs:
+      bundle_sha256: ${{ steps.sandbox.outputs.bundle_sha256 }}
+    env:
+      TASK_JSON: ${{ inputs.task_json }}
+      EXPECTED_OBSERVATION_SHA256: ${{ inputs.observation_sha256 }}
+      ATTEMPT: ${{ inputs.attempt }}
+      PREVIOUS_HEAD: ${{ inputs.previous_head }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: MichaelWave369/Agentora
+          ref: ${{ inputs.source_sha }}
+          path: turn-source
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - if: inputs.attempt > 0
+        uses: actions/download-artifact@v4
+        with:
+          name: autonomous-observed-${{ github.run_id }}-${{ inputs.attempt == 2 && '1' || '0' }}
+          path: prior-control
+      - name: Exact-edit worker without GitHub or model credentials
+        shell: bash
+        run: |
+          if [[ "$ATTEMPT" == "0" ]]; then
+            python3 scripts/autonomous_turn.py work --attempt 0
+          else
+            python3 scripts/autonomous_turn.py work --attempt "$ATTEMPT" \
+              --previous-head "$PREVIOUS_HEAD" --failure prior-control/observation.json
+          fi
+      - id: sandbox
+        name: Fixed tests in credential-free network-disabled containers
+        run: python3 scripts/autonomous_turn.py sandbox
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-worker-${{ github.run_id }}-${{ inputs.attempt }}
+          path: |
+            turn-control/proposal.json
+            turn-control/sandbox.json
+            turn-control/hold.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  publish:
+    needs: worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      head_sha: ${{ steps.publish.outputs.head_sha }}
+      published_sha256: ${{ steps.publish.outputs.published_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-worker-${{ github.run_id }}-${{ inputs.attempt }}
+          path: turn-control
+      # The App is installed ONLY in Agentora, with Contents/PR write and
+      # Actions/Checks read. No administration or deployment approval access.
+      # Unlike GITHUB_TOKEN, its PR/push events actually trigger required CI.
+      - id: publisher-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.AUTONOMOUS_PUBLISH_APP_ID }}
+          private-key: ${{ secrets.publisher_key }}
+          owner: MichaelWave369
+          repositories: Agentora
+      - id: publish
+        env:
+          GH_TOKEN: ${{ steps.publisher-token.outputs.token }}
+          TASK_JSON: ${{ inputs.task_json }}
+          EXPECTED_BUNDLE_SHA256: ${{ needs.worker.outputs.bundle_sha256 }}
+          PREVIOUS_HEAD: ${{ inputs.previous_head }}
+          ATTEMPT: ${{ inputs.attempt }}
+        run: python3 scripts/autonomous_turn.py publish --attempt "$ATTEMPT" --previous-head "$PREVIOUS_HEAD"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-published-${{ github.run_id }}-${{ inputs.attempt }}
+          path: |
+            turn-control/published.json
+            turn-control/hold.json
+          retention-days: 30
+          if-no-files-found: warn
+
+  observe:
+    needs: [worker, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    outputs:
+      state: ${{ steps.observe.outputs.state }}
+      observation_sha256: ${{ steps.observe.outputs.observation_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-worker-${{ github.run_id }}-${{ inputs.attempt }}
+          path: turn-control
+      - uses: actions/download-artifact@v4
+        with:
+          name: autonomous-published-${{ github.run_id }}-${{ inputs.attempt }}
+          path: turn-control
+      - id: observe
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TASK_JSON: ${{ inputs.task_json }}
+          EXPECTED_BUNDLE_SHA256: ${{ needs.worker.outputs.bundle_sha256 }}
+          EXPECTED_PUBLISHED_SHA256: ${{ needs.publish.outputs.published_sha256 }}
+          ATTEMPT: ${{ inputs.attempt }}
+        run: python3 scripts/autonomous_turn.py observe --attempt "$ATTEMPT"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: autonomous-observed-${{ github.run_id }}-${{ inputs.attempt }}
+          path: |
+            turn-control/observation.json
+            turn-control/hold.json
+          retention-days: 30
+          if-no-files-found: warn

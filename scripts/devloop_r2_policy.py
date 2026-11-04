@@ -21,6 +21,7 @@ LOW_RISK_UI = frozenset({
 REVIEWER_PERMISSIONS = frozenset({"write", "admin"})
 _SHA = re.compile(r"^[a-f0-9]{40}$")
 _LOGIN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37})$")
+_BOT_LOGIN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37})\[bot\]$")
 
 
 class CodeHeld(Exception):
@@ -126,7 +127,7 @@ def require_independent_review(api, token, number, head_sha, author_login):
     Disregard self-attested PR body, labels, comments, stale approvals, and bot reviews.
     Any outstanding latest CHANGES_REQUESTED is a hard hold.
     """
-    if not isinstance(author_login, str) or not _LOGIN.fullmatch(author_login):
+    if not isinstance(author_login, str) or not (_LOGIN.fullmatch(author_login) or _BOT_LOGIN.fullmatch(author_login)):
         raise CodeHeld("R2_AUTHOR_IDENTITY_INVALID")
     reviews = api(token, f"/repos/{REPO}/pulls/{number}/reviews?per_page=100")
     if not isinstance(reviews, list) or len(reviews) >= 100:
@@ -136,7 +137,7 @@ def require_independent_review(api, token, number, head_sha, author_login):
         if not isinstance(r, dict) or not isinstance(r.get("user"), dict):
             raise CodeHeld("R2_REVIEW_EVIDENCE_INVALID")
         login = r["user"].get("login")
-        if not isinstance(login, str) or not _LOGIN.fullmatch(login):
+        if not isinstance(login, str) or not (_LOGIN.fullmatch(login) or _BOT_LOGIN.fullmatch(login)):
             raise CodeHeld("R2_REVIEWER_IDENTITY_INVALID")
         most_recent[login.lower()] = r
     if any(r.get("state") == "CHANGES_REQUESTED" for r in most_recent.values()):
