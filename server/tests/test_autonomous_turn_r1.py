@@ -1,5 +1,6 @@
 """R1 local and synthetic-API verification. NOT hosted field qualification."""
 from copy import deepcopy
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 import base64
 import hashlib
@@ -12,6 +13,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -277,6 +279,40 @@ class AutonomousContractTests(unittest.TestCase):
             self.assertTrue(any("dst=/src,readonly" in arg for arg in command))
             self.assertNotIn("SENTINEL", str(calls))
             self.assertNotIn("docker.sock", str(calls))
+
+    def test_api_audit_excludes_credentials_and_payload_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"audit.jsonl"
+            api=g.GitHub("SENTINEL_SECRET",audit_path=path)
+            fake=SimpleNamespace(open=lambda *a,**k:nullcontext(SimpleNamespace(status=201,
+                read=lambda size:b'{"sha":"test-result"}')))
+            with patch.object(g,"build_opener",return_value=fake):
+                api(g.BASE+"/git/refs",{"ref":"refs/heads/test","sha":SOURCE})
+            raw=path.read_text(); row=json.loads(raw)
+            self.assertEqual(row["method"],"POST"); self.assertEqual(row["status"],201)
+            self.assertEqual(row["path"],g.BASE+"/git/refs")
+            self.assertEqual(row["request_sha256"],c.digest(c.canonical({"ref":"refs/heads/test","sha":SOURCE})))
+            for secret in ("SENTINEL_SECRET","test-result","refs/heads/test"):
+                self.assertNotIn(secret,raw)
+
+    def test_signed_log_redirect_never_receives_bearer_and_offhost_redirect_holds(self):
+        for host in ("logs.blob.core.windows.net","evil.invalid"):
+            requests=[]
+            def open_request(request,timeout):
+                requests.append(request)
+                if len(requests)==1:
+                    raise HTTPError(request.full_url,302,"Found",{"Location":f"https://{host}/signed?sig=SECRET"},None)
+                return nullcontext(SimpleNamespace(status=200,read=lambda size:b'failure log fixture'))
+            fake=SimpleNamespace(open=open_request)
+            api=g.GitHub("SENTINEL_SECRET")
+            with patch.object(g,"build_opener",return_value=fake):
+                if host=="evil.invalid":
+                    with self.assertRaisesRegex(c.Held,"LOG_REDIRECT_REFUSED"): api.log_tail(12)
+                    self.assertEqual(len(requests),1)
+                else:
+                    self.assertEqual(api.log_tail(12),'failure log fixture')
+                    self.assertEqual(requests[0].get_header("Authorization"),"Bearer SENTINEL_SECRET")
+                    self.assertIsNone(requests[1].get_header("Authorization"))
 
 
 class AutonomousGitHubTests(unittest.TestCase):

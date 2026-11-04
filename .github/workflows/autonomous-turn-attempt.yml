@@ -138,6 +138,7 @@ jobs:
           path: |
             turn-control/published.json
             turn-control/hold.json
+            turn-control/network-audit.jsonl
           retention-days: 30
           if-no-files-found: warn
 
@@ -176,5 +177,6 @@ jobs:
           path: |
             turn-control/observation.json
             turn-control/hold.json
+            turn-control/network-audit.jsonl
           retention-days: 30
           if-no-files-found: warn

@@ -175,7 +175,7 @@ def main():
             else:
                 sandbox(task, args.candidate, directory)
             return 0
-        api = GitHub(os.environ["GH_TOKEN"])
+        api = GitHub(os.environ["GH_TOKEN"], audit_path=directory/"network-audit.jsonl")
         run_id, control_sha = int(os.environ["GITHUB_RUN_ID"]), os.environ["GITHUB_SHA"]
         if args.stage == "plan":
             identity(api)

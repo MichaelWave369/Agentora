@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 import re
 import time
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse, quote
 from urllib.request import Request, urlopen, build_opener, HTTPRedirectHandler
@@ -27,11 +28,29 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 class GitHub:
-    def __init__(self, token):
+    def __init__(self, token, audit_path=None):
         self.token = token
+        self.audit_path = Path(audit_path) if audit_path else None
+        self.audit_count = 0
+
+    def audit(self, path, method, payload, status, response_digest=None):
+        if self.audit_path is None:
+            return
+        self.audit_count += 1
+        need(self.audit_count <= 2000, "API_REQUEST_BUDGET")
+        self.audit_path.parent.mkdir(parents=True, exist_ok=True)
+        need(not self.audit_path.is_symlink(), "AUDIT_PATH_UNSAFE")
+        row = {"sequence": self.audit_count, "method": method, "path": path,
+               "request_sha256": digest(canonical(payload)), "status": status,
+               "response_sha256": response_digest,
+               "observed_utc": datetime.now(timezone.utc).isoformat()}
+        # No bearer, payload text, signed redirect URL or response body is saved.
+        with self.audit_path.open("ab") as stream:
+            stream.write(canonical(row)+b"\n")
 
     def __call__(self, path, payload=None, method=None):
         need(path == "/graphql" or path.startswith(BASE + "/") or path == BASE, "API_PATH")
+        need(self.audit_count < 2000, "API_REQUEST_BUDGET")
         request = Request("https://api.github.com"+path,
             data=None if payload is None else canonical(payload),
             method=method or ("POST" if payload is not None else "GET"),
@@ -40,24 +59,34 @@ class GitHub:
                      "Content-Type": "application/json",
                      "X-GitHub-Api-Version": "2022-11-28",
                      "User-Agent": "agentora-autonomous-turn-r1"})
+        status, response_digest = None, None
+        verb = method or ("POST" if payload is not None else "GET")
         try:
             with build_opener(NoRedirect()).open(request, timeout=20) as response:
+                status = response.status
                 raw = response.read(2_000_001)
             need(len(raw) <= 2_000_000, "API_RESPONSE_SIZE")
+            response_digest = digest(raw)
             return json.loads(raw)
         except HTTPError as exc:
+            status = exc.code
             raise Held("GITHUB_HTTP_"+str(exc.code)) from None
         except (URLError, TimeoutError, ValueError):
             raise Held("GITHUB_API_UNAVAILABLE") from None
+        finally:
+            self.audit(path, verb, payload, status, response_digest)
 
     def log_tail(self, job_id):
         # The signed redirect is fetched WITHOUT the API bearer token.
+        need(self.audit_count < 2000, "API_REQUEST_BUDGET")
         request = Request("https://api.github.com"+BASE+f"/actions/jobs/{job_id}/logs",
             headers={"Authorization": "Bearer "+self.token,
                      "Accept": "application/vnd.github+json"})
+        status, response_digest = None, None
         try:
             try:
                 with build_opener(NoRedirect()).open(request, timeout=20) as response:
+                    status = response.status
                     raw = response.read(1_000_001)
             except HTTPError as redirect:
                 need(redirect.code == 302, "LOG_DOWNLOAD_REFUSED")
@@ -68,8 +97,10 @@ class GitHub:
                      parsed.port in (None, 443) and not parsed.username and not parsed.password,
                      "LOG_REDIRECT_REFUSED")
                 with build_opener(NoRedirect()).open(Request(target), timeout=20) as response:
+                    status = response.status
                     raw = response.read(1_000_001)
             need(len(raw) <= 1_000_000, "LOG_DOWNLOAD_SIZE")
+            response_digest = digest(raw)
             # Remove workflow commands, control characters and common secret values.
             text = raw[-32768:].decode("utf-8", errors="replace")
             text = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", text)
@@ -77,6 +108,8 @@ class GitHub:
             return text.replace("::", ": :")
         except (HTTPError, URLError, TimeoutError, ValueError):
             raise Held("LOG_DOWNLOAD_UNAVAILABLE") from None
+        finally:
+            self.audit(BASE+f"/actions/jobs/{job_id}/logs", "GET", None, status, response_digest)
 
 
 def identity(api):
