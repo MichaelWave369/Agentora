@@ -17,7 +17,8 @@ Agentora is a **local-first, private-by-default, memory-aware agent operating st
 - `POST /api/atelier/direct`: explicit-confirmation, locally enabled structured Ollama text proposal (disabled by default).
 - Marketplace starter template `PhiAtelier` defines ArtCurator, ArtDirector, ArtCritic roles with no tools.
 - **Rung 3:** opt-in approved-only ΦLoad visual knowledge context and `POST /api/atelier/render-plan` for a digest-pinned ComfyUI workflow preview. No renderer is contacted.
-- Read [PhiAtelier documentation and setup](docs/PHI_ATELIER.md). No image rendering, training on artworks or automatic publishing.
+- **Rung 4 (opt-in):** operator-key-protected local ComfyUI queue, job status, targeted cancellation, and bounded image retrieval. No automatic renders or publishing.
+- See [PhiAtelier architecture](docs/PHI_ATELIER.md) and [Rung 4 local render setup](docs/PHI_ATELIER_RENDER_BRIDGE.md). No training on artworks or automatic publishing.
 
 ## Quickstart (recommended one-PC path)
 
