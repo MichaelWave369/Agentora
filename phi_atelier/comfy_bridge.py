@@ -143,6 +143,9 @@ class ComfyRenderBridge:
             self._jobs[job_id] = {
                 "prompt_id": job_id,
                 "workflow_digest": digest,
+                "positive_prompt": graph["6"]["inputs"]["text"],
+                "negative_prompt": graph["7"]["inputs"]["text"],
+                "seed": graph["3"]["inputs"]["seed"],
                 "status": "submission_unknown",
                 "render_status": "unverified",
                 "image_ready": False,
