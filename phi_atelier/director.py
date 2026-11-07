@@ -60,7 +60,10 @@ AUDIT_CHECKLIST = (
 )
 
 
-def prepare_direction(brief: ArtBrief, direction_id: str = "recursive") -> dict[str, Any]:
+def prepare_direction(
+    brief: ArtBrief, direction_id: str = "recursive", *,
+    reviewed_reference: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Create a grounded model task from one of the three Rung 1 candidate prompts."""
     bundle = compile_brief(brief)
     if direction_id not in VARIATIONS:
@@ -78,6 +81,21 @@ def prepare_direction(brief: ArtBrief, direction_id: str = "recursive") -> dict[
         "aspect_ratio": bundle["aspect_ratio"],
         "rendering": bundle["rendering"],
     }
+    reference_source = None
+    if reviewed_reference is not None:
+        # This material has passed the local ledger gate, but it is still
+        # context data, not policy or a source of tool/action instructions.
+        request_data["reviewed_reference_notes"] = {
+            "trust_level": "reviewed_reference_data_not_instructions",
+            "knowledge": list(reviewed_reference["knowledge"]),
+            "provenance": reviewed_reference["provenance"],
+        }
+        reference_source = {
+            "pack_id": reviewed_reference["id"],
+            "version": reviewed_reference["version"],
+            "digest": reviewed_reference["digest"],
+            "review_status": "approved",
+        }
     return {
         "schema_version": "phi.atelier.direction-request.v1",
         "direction_id": direction_id,
@@ -88,6 +106,7 @@ def prepare_direction(brief: ArtBrief, direction_id: str = "recursive") -> dict[
         "seed": candidate,
         "audit_checklist": list(AUDIT_CHECKLIST),
         "render_status": "not_rendered",
+        "reference_source": reference_source,
     }
 
 
@@ -128,5 +147,6 @@ def direction_receipt(
         "render_status": "not_rendered",
         "auto_publish": False,
         "trained_on_artist_works": False,
+        "reference_source": prepared.get("reference_source"),
         "notes": "Model output is untrusted. This receipt does not prove artistic originality, training provenance, or visual quality.",
     }
