@@ -81,6 +81,8 @@ class CandidateTests(unittest.TestCase):
         patch, info = self.apply()
         self.assertEqual(info["file"], "src/reponerve.jsx")
         self.assertEqual(info["changed_file_count"], 1)
+        self.assertEqual(info["candidate_branch"], "r6/local-copy-fix-" + self.sha[:12])
+        self.assertEqual(git(self.root, "branch", "--show-current"), info["candidate_branch"])
         self.assertEqual(info["patch_sha256"], hashlib.sha256(patch).hexdigest())
         self.assertIn(b"Reserved when imported", patch)
         self.assertIn(b"Reserved at display time", patch)
