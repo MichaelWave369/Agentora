@@ -39,3 +39,11 @@
 
 .atelier-download{display:inline-flex;align-items:center;padding:8px 10px;border:1px solid #64748b;border-radius:8px;font-size:.8rem}
 .atelier-target{display:block;margin-top:9px;overflow-wrap:anywhere}
+
+.atelier-vision{padding:16px;margin:16px 0;border:1px solid #64748b;border-radius:12px;background:var(--bg)}
+.atelier-vision h4{margin:0 0 10px;font-size:1rem}
+.atelier-vision-result{padding:12px 0;margin-top:15px;border-top:1px solid #64748b}
+.atelier-vision-result dl{display:grid;grid-template-columns:minmax(120px,180px) minmax(0,1fr);gap:8px 12px;font-size:.88rem;line-height:1.5}
+.atelier-vision-result dt{font-weight:700}
+.atelier-vision-result dd{margin:0;overflow-wrap:anywhere}
+@media(max-width:640px){.atelier-vision-result dl{grid-template-columns:1fr}.atelier-vision-result dd{margin-bottom:9px}}
