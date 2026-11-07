@@ -89,3 +89,82 @@ renderer was connected, no external knowledge retrieval is performed by the
 endpoint, and no file, GitHub, marketplace-install or publishing side effects
 occur in these preview/direct calls. Human evaluation and a consented local
 ComfyUI adapter are later rungs. Do not describe these future capabilities as current functionality.
+
+
+## Rung 3: reviewed ΦLoad knowledge and ComfyUI draft workflow
+
+The optional Rung 3 knowledge bridge uses the **same local PhiRepoNerve v1
+pack digest and approval ledger semantics**, including checking the entire
+hash-chained review history. Missing approval, a changed pack or an explicit
+revocation blocks knowledge-assisted direction. The gate uses standard-library
+read-only SQLite and does not import or execute pack files.
+
+### Review the real pack on your workstation
+
+From your PhiRepoNerve checkout:
+
+```bash
+python -m phireponerve.cli reviews status
+python -m phireponerve.cli reviews approve --pack create.visual-grammar --reason "I inspected the original-art guidance and source links"
+python -m phireponerve.cli chamber assemble --pack create.visual-grammar
+```
+
+**The agent never grants itself approval.** Human review must happen on the
+local machine. The review ledger is **not** a cryptographic identity or
+tamper-proof signature against a compromised machine.
+
+Configure the Agentora server process environment on the same machine:
+```bash
+AGENTORA_ATELIER_KNOWLEDGE_ENABLED=true
+AGENTORA_ATELIER_PACK_PATH=/absolute/path/to/PhiRepoNerve/phireponerve/packs/create.visual-grammar.json
+AGENTORA_ATELIER_REVIEWS_DB=/absolute/path/to/.phireponerve/pack_reviews.sqlite3
+```
+
+These are configuration values, not shell commands. Supply Windows absolute
+paths when running Windows. Enabling the knowledge gate with a missing
+file or unapproved pack fails closed (HTTP 503); disabled mode keeps the
+Rung 2 base prompt composer working. The source ID, version, digest and review
+status appear in the model proposal receipt. The reference material remains
+lower-trust creative context and never becomes an instruction authority.
+
+### ComfyUI API workflow preview (no render)
+
+PhiAtelier now creates an exact JSON *draft* of ComfyUI's basic
+CheckpointLoaderSimple → CLIPTextEncode → EmptyLatentImage → KSampler →
+VAEDecode → SaveImage text-to-image graph. The graph is content-digested
+and constrained to one image, bounded latent sizes, seed, step count, and CFG.
+A default API-compatible graph is **not proof** of checkpoint compatibility,
+license rights, memory sufficiency or rendering success.
+
+Set `AGENTORA_ATELIER_CHECKPOINT` to the name of a locally installed,
+trusted `.safetensors` checkpoint (just its filename, no directories):
+
+```bash
+AGENTORA_ATELIER_CHECKPOINT=my-approved-model.safetensors
+```
+
+Then, with Agentora running on loopback:
+
+```bash
+curl -X POST http://127.0.0.1:8088/api/atelier/render-plan \
+  -H 'Content-Type: application/json' \
+  -d '{"positive_prompt":"Original recursive glass city at sunrise","negative_prompt":"watermarks, broken architecture","aspect_ratio":"16:9","seed":369,"steps":24,"cfg":7.0}'
+```
+
+The response includes an inspectable `workflow`, SHA-256 digest,
+`status: DRAFT_NOT_SUBMITTED`, `execution_enabled: false` and
+`server_contacted: false`. This endpoint **does not call ComfyUI**.
+A subsequent rung will need a separately authorized, locally bound
+queue adapter and a human-reviewed checkpoint before any GPU job runs.
+Do not expose Agentora or ComfyUI outside the workstation.
+
+ComfyUI API-format nodes were checked against their official reference
+example: https://github.com/comfyorg/comfyui/blob/master/script_examples/basic_api_example.py
+
+### Test
+```bash
+PYTHONPATH=.:server pytest -q server/tests/test_phi_atelier_r2.py server/tests/test_phi_atelier_r3.py
+```
+
+No generated images, model fine-tuning, background job scheduling, third-party
+image uploads or automatic publishing are part of Rung 3.
