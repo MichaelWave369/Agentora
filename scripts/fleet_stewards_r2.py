@@ -50,8 +50,8 @@ def main(argv=None):
     rotation.add_argument("--request-id", required=True)
     rotation.add_argument("--count", type=int, default=3)
     args = parser.parse_args(argv)
-    registry = StewardRegistry(args.db)
     try:
+        registry = StewardRegistry(args.db)
         if args.command == "ingest":
             path = args.input.expanduser()
             if not path.is_file() or path.is_symlink() or not 0 < path.stat().st_size <= MAX_INPUT_BYTES:
