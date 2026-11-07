@@ -679,3 +679,16 @@ training run.
 
 See [Training Assignment R2](docs/CONSTRUCT_TRAINING_ASSIGNMENT_R2.md)
 for trust and operator boundaries.
+
+
+## ΦConstruct R3: source-and-lease evidence, without fake training claims
+
+The local `scripts/construct_training_evidence.py` command
+now reuses Agentora's independent read-only R0.5 GitHub HEAD checker
+together with the existing R3 fenced worker reservation. It checks
+source identity and branch HEAD twice, repeats after review, and
+revalidates the steward/lease. All training-result claims, including
+`reported_pass`, remain **unattested** and create
+no execution or deployment authority.
+
+See [Construct R3](docs/CONSTRUCT_TRAINING_EVIDENCE_R3.md).
