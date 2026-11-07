@@ -1,4 +1,4 @@
-# ΦAtelier: artist-agent foundation (Rung 1)
+# ΦAtelier: artist-agent foundation (Rung 1 + Rung 2 proposal)
 
 ## Mission
 
@@ -31,6 +31,61 @@ python -m unittest discover -s tests -p 'test_phi_atelier.py' -v
 - **ΦLoad/ΦSect in PhiRepoNerve:** versioned and reviewed art knowledge packs and event hints, not a substitute for model training or permission to act.
 - **PixelForge / PhiOS:** optional downstream consumer of approved concept art, textures and world-design briefs.
 
-## Not yet implemented
+## Rung 2: local-model art director (proposed in this PR)
 
-No model inference, adaptive agent reasoning, art-history retrieval, art image training, self-critique, image generation, ComfyUI bridge, PhiOS installation or UI route. The compiler creates useful deterministic prompt seeds only. Do not describe these future capabilities as current functionality.
+Agentora now has an optional text-only API and a marketplace template for a
+Curator → ArtDirector → ArtCritic team. The template defines agent roles; it is
+**not installed automatically** and does not confer tool permissions.
+
+**Offline preview, no model call**:
+
+```bash
+curl -X POST http://127.0.0.1:8088/api/atelier/preview \
+  -H 'Content-Type: application/json' \
+  -d '{"concept":"A recursive forest of shared memories","symbolism":"Dream and waking overlap","influences":{"escher":3,"dali":2,"picasso":1}}'
+```
+
+**Optional local Ollama art direction** (requires the operator to explicitly
+enable it in the Agentora server environment, with a real local Ollama model):
+
+```bash
+export AGENTORA_ATELIER_MODEL_ENABLED=true
+export AGENTORA_USE_MOCK_OLLAMA=false
+export OLLAMA_URL=http://127.0.0.1:11434
+export AGENTORA_CHAT_MODEL=gemma3:12b
+# Start the Agentora server with these settings, then:
+curl -X POST http://127.0.0.1:8088/api/atelier/direct \
+  -H 'Content-Type: application/json' \
+  -d '{"brief":{"concept":"A city reflecting on its own existence","symbolism":"The shared unconscious"},"direction":"recursive","confirm_model_call":true}'
+```
+
+The endpoint uses Agentora's existing Ollama client and requests strict structured
+JSON. It validates the model response and returns an **unreviewed** direction
+receipt, including a candid critique and improvement plan. This is one model
+inference per explicit request, **not** an autonomous iterative loop.
+Malformed output is rejected instead of displayed as authoritative.
+A browser request from a nonlocal Origin is refused; keep the service
+bound to loopback and never expose this route to the public internet.
+
+### ΦLoad curation pack
+
+The companion `create.visual-grammar` knowledge pack in PhiRepoNerve contains
+museum-sourced **high-level principles**, plus source URLs, for human approval.
+It remains **unreviewed by default** and is **not automatically ingested** into
+Agentora. The operator must inspect and explicitly approve its exact content
+digest using PhiRepoNerve's existing `reviews approve` workflow before any
+future approved-only model bridge is developed. Source references are not
+permissions to copy images or to construct a training dataset.
+
+### Tests and boundaries
+
+```bash
+python -m unittest discover -s tests -p 'test_phi_atelier.py' -v
+PYTHONPATH=.:server pytest -q server/tests/test_phi_atelier_r2.py
+```
+
+No artist-specific model weights were trained. No image was generated, no UI
+renderer was connected, no external knowledge retrieval is performed by the
+endpoint, and no file, GitHub, marketplace-install or publishing side effects
+occur in these preview/direct calls. Human evaluation and a consented local
+ComfyUI adapter are later rungs. Do not describe these future capabilities as current functionality.
