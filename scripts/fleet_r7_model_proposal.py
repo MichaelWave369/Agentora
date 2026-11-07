@@ -106,6 +106,13 @@ def read_file(path, *, max_bytes=MAX_PROPOSAL_BYTES):
     return path.read_bytes()
 
 
+def valid_model_name(value):
+    return (type(value) is str and MODEL_NAME.fullmatch(value) is not None
+            and not any(segment in ("", ".", "..") for segment in value.split("/"))
+            and not value.startswith((".", "/", "-", ":"))
+            and "://" not in value)
+
+
 def _fragment(value):
     require(type(value) is str and 1 <= len(value.encode("utf-8")) <= MAX_FRAGMENT_BYTES
             and "\x00" not in value and "\r" not in value
@@ -125,8 +132,7 @@ def validate_proposal(data, source_sha, original_bytes):
             and data["dispatch_authorized"] is False
             and data["merge_authorized"] is False,
             "PROPOSAL_SCOPE_OR_AUTHORITY_INVALID")
-    require(type(data["model_label"]) is str
-            and bool(MODEL_NAME.fullmatch(data["model_label"])),
+    require(valid_model_name(data["model_label"]),
             "MODEL_LABEL_INVALID")
     require(type(data["original_sha256"]) is str
             and bool(SHA256.fullmatch(data["original_sha256"]))
@@ -204,7 +210,7 @@ def suggest_local(sha, checkout, preflight_record, model, task, *,
                   model_request=local_ollama):
     """Optional local inference, with no GitHub write and no automatic apply."""
     validate_preflight(preflight_record, sha)
-    require(type(model) is str and MODEL_NAME.fullmatch(model) is not None,
+    require(valid_model_name(model),
             "MODEL_NAME_INVALID")
     require(type(task) is str and 12 <= len(task) <= 240
             and "\x00" not in task, "TASK_INVALID")
