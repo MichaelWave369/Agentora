@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import os
+import hmac
 from urllib.parse import urlsplit
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
@@ -14,8 +16,10 @@ from phi_atelier import ArtBrief, compile_brief
 from phi_atelier.director import AUDIT_CHECKLIST, direction_receipt, prepare_direction
 from phi_atelier.knowledge import KnowledgeUnavailable, load_approved_visual_grammar
 from phi_atelier.render_plan import build_render_plan
+from phi_atelier.comfy_bridge import ComfyRenderBridge, RenderBridgeError
 
 router = APIRouter(prefix="/api/atelier", tags=["atelier"])
+comfy_bridge = ComfyRenderBridge()
 
 
 class ArtBriefInput(BaseModel):
@@ -44,6 +48,15 @@ class RenderPlanInput(BaseModel):
     cfg: float = Field(default=7.0, ge=1.0, le=12.0)
 
 
+class RenderSubmitInput(RenderPlanInput):
+    workflow_digest: str = Field(min_length=71, max_length=71)
+    approve_gpu_render: bool = False
+
+
+class CancelRenderInput(BaseModel):
+    confirm_cancel: bool = False
+
+
 def _brief(payload: ArtBriefInput) -> ArtBrief:
     return ArtBrief(**payload.model_dump())
 
@@ -61,6 +74,37 @@ def _check_origin(request: Request) -> None:
         "localhost", "127.0.0.1", "::1"
     ) or parsed.username or parsed.password:
         raise HTTPException(status_code=403, detail="local origin required")
+
+
+def _require_render_operator(request: Request) -> None:
+    """Refuse remote hosts, cross-site calls, missing key, or disabled renderer."""
+    _check_origin(request)
+    if request.url.hostname not in ("localhost", "127.0.0.1", "::1"):
+        raise HTTPException(status_code=403, detail="render control is loopback-only")
+    if os.environ.get("AGENTORA_ATELIER_RENDER_ENABLED", "").lower() != "true":
+        raise HTTPException(status_code=404, detail="local rendering disabled")
+    operator_key = os.environ.get("AGENTORA_ATELIER_RENDER_KEY", "")
+    supplied = request.headers.get("x-atelier-operator-key", "")
+    if (len(operator_key) < 24 or len(supplied) > 256
+            or not operator_key.isascii() or not supplied.isascii()
+            or not hmac.compare_digest(supplied, operator_key)):
+        raise HTTPException(status_code=403, detail="operator key required")
+
+
+def _render_draft(payload: RenderPlanInput) -> dict:
+    checkpoint = os.environ.get("AGENTORA_ATELIER_CHECKPOINT", "")
+    if not checkpoint:
+        raise HTTPException(status_code=503, detail="operator checkpoint not configured")
+    try:
+        return build_render_plan(
+            positive_prompt=payload.positive_prompt,
+            negative_prompt=payload.negative_prompt,
+            checkpoint=checkpoint,
+            aspect_ratio=payload.aspect_ratio,
+            seed=payload.seed, steps=payload.steps, cfg=payload.cfg,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/preview")
@@ -125,17 +169,56 @@ async def direct(payload: DirectorInput, request: Request):
 def render_plan(payload: RenderPlanInput, request: Request):
     """Build one ComfyUI API-format workflow without any network or GPU call."""
     _check_origin(request)
-    checkpoint = os.environ.get("AGENTORA_ATELIER_CHECKPOINT", "")
-    if not checkpoint:
-        raise HTTPException(status_code=503, detail="operator checkpoint not configured")
+    return {"ok": True, "plan": _render_draft(payload)}
+
+
+@router.post("/render/submit")
+async def submit_render(payload: RenderSubmitInput, request: Request):
+    """Each job needs an explicit digest-matched approval and operator secret."""
+    _require_render_operator(request)
+    if payload.approve_gpu_render is not True:
+        raise HTTPException(status_code=403, detail="explicit GPU-render approval required")
+    draft = _render_draft(payload)
+    if not hmac.compare_digest(payload.workflow_digest, draft["workflow_digest"]):
+        raise HTTPException(status_code=409, detail="render plan changed since preview")
     try:
-        result = build_render_plan(
-            positive_prompt=payload.positive_prompt,
-            negative_prompt=payload.negative_prompt,
-            checkpoint=checkpoint,
-            aspect_ratio=payload.aspect_ratio,
-            seed=payload.seed, steps=payload.steps, cfg=payload.cfg,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"ok": True, "plan": result}
+        record = await comfy_bridge.submit(draft)
+    except RenderBridgeError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return {"ok": True, "job": record}
+
+
+@router.get("/render/{prompt_id}/status")
+async def render_status(prompt_id: str, request: Request):
+    _require_render_operator(request)
+    try:
+        record = await comfy_bridge.status(prompt_id)
+    except RenderBridgeError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return {"ok": True, "job": record}
+
+
+@router.get("/render/{prompt_id}/image")
+async def render_image(prompt_id: str, request: Request):
+    _require_render_operator(request)
+    try:
+        pixels, mime = await comfy_bridge.image(prompt_id)
+    except RenderBridgeError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return Response(content=pixels, media_type=mime, headers={
+        "Cache-Control": "no-store",
+        "Content-Disposition": 'inline; filename="PhiAtelier-result"',
+        "X-Content-Type-Options": "nosniff",
+    })
+
+
+@router.post("/render/{prompt_id}/cancel")
+async def cancel_render(prompt_id: str, payload: CancelRenderInput, request: Request):
+    _require_render_operator(request)
+    if not payload.confirm_cancel:
+        raise HTTPException(status_code=403, detail="explicit cancellation confirmation required")
+    try:
+        record = await comfy_bridge.cancel(prompt_id)
+    except RenderBridgeError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return {"ok": True, "job": record}
