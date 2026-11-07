@@ -42,8 +42,8 @@ The workflow performs these phases:
    PhiMadaPrime identity and exact GitHub HEAD, twice.
 2. GitHub Actions checks out that exact commit with credentials not
    persisted and no Git submodules or LFS.
-3. R6 produces a single deterministic local source edit and immutable
-   original/candidate/patch SHA-256 metadata. It checks the Git checkout SHA.
+3. R6 creates a disposable local-only branch and produces one deterministic
+   source edit with original/candidate/patch SHA-256 metadata. It checks the Git checkout SHA.
 4. Dependencies are installed using npm --ignore-scripts.
 5. Tests and build execute in ephemeral, non-root Docker containers with
    no network, no extra capabilities, a read-only source mount, CPU/memory
