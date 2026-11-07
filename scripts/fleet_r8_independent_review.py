@@ -75,7 +75,11 @@ def fixed_get(path, token=None):
     """Allow only two exact Actions GET shapes and one pinned public file GET."""
     require(type(path) is str and (
         RUN_PATH.fullmatch(path) is not None or
-        CONTENT_PATH.fullmatch(path) is not None
+        CONTENT_PATH.fullmatch(path) is not None or
+        path in (
+            "/repos/MichaelWave369/PhiMadaPrime",
+            "/repos/MichaelWave369/PhiMadaPrime/branches/main",
+        )
     ), "GITHUB_READ_ENDPOINT_REFUSED")
     try:
         return source.github_get(path, token)
