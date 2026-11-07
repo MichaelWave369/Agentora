@@ -656,3 +656,24 @@ An optional `--report inspected-report.json` correlates a **claimed** result.
 Every outcome stays held for operator review. The receiver cannot
 authenticate an agent, reserve a worker, execute code or authorize
 dispatch/merges/deployments. See [Training Intake R1](docs/CONSTRUCT_TRAINING_INTAKE_R1.md).
+
+
+## ΦConstruct Training Assignment R2
+
+Agentora can now preview a PhiRepoNerve training handoff bound to an
+existing **held R0.3 public repository intake**, or explicitly review
+it against a **current R3 fenced worker reservation**. No new worker
+lease is issued, and no execution, deployment, or merge authority is
+granted. This is a local point-in-time binding, not an authenticated
+training run.
+
+    python scripts/construct_training_assignment.py \
+      --handoff request.json --intake verification-intake.json
+
+    python scripts/construct_training_assignment.py \
+      --handoff request.json --intake verification-intake.json \
+      --lease-file ~/.agentora/private/worker-alpha.lease \
+      --confirm BIND_TRAINING_TO_EXISTING_LEASE
+
+See [Training Assignment R2](docs/CONSTRUCT_TRAINING_ASSIGNMENT_R2.md)
+for trust and operator boundaries.
