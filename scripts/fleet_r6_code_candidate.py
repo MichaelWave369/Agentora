@@ -93,7 +93,7 @@ def run_git(checkout, *args):
     except (OSError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
         raise CandidateHeld("GIT_CHECK_FAILED") from None
     require(len(result.stdout) <= 16000, "GIT_OUTPUT_TOO_LARGE")
-    return result.stdout.strip()
+    return result.stdout
 
 
 def validate_checkout(checkout, sha, *, clean):
@@ -102,18 +102,18 @@ def validate_checkout(checkout, sha, *, clean):
     checkout = Path(checkout)
     require(checkout.is_dir() and not checkout.is_symlink(), "CHECKOUT_UNSAFE")
     root = checkout.resolve()
-    require(run_git(root, "rev-parse", "--show-toplevel") == str(root),
+    require(run_git(root, "rev-parse", "--show-toplevel").strip() == str(root),
             "NOT_CHECKOUT_ROOT")
-    require(run_git(root, "rev-parse", "HEAD") == sha,
+    require(run_git(root, "rev-parse", "HEAD").strip() == sha,
             "CHECKOUT_SHA_MISMATCH")
-    files = run_git(root, "diff", "--name-only", "--no-ext-diff")
+    files = run_git(root, "diff", "--name-only", "--no-ext-diff").strip()
     if clean:
         require(files == "" and
-                run_git(root, "diff", "--cached", "--name-only") == "",
+                run_git(root, "diff", "--cached", "--name-only").strip() == "",
                 "CHECKOUT_NOT_CLEAN")
     else:
         require(files == FILE and
-                run_git(root, "diff", "--cached", "--name-only") == "",
+                run_git(root, "diff", "--cached", "--name-only").strip() == "",
                 "OUT_OF_SCOPE_TRACKED_CHANGE")
     return root
 
