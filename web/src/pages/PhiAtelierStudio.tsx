@@ -42,6 +42,7 @@ export default function PhiAtelierStudio() {
   const [approved,setApproved] = useState(false)
   const [jobs,setJobs] = useState<Job[]>([])
   const [images,setImages] = useState<Record<string,string>>({})
+  const [imageTypes,setImageTypes] = useState<Record<string,string>>({})
   const imageUrls = useRef<Record<string,string>>({})
   const [compare,setCompare] = useState<string[]>([])
   const [target,setTarget] = useState<string|null>(null)
@@ -93,7 +94,7 @@ export default function PhiAtelierStudio() {
     if (!['image/png','image/jpeg','image/webp'].includes(blob.type)) throw new Error('Unsupported image type')
     const url = URL.createObjectURL(blob)
     if (imageUrls.current[id]) URL.revokeObjectURL(imageUrls.current[id])
-    imageUrls.current[id]=url; setImages(old=>({...old,[id]:url}))
+    imageUrls.current[id]=url; setImages(old=>({...old,[id]:url})); setImageTypes(old=>({...old,[id]:blob.type}))
     setMessage('Image loaded privately in this browser tab.')
   })
   const cancel = (id:string) => act(async () => {
@@ -182,7 +183,7 @@ export default function PhiAtelierStudio() {
           <div className="atelier-actions">
             <button disabled={busy} className="atelier-secondary" onClick={()=>status(job.prompt_id)}>Check status</button>
             <button disabled={busy||!job.image_ready} onClick={()=>image(job.prompt_id)}>View image</button>
-            {images[job.prompt_id]&&<a className="atelier-download" download={'PhiAtelier-'+job.prompt_id+'.png'} href={images[job.prompt_id]}>Save local copy</a>}
+            {images[job.prompt_id]&&<a className="atelier-download" download={'PhiAtelier-'+job.prompt_id+(imageTypes[job.prompt_id]==='image/jpeg'?'.jpg':imageTypes[job.prompt_id]==='image/webp'?'.webp':'.png')} href={images[job.prompt_id]}>Save local copy</a>}
             {(job.status==='queued'||job.status==='running')&&<button disabled={busy} className="atelier-secondary" onClick={()=>cancel(job.prompt_id)}>Request cancel</button>}
           </div>
           <label className="atelier-check"><input type="checkbox" checked={compare.includes(job.prompt_id)} onChange={()=>toggleCompare(job.prompt_id)} /> Compare</label>
