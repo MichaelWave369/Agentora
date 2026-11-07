@@ -251,7 +251,7 @@ def test_stale_or_archived_steward_fails_before_github(setup):
     with pytest.raises(evidence.CorrelationHeld):
         assess(setup, gh=gh, now=NOW + timedelta(days=3))
     assert gh.calls == []
-    registry.ingest({**observation(),
+    registry.ingest({**observation(), "source_scan_id": 2,
                      "repositories": [{
                          "github_id": 42, "full_name": "MichaelWave369/BTM",
                          "archived": True, "source_only": True,
