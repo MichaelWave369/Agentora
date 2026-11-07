@@ -193,12 +193,17 @@ def create_candidate(checkout, sha, preflight_receipt, *,
         fromfile="a/" + FILE, tofile="b/" + FILE,
     )).encode("utf-8")
     require(0 < len(patch) <= MAX_PATCH_BYTES, "PATCH_INVALID")
+    branch_name = "r6/local-copy-fix-" + sha[:12]
+    run_git(root, "switch", "-c", branch_name)
+    require(run_git(root, "branch", "--show-current").strip() == branch_name,
+            "LOCAL_BRANCH_CREATION_FAILED")
     target.write_bytes(after.encode("utf-8"))
     return patch, {
         "schema": SCHEMA, "state": "BOUNDED_SOURCE_EDIT_PROPOSED",
         "repository": REPO, "repository_id": REPO_ID,
         "source_sha": sha, "mission": "FIX_LEASE_SNAPSHOT_LABEL_ONLY",
-        "file": FILE, "patch_sha256": digest(patch),
+        "file": FILE, "candidate_branch": branch_name,
+        "patch_sha256": digest(patch),
         "original_sha256": digest(raw),
         "candidate_sha256": digest(after.encode("utf-8")),
         "changed_file_count": 1,
@@ -214,7 +219,7 @@ def finalize(sha, checkout, preflight_receipt, candidate, patch,
     require(type(candidate) is dict and
             set(candidate) == {
                 "schema", "state", "repository", "repository_id",
-                "source_sha", "mission", "file", "patch_sha256",
+                "source_sha", "mission", "file", "candidate_branch", "patch_sha256",
                 "original_sha256", "candidate_sha256", "changed_file_count",
                 "source_files_pushed", "pull_requests_created",
                 "merge_authorized", "verified_complete",
@@ -225,6 +230,7 @@ def finalize(sha, checkout, preflight_receipt, candidate, patch,
             and candidate["repository_id"] == REPO_ID
             and candidate["source_sha"] == sha
             and candidate["file"] == FILE
+            and candidate["candidate_branch"] == "r6/local-copy-fix-" + sha[:12]
             and candidate["mission"] == "FIX_LEASE_SNAPSHOT_LABEL_ONLY"
             and candidate["changed_file_count"] == 1
             and candidate["source_files_pushed"] == 0
@@ -238,6 +244,8 @@ def finalize(sha, checkout, preflight_receipt, candidate, patch,
             and bool(SHA256.fullmatch(candidate["original_sha256"])),
             "PATCH_DIGEST_INVALID")
     root = validate_checkout(checkout, sha, clean=False)
+    require(run_git(root, "branch", "--show-current").strip() ==
+            candidate["candidate_branch"], "LOCAL_BRANCH_CHANGED")
     target = _safe_target(root)
     require(digest(target.read_bytes()) == candidate["candidate_sha256"]
             and target.read_bytes().count(AFTER.encode("utf-8")) == 1,
@@ -272,6 +280,7 @@ def finalize(sha, checkout, preflight_receipt, candidate, patch,
         "schema": FINAL_SCHEMA, "state": state,
         "repository": REPO, "repository_id": REPO_ID,
         "source_sha": sha, "file": FILE,
+        "candidate_branch": candidate["candidate_branch"],
         "patch_sha256": candidate["patch_sha256"],
         "candidate_sha256": candidate["candidate_sha256"],
         "checkout_sha": steps["checkout_sha"], "checks": {
