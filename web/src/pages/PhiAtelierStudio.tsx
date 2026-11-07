@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8088'
 import './PhiAtelierStudio.css'
 
-type Job = { prompt_id: string; workflow_digest: string; status: string; image_ready: boolean }
+type Job = { prompt_id: string; workflow_digest: string; status: string; image_ready: boolean; positive_prompt?: string; negative_prompt?: string; seed?: number }
 type Plan = { workflow_digest: string; status: string; workflow: Record<string, unknown> }
 type Criterion = 'subject_clarity'|'composition'|'symbolic_coherence'|'material_light'|'originality'
 type Scores = Record<Criterion, number>
@@ -103,7 +103,7 @@ export default function PhiAtelierStudio() {
   })
   const revise = () => act(async () => {
     const data = await request<{revision:Revision}>('/api/atelier/studio/revision',{
-      original_prompt:prompt,scores,observations:notes,requested_changes:changes,parent_job_id:target,
+      original_prompt:jobs.find(job=>job.prompt_id===target)?.positive_prompt||prompt,scores,observations:notes,requested_changes:changes,parent_job_id:target,
     })
     setReviews(old=>[data.revision,...old])
     setPrompt(data.revision.revised_prompt)
@@ -182,6 +182,7 @@ export default function PhiAtelierStudio() {
           <div className="atelier-actions">
             <button disabled={busy} className="atelier-secondary" onClick={()=>status(job.prompt_id)}>Check status</button>
             <button disabled={busy||!job.image_ready} onClick={()=>image(job.prompt_id)}>View image</button>
+            {images[job.prompt_id]&&<a className="atelier-download" download={'PhiAtelier-'+job.prompt_id+'.png'} href={images[job.prompt_id]}>Save local copy</a>}
             {(job.status==='queued'||job.status==='running')&&<button disabled={busy} className="atelier-secondary" onClick={()=>cancel(job.prompt_id)}>Request cancel</button>}
           </div>
           <label className="atelier-check"><input type="checkbox" checked={compare.includes(job.prompt_id)} onChange={()=>toggleCompare(job.prompt_id)} /> Compare</label>
@@ -198,7 +199,7 @@ export default function PhiAtelierStudio() {
 
     <section className="atelier-panel">
       <h3>04 · Human critique and revision</h3>
-      <p className="atelier-hint">{target?'Reviewing '+target:'No render selected. You can review the concept alone.'} Ratings are your observations, not AI-verified artistic quality.</p>
+      <p className="atelier-hint">{target?'Reviewing '+target:'No render selected. You can review the concept alone.'} Ratings are your observations, not AI-verified artistic quality.{target&&jobs.find(job=>job.prompt_id===target)?.positive_prompt&&<span className="atelier-target"><strong>Original job prompt:</strong> {jobs.find(job=>job.prompt_id===target)?.positive_prompt}</span>}</p>
       <div className="atelier-fields">
         {criteria.map(item=><label key={item.id}>{item.label}
           <select value={scores[item.id]} onChange={e=>setScores(old=>({...old,[item.id]:Number(e.target.value)}))}>
