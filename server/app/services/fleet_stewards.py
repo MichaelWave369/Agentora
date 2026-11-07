@@ -103,6 +103,7 @@ def validate_observation(data, *, now=None):
                 and _int(event["github_id"])
                 and event["github_id"] in by_id
                 and event["full_name"] == by_id[event["github_id"]]
+                and type(event["event_type"]) is str
                 and event["event_type"] in ALLOWED_EVENTS, "EVENT_IDENTITY_INVALID")
         _timestamp(event["observed_at"], now)
         event_ids.add(event_id)
