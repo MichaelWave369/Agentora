@@ -249,8 +249,8 @@ class ComfyRenderBridge:
             if not body:
                 raise RenderBridgeError("image response was empty", 502)
             signatures = {
-                "image/png": bytes(body[:8]) == b"\\x89PNG\\r\\n\\x1a\\n",
-                "image/jpeg": bytes(body[:2]) == b"\\xff\\xd8",
+                "image/png": bytes(body[:8]) == b"\x89PNG\r\n\x1a\n",
+                "image/jpeg": bytes(body[:2]) == b"\xff\xd8",
                 "image/webp": (bytes(body[:4]) == b"RIFF" and bytes(body[8:12]) == b"WEBP"),
             }
             if not signatures[mime]:
