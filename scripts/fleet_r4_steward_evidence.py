@@ -210,7 +210,7 @@ def main(argv=None):
                 and 0 < archive.stat().st_size <= evidence.MAX_ARCHIVE_BYTES,
                 "PILOT_ARCHIVE_FILE_INVALID")
         result = correlate(
-            StewardRegistry(a.steward_db), leases.LeaseLedger(a.lease_db),
+            StewardRegistry(a.steward_db), leases.LeaseLedger(a.lease_db.expanduser()),
             intake, capability, a.run_id, archive.read_bytes(),
             confirmation=a.confirm, token=os.environ.get("GITHUB_TOKEN"))
         output = a.output.expanduser()
