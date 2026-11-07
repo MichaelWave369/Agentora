@@ -18,9 +18,11 @@ from phi_atelier.knowledge import KnowledgeUnavailable, load_approved_visual_gra
 from phi_atelier.render_plan import build_render_plan
 from phi_atelier.comfy_bridge import ComfyRenderBridge, RenderBridgeError
 from phi_atelier.studio import prepare_revision
+from phi_atelier.vision import LocalVisionCritic, VisionUnavailable
 
 router = APIRouter(prefix="/api/atelier", tags=["atelier"])
 comfy_bridge = ComfyRenderBridge()
+vision_critic = LocalVisionCritic()
 
 
 class ArtBriefInput(BaseModel):
@@ -56,6 +58,10 @@ class RenderSubmitInput(RenderPlanInput):
 
 class CancelRenderInput(BaseModel):
     confirm_cancel: bool = False
+
+class VisionReviewInput(BaseModel):
+    confirm_local_model_call: bool = False
+
 
 class HumanReviewInput(BaseModel):
     original_prompt: str = Field(min_length=1, max_length=3000)
@@ -253,3 +259,24 @@ def studio_revision(payload: HumanReviewInput, request: Request):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"ok": True, "revision": revision}
+
+@router.post("/studio/vision/{prompt_id}")
+async def studio_vision_review(prompt_id: str, payload: VisionReviewInput, request: Request):
+    """Explicit one-shot visual critique of one completed, owned ComfyUI image."""
+    _require_render_operator(request)
+    if os.environ.get("AGENTORA_ATELIER_VISION_ENABLED", "").lower() != "true":
+        raise HTTPException(status_code=404, detail="local visual analysis disabled")
+    if not payload.confirm_local_model_call:
+        raise HTTPException(status_code=403, detail="explicit local vision-model approval required")
+    try:
+        source = comfy_bridge.get_job(prompt_id)
+        pixels, mime = await comfy_bridge.image(prompt_id)
+        report = await vision_critic.review(
+            job_id=prompt_id, image=pixels, mime=mime,
+            intended_prompt=source["positive_prompt"],
+        )
+    except RenderBridgeError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    except VisionUnavailable as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return {"ok": True, "report": report}
