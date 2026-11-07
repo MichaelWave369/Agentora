@@ -12,6 +12,8 @@ from app.core.config import settings
 from app.services.ollama_client import OllamaClient
 from phi_atelier import ArtBrief, compile_brief
 from phi_atelier.director import AUDIT_CHECKLIST, direction_receipt, prepare_direction
+from phi_atelier.knowledge import KnowledgeUnavailable, load_approved_visual_grammar
+from phi_atelier.render_plan import build_render_plan
 
 router = APIRouter(prefix="/api/atelier", tags=["atelier"])
 
@@ -31,6 +33,15 @@ class DirectorInput(BaseModel):
     brief: ArtBriefInput
     direction: Literal["monumental", "intimate", "recursive"] = "recursive"
     confirm_model_call: bool = False
+
+
+class RenderPlanInput(BaseModel):
+    positive_prompt: str = Field(min_length=1, max_length=3000)
+    negative_prompt: str = Field(default="", max_length=850)
+    aspect_ratio: Literal["16:9", "3:4", "1:1"] = "16:9"
+    seed: int = Field(default=369, ge=0, le=4294967295)
+    steps: int = Field(default=24, ge=8, le=40)
+    cfg: float = Field(default=7.0, ge=1.0, le=12.0)
 
 
 def _brief(payload: ArtBriefInput) -> ArtBrief:
@@ -79,8 +90,20 @@ async def direct(payload: DirectorInput, request: Request):
         raise HTTPException(status_code=404, detail="PhiAtelier local model calls disabled")
     if settings.agentora_use_mock_ollama:
         raise HTTPException(status_code=503, detail="real local model required; mock mode cannot direct")
+    reference = None
+    if os.environ.get("AGENTORA_ATELIER_KNOWLEDGE_ENABLED", "").lower() == "true":
+        pack_path = os.environ.get("AGENTORA_ATELIER_PACK_PATH", "")
+        ledger_path = os.environ.get("AGENTORA_ATELIER_REVIEWS_DB", "")
+        if not pack_path or not ledger_path:
+            raise HTTPException(status_code=503, detail="reviewed knowledge paths not configured")
+        try:
+            reference = load_approved_visual_grammar(pack_path, ledger_path)
+        except (KnowledgeUnavailable, OSError) as exc:
+            raise HTTPException(status_code=503, detail=f"reviewed knowledge unavailable: {exc}") from exc
     try:
-        prepared = prepare_direction(_brief(payload.brief), payload.direction)
+        prepared = prepare_direction(
+            _brief(payload.brief), payload.direction, reviewed_reference=reference,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     model = settings.agentora_chat_model
@@ -96,3 +119,23 @@ async def direct(payload: DirectorInput, request: Request):
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=f"model proposal rejected: {exc}") from exc
     return {"ok": True, "receipt": receipt}
+
+
+@router.post("/render-plan")
+def render_plan(payload: RenderPlanInput, request: Request):
+    """Build one ComfyUI API-format workflow without any network or GPU call."""
+    _check_origin(request)
+    checkpoint = os.environ.get("AGENTORA_ATELIER_CHECKPOINT", "")
+    if not checkpoint:
+        raise HTTPException(status_code=503, detail="operator checkpoint not configured")
+    try:
+        result = build_render_plan(
+            positive_prompt=payload.positive_prompt,
+            negative_prompt=payload.negative_prompt,
+            checkpoint=checkpoint,
+            aspect_ratio=payload.aspect_ratio,
+            seed=payload.seed, steps=payload.steps, cfg=payload.cfg,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"ok": True, "plan": result}
