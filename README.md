@@ -646,3 +646,13 @@ This is **not** a general fleet executor, not automatically connected to R0.3 of
 ### ΦMada / Agentora Autonomous Turn R1 (installation and field qualification required)
 
 The [Autonomous Turn R1 guide](docs/AUTONOMOUS_TURN_R1.md) describes one owner-approved exact-edit task through an isolated worker, separate App publisher, actual PR CI, bounded repair and trusted merge gate, with a public GitHub result returned to PhiMada. It requires separately reviewed infrastructure, a scoped publisher App and a genuine protected-environment owner review of the task digest. It is a deterministic bounded worker, not a general model coder. A green infrastructure PR alone does not qualify the hosted loop or complete a project.
+
+
+## ΦConstruct Training Intake R1
+
+Agentora can now validate PhiRepoNerve's local, digest-pinned training
+handoff with `python scripts/construct_training_intake.py --handoff request.json`.
+An optional `--report inspected-report.json` correlates a **claimed** result.
+Every outcome stays held for operator review. The receiver cannot
+authenticate an agent, reserve a worker, execute code or authorize
+dispatch/merges/deployments. See [Training Intake R1](docs/CONSTRUCT_TRAINING_INTAKE_R1.md).
