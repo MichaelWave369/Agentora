@@ -170,12 +170,20 @@ def main(argv=None):
                    help="Explicit local binding review, not execution approval")
     a = p.parse_args(argv)
     try:
+        require(a.confirm in (None, CONFIRM),
+                "UNRECOGNIZED_OPERATOR_CONFIRMATION")
         request = training.read_local_json(a.handoff)
         source = leases.load_intake(a.intake.expanduser())
-        registry = StewardRegistry(a.steward_db.expanduser())
+        steward_db = a.steward_db.expanduser()
+        require(steward_db.is_file() and not steward_db.is_symlink(),
+                "EXISTING_STEWARD_LEDGER_REQUIRED")
+        registry = StewardRegistry(steward_db)
         if a.confirm is not None:
             require(a.lease_file is not None, "LEASE_FILE_REQUIRED_FOR_CONFIRMATION")
-            ledger = leases.LeaseLedger(a.lease_db.expanduser())
+            lease_db = a.lease_db.expanduser()
+            require(lease_db.is_file() and not lease_db.is_symlink(),
+                    "EXISTING_LEASE_LEDGER_REQUIRED")
+            ledger = leases.LeaseLedger(lease_db)
             cap = leases.load_capability(a.lease_file.expanduser())
         else:
             require(a.lease_file is None, "LEASE_FILE_REQUIRES_CONFIRMATION")
