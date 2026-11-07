@@ -6,8 +6,6 @@ This module only accepts the digest-pinned graph from render_plan.py.
 """
 from __future__ import annotations
 
-import asyncio
-import hmac
 import json
 import os
 import re
@@ -194,7 +192,8 @@ class ComfyRenderBridge:
                     if (isinstance(ref, dict) and ref.get("type") == "output"
                             and ref.get("subfolder") == ""
                             and isinstance(ref.get("filename"), str)
-                            and IMAGE_FILE.fullmatch(ref["filename"])):
+                            and IMAGE_FILE.fullmatch(ref["filename"])
+                            and ref["filename"].startswith("PhiAtelier_")):
                         images.append({
                             "filename": ref["filename"], "type": "output", "subfolder": "",
                         })
@@ -230,7 +229,8 @@ class ComfyRenderBridge:
         ref = history[job_id]["outputs"]["9"]["images"][0]
         filename = ref.get("filename")
         if (ref.get("type") != "output" or ref.get("subfolder") != ""
-                or not isinstance(filename, str) or not IMAGE_FILE.fullmatch(filename)):
+                or not isinstance(filename, str) or not IMAGE_FILE.fullmatch(filename)
+                or not filename.startswith("PhiAtelier_")):
             raise RenderBridgeError("unsafe image metadata", 502)
         uri = "/view?" + urlencode({"filename": filename, "subfolder": "", "type": "output"})
         try:
@@ -248,6 +248,13 @@ class ComfyRenderBridge:
                             raise RenderBridgeError("image response exceeds 16 MB", 502)
             if not body:
                 raise RenderBridgeError("image response was empty", 502)
+            signatures = {
+                "image/png": bytes(body[:8]) == b"\\x89PNG\\r\\n\\x1a\\n",
+                "image/jpeg": bytes(body[:2]) == b"\\xff\\xd8",
+                "image/webp": (bytes(body[:4]) == b"RIFF" and bytes(body[8:12]) == b"WEBP"),
+            }
+            if not signatures[mime]:
+                raise RenderBridgeError("downloaded image signature does not match MIME type", 502)
             return bytes(body), mime
         except RenderBridgeError:
             raise
