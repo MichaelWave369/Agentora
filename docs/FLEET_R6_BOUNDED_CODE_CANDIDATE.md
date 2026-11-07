@@ -19,8 +19,9 @@ The fixed one-file replacement happens in PhiMadaPrime's
 src/reponerve.jsx at a pinned public source SHA. R6 refuses if the
 old text is missing, appears more than once, has already been fixed,
 the checkout is dirty, or the repository HEAD is not the expected SHA.
-Only a patch artifact is produced. No changes are pushed back to
-PhiMadaPrime. The operator can independently review the patch and
+The candidate edit is made on a new disposable local Git branch, with
+its name recorded in the receipt. Only a patch artifact is produced.
+No branches or changes are pushed back to PhiMadaPrime. The operator can independently review the patch and
 choose whether to adopt it in a later PR.
 
 ## How to run the workflow
