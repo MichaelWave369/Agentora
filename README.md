@@ -19,7 +19,8 @@ Agentora is a **local-first, private-by-default, memory-aware agent operating st
 - **Rung 3:** opt-in approved-only ΦLoad visual knowledge context and `POST /api/atelier/render-plan` for a digest-pinned ComfyUI workflow preview. No renderer is contacted.
 - **Rung 4 (opt-in):** operator-key-protected local ComfyUI queue, job status, targeted cancellation, and bounded image retrieval. No automatic renders or publishing.
 - **Rung 5:** local React `/phi-atelier` studio for approved renders, image previews, side-by-side comparison, human scores, and draft revisions.
-- See [PhiAtelier architecture](docs/PHI_ATELIER.md), [Rung 4 setup](docs/PHI_ATELIER_RENDER_BRIDGE.md) and [Rung 5 Studio](docs/PHI_ATELIER_STUDIO.md). No automatic publishing.
+- **Rung 6 (opt-in):** visual critique of a finished, locally owned render using a configured Ollama vision model, with explicit one-shot consent and human acceptance of suggestions. No automatic re-render.
+- See [PhiAtelier architecture](docs/PHI_ATELIER.md), [Rung 4 setup](docs/PHI_ATELIER_RENDER_BRIDGE.md), [Rung 5 Studio](docs/PHI_ATELIER_STUDIO.md) and [Rung 6 vision](docs/PHI_ATELIER_VISION.md). No automatic publishing.
 
 ## Quickstart (recommended one-PC path)
 

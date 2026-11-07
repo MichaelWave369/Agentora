@@ -7,6 +7,25 @@ type Plan = { workflow_digest: string; status: string; workflow: Record<string, 
 type Criterion = 'subject_clarity'|'composition'|'symbolic_coherence'|'material_light'|'originality'
 type Scores = Record<Criterion, number>
 type Revision = { review_digest: string; revised_prompt: string; parent_job_id: string|null; requested_changes: string; observations: string; rubric: Scores }
+type VisionObservations = {
+  visible_subjects: string
+  composition_observations: string
+  lighting_color_observations: string
+  prompt_alignment: string
+  possible_issues: string
+  specific_suggestions: string
+  uncertainties: string
+}
+type VisionReport = {
+  job_id: string
+  image_sha256: string
+  model: string
+  origin: string
+  review_status: string
+  new_render_queued: boolean
+  visual_quality_verified: boolean
+  observations: VisionObservations
+}
 const criteria: { id: Criterion; label: string }[] = [
   {id:'subject_clarity',label:'Subject clarity'}, {id:'composition',label:'Composition'},
   {id:'symbolic_coherence',label:'Symbolic coherence'}, {id:'material_light',label:'Lighting and materials'},
@@ -50,6 +69,8 @@ export default function PhiAtelierStudio() {
   const [notes,setNotes] = useState('')
   const [changes,setChanges] = useState('')
   const [reviews,setReviews] = useState<Revision[]>([])
+  const [visionReports,setVisionReports] = useState<Record<string,VisionReport>>({})
+  const [visionConsent,setVisionConsent] = useState(false)
   const [message,setMessage] = useState('')
   const [error,setError] = useState('')
   const [busy,setBusy] = useState(false)
@@ -112,6 +133,24 @@ export default function PhiAtelierStudio() {
     invalidate()
     setMessage('New draft prepared. No GPU work was started. Preview and approve again to render.')
   })
+  const reviewVision = (id: string) => act(async () => {
+    if (!visionConsent) throw new Error('Approve exactly one local vision-model call first.')
+    const data = await request<{report:VisionReport}>(
+      '/api/atelier/studio/vision/'+encodeURIComponent(id),
+      {confirm_local_model_call:true},key)
+    setVisionReports(old=>({...old,[id]:data.report}))
+    setVisionConsent(false)
+    setMessage('Local model supplied a fallible critique. Review its observations before reusing suggestions. No new render was queued.')
+  })
+  const useVisionNotes = (id: string) => {
+    const report=visionReports[id]
+    if (!report) return
+    setChanges(report.observations.specific_suggestions.slice(0,700))
+    setNotes(('Model-only observations: '+report.observations.possible_issues+' Uncertainty: '+report.observations.uncertainties).slice(0,1000))
+    setTarget(id)
+    setMessage('Copied AI suggestions into editable human-review fields; nothing was rendered or accepted automatically.')
+  }
+
   const exportReviews = () => {
     if (!reviews.length) return
     const blob = new Blob([JSON.stringify({schema_version:'phi.atelier.feedback.v1',reviews},null,2)],{type:'application/json'})
@@ -187,7 +226,8 @@ export default function PhiAtelierStudio() {
             {(job.status==='queued'||job.status==='running')&&<button disabled={busy} className="atelier-secondary" onClick={()=>cancel(job.prompt_id)}>Request cancel</button>}
           </div>
           <label className="atelier-check"><input type="checkbox" checked={compare.includes(job.prompt_id)} onChange={()=>toggleCompare(job.prompt_id)} /> Compare</label>
-          <button className="atelier-secondary" onClick={()=>setTarget(job.prompt_id)}>Review this result</button>
+          <button className="atelier-secondary" onClick={()=>{setTarget(job.prompt_id);setVisionConsent(false)}}>Review this result</button>
+          {job.image_ready && <button className="atelier-secondary" onClick={()=>{setTarget(job.prompt_id);setVisionConsent(false)}}>Select for vision critique</button>}
         </article>)}
       </div>
       {compare.length===2&&<div className="atelier-compare" aria-label="Side-by-side comparison">
@@ -201,6 +241,27 @@ export default function PhiAtelierStudio() {
     <section className="atelier-panel">
       <h3>04 · Human critique and revision</h3>
       <p className="atelier-hint">{target?'Reviewing '+target:'No render selected. You can review the concept alone.'} Ratings are your observations, not AI-verified artistic quality.{target&&jobs.find(job=>job.prompt_id===target)?.positive_prompt&&<span className="atelier-target"><strong>Original job prompt:</strong> {jobs.find(job=>job.prompt_id===target)?.positive_prompt}</span>}</p>
+      {target && jobs.some(job=>job.prompt_id===target && job.image_ready) && <div className="atelier-vision">
+        <h4>Optional · Local model vision critique</h4>
+        <p className="atelier-hint">Sends the selected completed image only to a local Ollama vision model. This costs GPU resources. Its conclusions can be inaccurate and will not update prompts or render automatically.</p>
+        <label className="atelier-check"><input type="checkbox" checked={visionConsent} onChange={e=>setVisionConsent(e.target.checked)} />
+          I approve one local vision analysis of this rendered image</label>
+        <button disabled={busy||!key||!visionConsent} onClick={()=>reviewVision(target)}>Analyze selected image once</button>
+        {visionReports[target] && <div className="atelier-vision-result">
+          <strong>Local model observations (not verified)</strong>
+          <p className="atelier-hint">Model: {visionReports[target].model} · Image: {visionReports[target].image_sha256.slice(0,25)}… · New render queued: no</p>
+          <dl>
+            <dt>Visible subjects</dt><dd>{visionReports[target].observations.visible_subjects}</dd>
+            <dt>Composition</dt><dd>{visionReports[target].observations.composition_observations}</dd>
+            <dt>Light and color</dt><dd>{visionReports[target].observations.lighting_color_observations}</dd>
+            <dt>Prompt alignment</dt><dd>{visionReports[target].observations.prompt_alignment}</dd>
+            <dt>Possible issues</dt><dd>{visionReports[target].observations.possible_issues}</dd>
+            <dt>Suggestions</dt><dd>{visionReports[target].observations.specific_suggestions}</dd>
+            <dt>Uncertainties</dt><dd>{visionReports[target].observations.uncertainties}</dd>
+          </dl>
+          <button className="atelier-secondary" onClick={()=>useVisionNotes(target)}>Copy suggestions into editable human review</button>
+        </div>}
+      </div>}
       <div className="atelier-fields">
         {criteria.map(item=><label key={item.id}>{item.label}
           <select value={scores[item.id]} onChange={e=>setScores(old=>({...old,[item.id]:Number(e.target.value)}))}>
