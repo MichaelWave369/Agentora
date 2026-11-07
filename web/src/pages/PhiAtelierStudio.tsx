@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { API } from '../api/client'
+const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8088'
 import './PhiAtelierStudio.css'
 
 type Job = { prompt_id: string; workflow_digest: string; status: string; image_ready: boolean }
