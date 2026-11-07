@@ -114,6 +114,8 @@ def read_local_json(path):
             object_pairs_hook=_json_no_duplicates,
             parse_constant=_invalid_constant,
         )
+    except TrainingHeld:
+        raise
     except (UnicodeError, ValueError, RecursionError) as exc:
         raise TrainingHeld("INPUT_JSON_INVALID") from exc
     need(type(value) is dict, "INPUT_OBJECT_REQUIRED")
