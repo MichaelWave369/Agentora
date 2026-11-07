@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import difflib
 import hashlib
 import json
@@ -81,6 +82,8 @@ def decode_json(raw):
         value = json.loads(raw.decode("utf-8"), object_pairs_hook=_pairs_no_duplicates,
                            parse_constant=lambda _x: (_ for _ in ()).throw(
                                ProposalHeld("NON_FINITE_JSON")))
+    except ProposalHeld:
+        raise
     except (UnicodeError, ValueError, TypeError):
         raise ProposalHeld("PROPOSAL_INVALID_JSON") from None
     require(type(value) is dict, "PROPOSAL_OBJECT_REQUIRED")
@@ -423,7 +426,7 @@ def main(argv=None):
                     "PROPOSAL_ENV_SIZE_INVALID")
             try:
                 raw = base64.b64decode(text, validate=True)
-            except (ValueError, base64.binascii.Error):
+            except (ValueError, binascii.Error):
                 raise ProposalHeld("PROPOSAL_BASE64_INVALID") from None
             proposal = decode_json(raw)
             require(proposal.get("source_sha") == a.sha, "PROPOSAL_SHA_MISMATCH")
