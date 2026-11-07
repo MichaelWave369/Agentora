@@ -36,3 +36,6 @@
 .atelier-compare img{width:100%;max-height:480px;object-fit:contain;background:#0b1020}
 .atelier-compare figcaption{font-size:.72rem;margin-top:8px;overflow-wrap:anywhere}
 @media(max-width:720px){.atelier-hero{padding:18px}.atelier-panel{padding:15px}.atelier-compare{grid-template-columns:1fr}}
+
+.atelier-download{display:inline-flex;align-items:center;padding:8px 10px;border:1px solid #64748b;border-radius:8px;font-size:.8rem}
+.atelier-target{display:block;margin-top:9px;overflow-wrap:anywhere}
