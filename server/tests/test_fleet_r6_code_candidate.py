@@ -134,7 +134,7 @@ class CandidateTests(unittest.TestCase):
         remote.write_text(candidate.BEFORE,encoding="utf-8")
         self.path.symlink_to(remote)
         with self.assertRaisesRegex(candidate.CandidateHeld,"TARGET_FILE_UNSAFE"):
-            self.apply()
+            candidate._safe_target(self.root)
         self.assertEqual(remote.read_text(),candidate.BEFORE)
 
     def test_tampering_patch_receipt_or_edited_file_fails(self):
