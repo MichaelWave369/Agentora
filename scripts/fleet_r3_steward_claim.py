@@ -172,8 +172,8 @@ def main(argv=None):
                      "head_revalidated_by_agentora": False,
                      "digest_is_authentication": False, "independent_checks_run": 0,
                      "checks": [{"verification_state": "NOT_RUN", "evidence_receipt": None}]}
-            eligible(registry, shape)
             if a.action == "renew":
+                eligible(registry, shape)
                 refreshed = ledger.renew(cap, ttl_seconds=a.ttl)
                 leases.save_capability(path, refreshed)
                 result = {"state": "LOCAL_RESERVATION_RENEWED",
