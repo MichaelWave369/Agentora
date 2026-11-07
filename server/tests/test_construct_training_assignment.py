@@ -250,12 +250,10 @@ def test_cli_preview_and_confirm_are_read_only(setup, tmp_path, monkeypatch):
         "--handoff", str(handoff_file), "--intake", str(intake_file),
         "--steward-db", str(registry.path), "--lease-db", str(ledger.path),
     ]
-    class FixedNow:
-        @staticmethod
-        def now(tz):
-            return NOW
-    monkeypatch.setattr(assign, "datetime", FixedNow)
-    monkeypatch.setattr(assign.leases, "epoch_ms", lambda v=None: MS if v is None else v)
+    real_review = assign.review_binding
+    def fixed_clock_review(*args, **kwargs):
+        return real_review(*args, now=NOW, now_ms=MS, **kwargs)
+    monkeypatch.setattr(assign, "review_binding", fixed_clock_review)
     with contextlib.redirect_stdout(io.StringIO()) as output:
         assert assign.main(common) == 0
     preview = json.loads(output.getvalue())
