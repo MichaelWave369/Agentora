@@ -173,6 +173,9 @@ def test_submit_requires_real_checkpoint_and_one_exact_graph(monkeypatch):
     created = client.post("/api/atelier/render/submit", headers=headers, json=approved())
     assert created.status_code == 200, created.text
     ident = created.json()["job"]["prompt_id"]
+    assert created.json()["job"]["positive_prompt"] == RENDER_PAYLOAD["positive_prompt"]
+    assert created.json()["job"]["negative_prompt"] == RENDER_PAYLOAD["negative_prompt"]
+    assert created.json()["job"]["seed"] == 369
     assert str(uuid.UUID(ident)) == ident
     assert server.last_prompt["prompt"] == plan()["workflow"]
     assert server.last_prompt["prompt_id"] == ident
