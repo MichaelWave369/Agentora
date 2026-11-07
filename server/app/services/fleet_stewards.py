@@ -114,10 +114,17 @@ class StewardRegistry:
     def __init__(self, db_path):
         self.path = Path(db_path).expanduser()
         require(str(db_path) != ":memory:" and not self.path.is_symlink(), "DB_PATH_UNSAFE")
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        require(not self.path.parent.is_symlink(), "DB_PARENT_SYMLINK")
         if os.name == "posix":
-            # A local state file may contain historical names which later become private.
-            self.path.parent.chmod(self.path.parent.stat().st_mode & 0o777 | 0o700)
+            require((self.path.parent.stat().st_mode & 0o002) == 0, "DB_PARENT_UNSAFE")
+        flags = os.O_RDWR | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(self.path, flags, 0o600)
+        os.close(fd)
+        if os.name == "posix":
+            require((self.path.stat().st_mode & 0o077) == 0, "DB_PERMISSIONS_UNSAFE")
         with self._tx() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS source_state (
                 singleton INTEGER PRIMARY KEY CHECK(singleton=1),
