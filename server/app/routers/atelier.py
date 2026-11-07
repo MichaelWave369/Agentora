@@ -86,6 +86,7 @@ def _require_render_operator(request: Request) -> None:
     operator_key = os.environ.get("AGENTORA_ATELIER_RENDER_KEY", "")
     supplied = request.headers.get("x-atelier-operator-key", "")
     if (len(operator_key) < 24 or len(supplied) > 256
+            or not operator_key.isascii() or not supplied.isascii()
             or not hmac.compare_digest(supplied, operator_key)):
         raise HTTPException(status_code=403, detail="operator key required")
 
