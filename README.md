@@ -18,7 +18,8 @@ Agentora is a **local-first, private-by-default, memory-aware agent operating st
 - Marketplace starter template `PhiAtelier` defines ArtCurator, ArtDirector, ArtCritic roles with no tools.
 - **Rung 3:** opt-in approved-only ΦLoad visual knowledge context and `POST /api/atelier/render-plan` for a digest-pinned ComfyUI workflow preview. No renderer is contacted.
 - **Rung 4 (opt-in):** operator-key-protected local ComfyUI queue, job status, targeted cancellation, and bounded image retrieval. No automatic renders or publishing.
-- See [PhiAtelier architecture](docs/PHI_ATELIER.md) and [Rung 4 setup](docs/PHI_ATELIER_RENDER_BRIDGE.md). No training on artworks or automatic publishing.
+- **Rung 5:** local React `/phi-atelier` studio for approved renders, image previews, side-by-side comparison, human scores, and draft revisions.
+- See [PhiAtelier architecture](docs/PHI_ATELIER.md), [Rung 4 setup](docs/PHI_ATELIER_RENDER_BRIDGE.md) and [Rung 5 Studio](docs/PHI_ATELIER_STUDIO.md). No automatic publishing.
 
 ## Quickstart (recommended one-PC path)
 

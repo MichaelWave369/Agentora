@@ -13,6 +13,7 @@ import Runs from './pages/Runs'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
 import StudioMode from './pages/StudioMode'
+import PhiAtelierStudio from './pages/PhiAtelierStudio'
 import BandMode from './pages/BandMode'
 import ArenaMode from './pages/ArenaMode'
 import GatheringMode from './pages/GatheringMode'
@@ -30,6 +31,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path='/review-queue' element={<ReviewQueue/>}/>
           <Route path='/review-dashboard' element={<ReviewDashboard/>}/>
           <Route path='/studio-mode' element={<StudioMode/>}/>
+          <Route path='/phi-atelier' element={<PhiAtelierStudio/>}/>
           <Route path='/band-mode' element={<BandMode/>}/>
           <Route path='/arena-mode' element={<ArenaMode/>}/>
           <Route path='/gathering-mode' element={<GatheringMode/>}/>

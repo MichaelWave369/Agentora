@@ -105,6 +105,11 @@ class ComfyRenderBridge:
                 raise RenderBridgeError("render job not found in this Agentora process", 404)
             return dict(record)
 
+    def list_jobs(self) -> list[dict[str, Any]]:
+        """In-process job metadata for an operator; never expose arbitrary image paths."""
+        with self._lock:
+            return [dict(entry) for entry in reversed(list(self._jobs.values()))]
+
     async def submit(self, plan: dict[str, Any]) -> dict[str, Any]:
         """Queue exactly one approved graph, after checking installed checkpoints."""
         digest = plan["workflow_digest"]
@@ -138,6 +143,9 @@ class ComfyRenderBridge:
             self._jobs[job_id] = {
                 "prompt_id": job_id,
                 "workflow_digest": digest,
+                "positive_prompt": graph["6"]["inputs"]["text"],
+                "negative_prompt": graph["7"]["inputs"]["text"],
+                "seed": graph["3"]["inputs"]["seed"],
                 "status": "submission_unknown",
                 "render_status": "unverified",
                 "image_ready": False,

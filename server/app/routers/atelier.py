@@ -17,6 +17,7 @@ from phi_atelier.director import AUDIT_CHECKLIST, direction_receipt, prepare_dir
 from phi_atelier.knowledge import KnowledgeUnavailable, load_approved_visual_grammar
 from phi_atelier.render_plan import build_render_plan
 from phi_atelier.comfy_bridge import ComfyRenderBridge, RenderBridgeError
+from phi_atelier.studio import prepare_revision
 
 router = APIRouter(prefix="/api/atelier", tags=["atelier"])
 comfy_bridge = ComfyRenderBridge()
@@ -55,6 +56,13 @@ class RenderSubmitInput(RenderPlanInput):
 
 class CancelRenderInput(BaseModel):
     confirm_cancel: bool = False
+
+class HumanReviewInput(BaseModel):
+    original_prompt: str = Field(min_length=1, max_length=3000)
+    scores: dict[str, int]
+    observations: str = Field(default="", max_length=1000)
+    requested_changes: str = Field(min_length=1, max_length=700)
+    parent_job_id: str | None = None
 
 
 def _brief(payload: ArtBriefInput) -> ArtBrief:
@@ -222,3 +230,26 @@ async def cancel_render(prompt_id: str, payload: CancelRenderInput, request: Req
     except RenderBridgeError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
     return {"ok": True, "job": record}
+
+
+@router.get("/studio/jobs")
+def studio_jobs(request: Request):
+    """List only the render IDs this Agentora process submitted."""
+    _require_render_operator(request)
+    return {
+        "ok": True,
+        "items": comfy_bridge.list_jobs(),
+        "scope": "process_local",
+        "persistent": False,
+    }
+
+
+@router.post("/studio/revision")
+def studio_revision(payload: HumanReviewInput, request: Request):
+    """Bounded human-only revision receipt, no model or rendering call."""
+    _check_origin(request)
+    try:
+        revision = prepare_revision(**payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"ok": True, "revision": revision}
