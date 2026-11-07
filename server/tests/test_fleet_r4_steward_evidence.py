@@ -183,7 +183,7 @@ class CorrelationTests(unittest.TestCase):
     def test_wrong_source_sha_or_fenced_capability_rejected(self):
         shifted = intake()
         shifted["source_sha"] = "f"*40
-        with self.assertRaisesRegex(r4.CorrelationHeld, "LEASE_NOT_CURRENT"):
+        with self.assertRaisesRegex(r4.CorrelationHeld, "LEASE_SOURCE_MISMATCH"):
             self.correlate(intake=shifted)
         false_cap = {**self.cap,"token":"wrong"}
         with self.assertRaisesRegex(r4.CorrelationHeld, "LEASE_NOT_CURRENT"):
