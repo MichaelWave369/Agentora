@@ -135,6 +135,18 @@ class StewardLeaseTests(unittest.TestCase):
         self.assertEqual(data["reservations"], [])
         self.assertNotIn("BTM", json.dumps(data))
 
+    def test_release_keeps_existing_r04_capability_valid_even_when_archived(self):
+        # Release must not require a currently-visible public steward.
+        r3.claim(self.registry, self.ledger, intake(), "worker1",
+                 self.lease_file, now=NOW, now_ms=MS)
+        capability = r4.load_capability(self.lease_file)
+        self.registry.ingest(observed([(42, "BTM", True)], scan=2), now=NOW)
+        with self.assertRaisesRegex(r3.HandoffHeld, "STEWARD_ARCHIVED"):
+            r3.eligible(self.registry, intake(), now=NOW)
+        released = self.ledger.release(capability, now_ms=MS + 10)
+        self.assertEqual(released["state"], "RELEASED_NOT_COMPLETED")
+        self.assertEqual(self.ledger.status(now_ms=MS + 20)["active_reservations"], 0)
+
     def test_stale_source_or_invalid_worker_is_held(self):
         with self.assertRaisesRegex(r3.HandoffHeld, "WORKER_INVALID"):
             r3.claim(self.registry, self.ledger, intake(), "worker/bad",
