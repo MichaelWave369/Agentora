@@ -152,7 +152,7 @@ def main(argv=None):
     a = p.parse_args(argv)
     try:
         registry = StewardRegistry(a.steward_db)
-        ledger = leases.LeaseLedger(a.lease_db)
+        ledger = leases.LeaseLedger(a.lease_db.expanduser())
         if a.action == "claim":
             intake = leases.load_intake(a.intake.expanduser())
             result = claim(registry, ledger, intake, a.worker, a.lease_file, ttl=a.ttl)
