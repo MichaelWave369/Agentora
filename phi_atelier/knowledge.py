@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,13 @@ LEDGER_FIELDS = (
     "reviewer", "reason", "created_at", "previous_hash",
 )
 ZERO_HASH = "0" * 64
+PACK_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
+ALLOWED_EVENTS = frozenset({
+    "first_observed", "visible_again", "renamed", "visibility_changed",
+    "archival_changed", "default_branch_changed", "push_activity_observed",
+    "no_longer_visible",
+})
+
 
 
 class KnowledgeUnavailable(ValueError):
@@ -45,10 +53,22 @@ def _read_pack(path: Path) -> dict:
         raise KnowledgeUnavailable("unsupported knowledge pack version")
     if obj["id"] != PACK_ID:
         raise KnowledgeUnavailable("incorrect knowledge pack identity")
-    if not isinstance(obj["version"], str) or not 1 <= len(obj["version"]) <= 40:
+    if not isinstance(obj["version"], str) or not PACK_VERSION.fullmatch(obj["version"]):
         raise KnowledgeUnavailable("invalid pack version")
-    if not isinstance(obj["provenance"], str) or not 1 <= len(obj["provenance"]) <= 300:
-        raise KnowledgeUnavailable("invalid pack provenance")
+    for name, maximum in (("title", 100), ("description", 350), ("provenance", 300)):
+        value = obj[name]
+        if not isinstance(value, str) or not value.strip() or len(value) > maximum or "\\x00" in value:
+            raise KnowledgeUnavailable("invalid pack " + name)
+    events = obj["events"]
+    if (not isinstance(events, list) or not 1 <= len(events) <= 16
+            or any(not isinstance(e, str) or e not in ALLOWED_EVENTS for e in events)
+            or len(set(events)) != len(events)):
+        raise KnowledgeUnavailable("invalid pack events")
+    matches = obj["repo_contains"]
+    if (not isinstance(matches, list) or len(matches) > 16
+            or any(not isinstance(m, str) or not m.strip() or len(m) > 80
+                   for m in matches)):
+        raise KnowledgeUnavailable("invalid pack repository filters")
     if not isinstance(obj["knowledge"], list) or not 1 <= len(obj["knowledge"]) <= 24:
         raise KnowledgeUnavailable("invalid pack knowledge")
     if any(not isinstance(s, str) or not s.strip() or len(s) > 500
