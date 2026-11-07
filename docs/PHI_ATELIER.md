@@ -81,7 +81,7 @@ permissions to copy images or to construct a training dataset.
 
 ```bash
 python -m unittest discover -s tests -p 'test_phi_atelier.py' -v
-PYTHONPATH=server pytest -q server/tests/test_phi_atelier_r2.py
+PYTHONPATH=.:server pytest -q server/tests/test_phi_atelier_r2.py
 ```
 
 No artist-specific model weights were trained. No image was generated, no UI
