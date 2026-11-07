@@ -57,7 +57,7 @@ def _read_pack(path: Path) -> dict:
         raise KnowledgeUnavailable("invalid pack version")
     for name, maximum in (("title", 100), ("description", 350), ("provenance", 300)):
         value = obj[name]
-        if not isinstance(value, str) or not value.strip() or len(value) > maximum or "\\x00" in value:
+        if not isinstance(value, str) or not value.strip() or len(value) > maximum or "\x00" in value:
             raise KnowledgeUnavailable("invalid pack " + name)
     events = obj["events"]
     if (not isinstance(events, list) or not 1 <= len(events) <= 16
