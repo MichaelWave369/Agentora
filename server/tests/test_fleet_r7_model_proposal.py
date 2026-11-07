@@ -190,13 +190,13 @@ class R7Tests(unittest.TestCase):
 
     def test_changed_checkout_refused_and_symlink_never_followed(self):
         self.file.write_text("unexpected working tree edit", encoding="utf-8")
-        with self.assertRaisesRegex(r7.CandidateHeld, "CHECKOUT_NOT_CLEAN"):
+        with self.assertRaisesRegex(r7.r6.CandidateHeld, "CHECKOUT_NOT_CLEAN"):
             self.apply()
         self.file.unlink()
         other = self.root.parent / "secret"
         other.write_text(OLD, encoding="utf-8")
         self.file.symlink_to(other)
-        with self.assertRaisesRegex(r7.CandidateHeld, "CHECKOUT_NOT_CLEAN"):
+        with self.assertRaisesRegex(r7.r6.CandidateHeld, "CHECKOUT_NOT_CLEAN"):
             self.apply()
         self.assertEqual(other.read_text(), OLD)
 
@@ -224,7 +224,7 @@ class R7Tests(unittest.TestCase):
         self.proposal["source_sha"] = self.sha
         patch, candidate = self.apply()
         other.write_text("altered", encoding="utf-8")
-        with self.assertRaisesRegex(r7.CandidateHeld, "OUT_OF_SCOPE"):
+        with self.assertRaisesRegex(r7.r6.CandidateHeld, "OUT_OF_SCOPE"):
             self.finish(patch, candidate)
 
     def test_failed_checks_never_green_and_sha_drift_holds(self):
