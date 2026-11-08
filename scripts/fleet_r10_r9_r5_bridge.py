@@ -173,9 +173,14 @@ def submit(control, mission_id, intake, capability, *, execute=False,
     second = _candidate(control, mission_id, intake, capability, clock_ms())
     need(candidate == second, "R9_ASSIGNMENT_CHANGED_DURING_PREFLIGHT")
     _record_intent(control, mission_id, request_id, candidate, clock_ms())
+    # R5 remains the sole POST/HEAD/rules gate. Only the trusted built-in
+    # sender attaches the deterministic mission trace to its fixed workflow.
+    # Injected test senders retain the historical two-argument shape.
+    traced_post = (lambda credential, sha: r5.github_dispatch(
+        credential, sha, request_id=request_id)) if post is r5.github_dispatch else post
     result = r5.dispatch(control.registry, control.leases, intake, capability,
         request_id=request_id, execute=True, confirmation=r5.CONFIRM,
-        token=token, get=get, post=post, now=now, clock_ms=clock_ms)
+        token=token, get=get, post=traced_post, now=now, clock_ms=clock_ms)
     with control.leases._transaction() as db:
         db.execute("""UPDATE r10_r5_dispatch_links SET state=?,updated_ms=?
             WHERE mission_id=? AND request_id=? AND state=?""",
