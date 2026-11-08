@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "retry-backoff-code",
+  "version": "0.1.0",
+  "title": "Implement bounded retry backoff",
+  "pack_id": "core.repo-evidence",
+  "instructions": "Implement retry_delay(attempt) in Python. For integer attempts, return max(1,min(16,2 ** attempt)) but treat negative attempts as zero. Return an integer number of seconds. Do not use any files or external dependencies.",
+  "function": "retry_delay",
+  "signature": "def retry_delay(attempt: int) -> int",
+  "cases": [
+    {
+      "args": [
+        -3
+      ],
+      "expected": 1
+    },
+    {
+      "args": [
+        0
+      ],
+      "expected": 1
+    },
+    {
+      "args": [
+        1
+      ],
+      "expected": 2
+    },
+    {
+      "args": [
+        2
+      ],
+      "expected": 4
+    },
+    {
+      "args": [
+        3
+      ],
+      "expected": 8
+    },
+    {
+      "args": [
+        4
+      ],
+      "expected": 16
+    },
+    {
+      "args": [
+        8
+      ],
+      "expected": 16
+    }
+  ]
+}
