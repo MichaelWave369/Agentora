@@ -80,10 +80,18 @@ def handoff(envelope, profile, intake, registry, ledger, capability,
     moment = now if now is not None else datetime.now(timezone.utc)
     require(type(moment) is datetime and moment.tzinfo is not None,
             "TIMEZONE_CLOCK_REQUIRED")
+    # Obtain a fresh review-ledger snapshot at each trust boundary. The CLI
+    # supplies a callable that rereads the local review database under lock;
+    # tests may inject a deterministic mapping for static fixtures.
+    def current_reviews():
+        states = review_states() if callable(review_states) else review_states
+        require(type(states) is dict, "PACK_REVIEW_STATUS_INVALID")
+        return states
+
     try:
         capsid_api.validate_profile(profile)
         manifest, pack = capsid_api.eligible(envelope, profile, packs,
-                                              review_states, secret=secret)
+                                              current_reviews(), secret=secret)
         require(manifest["capabilities"] == ["reference.read"],
                 "CONTEXT_ONLY_CAPABILITY_REQUIRED")
         require(type(capability) is dict, "LEASE_CAPABILITY_INVALID")
@@ -100,7 +108,7 @@ def handoff(envelope, profile, intake, registry, ledger, capability,
 
         # The original provider rechecks HMAC, active SQLite state, pack
         # digest, operator review and target policy on EVERY context export.
-        bundle = capsule_store.context(profile, packs, review_states, secret=secret)
+        bundle = capsule_store.context(profile, packs, current_reviews(), secret=secret)
         cap = bundle["capsid"]
         require(cap["manifest_digest"] == capsid_api.manifest_digest(manifest)
                 and cap["id"] == manifest["id"]
@@ -123,7 +131,7 @@ def handoff(envelope, profile, intake, registry, ledger, capability,
         require(first_lease == _lease_matches(
             ledger, capability, intake, profile, clock), "LEASE_CHANGED")
         # Refuse if the approved pack or capsule selection changed mid-read.
-        require(capsule_store.context(profile, packs, review_states,
+        require(capsule_store.context(profile, packs, current_reviews(),
                                      secret=secret) == bundle,
                 "CAPSID_CHANGED_DURING_HANDOFF")
     except (ValueError, KeyError, TypeError, AttributeError, StewardHeld,
@@ -227,7 +235,7 @@ def main(argv=None):
             leases.LeaseLedger(args.lease_db.expanduser()),
             leases.load_capability(args.lease_file.expanduser()),
             capsid, capsid.CapsidStore(args.capsids_db.expanduser()),
-            packs, reviews.status_map(packs),
+            packs, lambda: reviews.status_map(packs),
             confirm=args.confirm, token=os.environ.get("GITHUB_TOKEN"),
         )
         print(json.dumps(results, sort_keys=True, indent=2, ensure_ascii=False))
