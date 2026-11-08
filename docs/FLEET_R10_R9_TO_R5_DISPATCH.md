@@ -71,7 +71,7 @@ The token is read from \`GITHUB_TOKEN\`, never included in the receipt.
 
 ## What survives a crash
 
-The bridge computes a deterministic, 47-character R5 request ID from the
+The bridge computes a deterministic, 46-character R5 request ID from the
 R9 mission ID. Before executing R5's one-shot submission it stores a
 \`r10_r5_dispatch_links\` row **in the existing R9/R0.4 SQLite file** with
 mission ID, R5 request ID, source SHA, source intake digest, repository ID,
