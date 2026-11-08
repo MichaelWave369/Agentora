@@ -281,14 +281,11 @@ def main(argv=None):
         return 0
     except (EvidenceHeld, r4.CorrelationHeld, evidence.ReviewHeld,
             bridge.BridgeHeld, r9.MissionHeld, leases.LeaseHeld,
-            StewardRegistry.__class__, source.ObservationHeld, StewardHeld,
+            source.ObservationHeld, StewardHeld,
             sqlite3.Error, OSError, ValueError) as exc:
-        if isinstance(exc, (sqlite3.Error, OSError, ValueError)) and not isinstance(
-                exc, (EvidenceHeld, r4.CorrelationHeld, evidence.ReviewHeld,
-                      bridge.BridgeHeld, r9.MissionHeld, StewardHeld)):
-            reason = "LOCAL_INPUT_OR_LEDGER_UNAVAILABLE"
-        else:
-            reason = str(exc)
+        reason = ("LOCAL_INPUT_OR_LEDGER_UNAVAILABLE"
+                  if isinstance(exc, (sqlite3.Error, OSError))
+                  or (type(exc) is ValueError) else str(exc))
         print("FLEET_R10_EVIDENCE_HELD " + reason, file=sys.stderr)
         return 3
 
