@@ -22,6 +22,7 @@ sys.path.insert(0, str(HERE.parent / "server"))
 from app.services.fleet_stewards import StewardRegistry, StewardHeld
 
 import fleet_r04_leases as leases
+import fleet_r3_steward_claim as steward
 import fleet_r05_source_observe as source
 import fleet_r07_evidence_review as evidence
 import fleet_r4_steward_evidence as r4
@@ -93,7 +94,8 @@ def correlate(control, mission_id, intake, capability, run_id, archive_bytes, *,
     'passed' flags into the ledger. R4 re-reads GitHub and artifact digest.
     """
     need(confirmation == CORRELATE_CONFIRM, "EXPLICIT_EVIDENCE_REVIEW_REQUIRED")
-    need(type(run_id) is int and 0 < run_id < 10**20, "RUN_ID_INVALID")
+    need(type(run_id) is int and 0 < run_id <= 9223372036854775807,
+         "RUN_ID_INVALID")
     need(type(archive_bytes) is bytes and
          0 < len(archive_bytes) <= evidence.MAX_ARCHIVE_BYTES,
          "PILOT_ARCHIVE_INVALID")
@@ -281,7 +283,7 @@ def main(argv=None):
         return 0
     except (EvidenceHeld, r4.CorrelationHeld, evidence.ReviewHeld,
             bridge.BridgeHeld, r9.MissionHeld, leases.LeaseHeld,
-            source.ObservationHeld, StewardHeld,
+            steward.HandoffHeld, source.ObservationHeld, StewardHeld,
             sqlite3.Error, OSError, ValueError) as exc:
         reason = ("LOCAL_INPUT_OR_LEDGER_UNAVAILABLE"
                   if isinstance(exc, (sqlite3.Error, OSError))
