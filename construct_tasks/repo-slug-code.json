@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "repo-slug-code",
+  "version": "0.1.0",
+  "title": "Normalize repository slugs",
+  "pack_id": "core.repo-evidence",
+  "instructions": "Implement normalize_slug(name): strip leading/trailing whitespace, lower-case ASCII letters, replace each run of non-alphanumeric characters with one hyphen, and strip leading/trailing hyphens. Return a string; empty inputs become an empty string. Inputs in this exercise are ASCII text.",
+  "function": "normalize_slug",
+  "signature": "def normalize_slug(name: str) -> str",
+  "cases": [
+    {
+      "args": [
+        "PhiOS Mobile"
+      ],
+      "expected": "phios-mobile"
+    },
+    {
+      "args": [
+        "__Agentora__"
+      ],
+      "expected": "agentora"
+    },
+    {
+      "args": [
+        "  PhiRepoNerve---Core!  "
+      ],
+      "expected": "phireponerve-core"
+    },
+    {
+      "args": [
+        "A__B  C"
+      ],
+      "expected": "a-b-c"
+    },
+    {
+      "args": [
+        ""
+      ],
+      "expected": ""
+    },
+    {
+      "args": [
+        "---"
+      ],
+      "expected": ""
+    },
+    {
+      "args": [
+        "already-clean"
+      ],
+      "expected": "already-clean"
+    }
+  ]
+}
