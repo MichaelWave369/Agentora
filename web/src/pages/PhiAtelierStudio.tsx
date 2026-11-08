@@ -16,7 +16,18 @@ type VisionObservations = {
   specific_suggestions: string
   uncertainties: string
 }
+type MemoryEntry = {
+  id: number
+  job_id: string
+  review_digest: string
+  decision: 'accepted'|'rejected'|'revised'
+  human_reason: string
+  approved_guidance: string
+  reviewed_suggestion: string
+  created_at: string
+}
 type VisionReport = {
+  review_digest?: string
   job_id: string
   image_sha256: string
   model: string
@@ -71,6 +82,13 @@ export default function PhiAtelierStudio() {
   const [reviews,setReviews] = useState<Revision[]>([])
   const [visionReports,setVisionReports] = useState<Record<string,VisionReport>>({})
   const [visionConsent,setVisionConsent] = useState(false)
+  const [memoryDecision,setMemoryDecision] = useState<'accepted'|'rejected'|'revised'>('accepted')
+  const [memoryReason,setMemoryReason] = useState('')
+  const [memoryEdited,setMemoryEdited] = useState('')
+  const [memoryConfirm,setMemoryConfirm] = useState(false)
+  const [memoryEntries,setMemoryEntries] = useState<MemoryEntry[]>([])
+  const [memorySaved,setMemorySaved] = useState<Record<string,boolean>>({})
+  const [approvedNotes,setApprovedNotes] = useState<{approved_guidance:string;review_digest:string}[]>([])
   const [message,setMessage] = useState('')
   const [error,setError] = useState('')
   const [busy,setBusy] = useState(false)
@@ -149,6 +167,40 @@ export default function PhiAtelierStudio() {
     setNotes(('Model-only observations: '+report.observations.possible_issues+' Uncertainty: '+report.observations.uncertainties).slice(0,1000))
     setTarget(id)
     setMessage('Copied AI suggestions into editable human-review fields; nothing was rendered or accepted automatically.')
+  }
+
+  const saveMemory = (id:string) => act(async () => {
+    const report=visionReports[id]
+    if (!report?.review_digest || !memoryConfirm) throw new Error('A staged critique and explicit confirmation are required.')
+    const result = await request<{entry:MemoryEntry}>('/api/atelier/studio/memory/decision',{
+      review_digest:report.review_digest,
+      decision:memoryDecision,
+      human_reason:memoryReason,
+      edited_guidance:memoryDecision==='revised'?memoryEdited:'',
+      human_confirm:true,
+    },key)
+    setMemorySaved(old=>({...old,[report.review_digest as string]:true}))
+    setMemoryEntries(old=>[result.entry,...old])
+    setMemoryConfirm(false)
+    setMemoryReason('')
+    setMemoryEdited('')
+    setMessage('Your human decision was saved locally. The artist did not train or render anything.')
+  })
+  const loadMemory = () => act(async () => {
+    const [history,context] = await Promise.all([
+      request<{memory:{entries:MemoryEntry[]}}>('/api/atelier/studio/memory',undefined,key),
+      request<{context:{notes:{approved_guidance:string;review_digest:string}[]}}>('/api/atelier/studio/memory/context',undefined,key),
+    ])
+    setMemoryEntries(history.memory.entries)
+    setApprovedNotes(context.context.notes)
+    setMessage('Loaded local human decisions. These notes are not injected into the model automatically.')
+  })
+  const exportMemory = () => {
+    if (!memoryEntries.length) return
+    const blob=new Blob([JSON.stringify({schema_version:'phi.atelier.memory-export.v1',entries:memoryEntries},null,2)],{type:'application/json'})
+    const url=URL.createObjectURL(blob)
+    const a=document.createElement('a');a.href=url;a.download='phi-atelier-memory.json';a.click()
+    URL.revokeObjectURL(url)
   }
 
   const exportReviews = () => {
@@ -260,6 +312,29 @@ export default function PhiAtelierStudio() {
             <dt>Uncertainties</dt><dd>{visionReports[target].observations.uncertainties}</dd>
           </dl>
           <button className="atelier-secondary" onClick={()=>useVisionNotes(target)}>Copy suggestions into editable human review</button>
+          {visionReports[target].review_digest && <div className="atelier-memory-decision">
+            <h4>Save your decision to local Artist's Memory</h4>
+            <p className="atelier-hint">A model suggestion is not accepted unless you explicitly record your decision. This action writes a private local SQLite record, not model training.</p>
+            <label>Decision
+              <select value={memoryDecision} onChange={e=>{setMemoryDecision(e.target.value as 'accepted'|'rejected'|'revised');setMemoryConfirm(false)}}>
+                <option value="accepted">Accept suggestion as-is</option>
+                <option value="rejected">Reject the suggestion</option>
+                <option value="revised">Accept my edited version</option>
+              </select>
+            </label>
+            {memoryDecision==='revised'&&<label>My approved alternative
+              <textarea rows={2} value={memoryEdited} maxLength={700} onChange={e=>setMemoryEdited(e.target.value)} />
+            </label>}
+            <label>Why are you making this decision?
+              <textarea rows={2} value={memoryReason} maxLength={500} onChange={e=>setMemoryReason(e.target.value)} />
+            </label>
+            <label className="atelier-check"><input type="checkbox" checked={memoryConfirm} onChange={e=>setMemoryConfirm(e.target.checked)} />
+              I explicitly approve recording this decision in my local feedback ledger
+            </label>
+            <button disabled={busy||!memoryConfirm||memoryReason.trim().length<8||(memoryDecision==='revised'&&memoryEdited.trim().length<8)||Boolean(memorySaved[visionReports[target].review_digest||''])}
+              onClick={()=>saveMemory(target)}>Record human decision</button>
+            {memorySaved[visionReports[target].review_digest||'']&&<p className="atelier-notice">Decision recorded for this exact vision review.</p>}
+          </div>}
         </div>}
       </div>}
       <div className="atelier-fields">
@@ -278,6 +353,28 @@ export default function PhiAtelierStudio() {
         <button disabled={!reviews.length} className="atelier-secondary" onClick={exportReviews}>Export feedback JSON</button>
       </div>
       <p className="atelier-hint">{reviews.length} local browser review receipts. Export if you want to retain them after closing this tab.</p>
+    </section>
+    <section className="atelier-panel" aria-label="Artist's Memory">
+      <h3>05 · Artist's Memory</h3>
+      <p className="atelier-hint">Your decisions persist in your local Agentora SQLite ledger. Only explicitly accepted or edited guidance appears in the approved-notes view. Rejected suggestions stay in the audit history. Nothing is automatically trained or applied.</p>
+      <div className="atelier-actions">
+        <button className="atelier-secondary" disabled={busy||!key} onClick={loadMemory}>Load local feedback memory</button>
+        <button className="atelier-secondary" disabled={!memoryEntries.length} onClick={exportMemory}>Export ledger JSON</button>
+      </div>
+      <div className="atelier-memory-history">
+        {memoryEntries.map(e=><article className="atelier-memory-record" key={e.review_digest}>
+          <strong>{e.decision}</strong><small> · {e.created_at} · Job {e.job_id.slice(0,8)}</small>
+          <p>{e.human_reason}</p>
+          {e.approved_guidance&&<blockquote>{e.approved_guidance}</blockquote>}
+        </article>)}
+      </div>
+      {approvedNotes.length>0&&<div className="atelier-approved-notes">
+        <h4>Human-approved reference notes (manual use only)</h4>
+        {approvedNotes.map(note=><div key={note.review_digest} className="atelier-memory-record">
+          <p>{note.approved_guidance}</p>
+          <button className="atelier-secondary" onClick={()=>{setChanges(note.approved_guidance.slice(0,700));setMessage('Copied accepted guidance to editable human changes; no model call or render.')}}>Copy into editable changes</button>
+        </div>)}
+      </div>}
     </section>
   </div>
 }

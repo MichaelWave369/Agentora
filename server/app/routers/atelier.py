@@ -19,10 +19,12 @@ from phi_atelier.render_plan import build_render_plan
 from phi_atelier.comfy_bridge import ComfyRenderBridge, RenderBridgeError
 from phi_atelier.studio import prepare_revision
 from phi_atelier.vision import LocalVisionCritic, VisionUnavailable
+from phi_atelier.memory import ReviewMemory, MemoryError as FeedbackMemoryError
 
 router = APIRouter(prefix="/api/atelier", tags=["atelier"])
 comfy_bridge = ComfyRenderBridge()
 vision_critic = LocalVisionCritic()
+review_memory = ReviewMemory(database=os.environ.get("AGENTORA_ATELIER_MEMORY_DB") or None)
 
 
 class ArtBriefInput(BaseModel):
@@ -58,6 +60,14 @@ class RenderSubmitInput(RenderPlanInput):
 
 class CancelRenderInput(BaseModel):
     confirm_cancel: bool = False
+
+class HumanDecisionInput(BaseModel):
+    review_digest: str = Field(min_length=71, max_length=71)
+    decision: Literal["accepted", "rejected", "revised"]
+    human_reason: str = Field(min_length=8, max_length=500)
+    edited_guidance: str = Field(default="", max_length=700)
+    human_confirm: bool = False
+
 
 class VisionReviewInput(BaseModel):
     confirm_local_model_call: bool = False
@@ -279,4 +289,48 @@ async def studio_vision_review(prompt_id: str, payload: VisionReviewInput, reque
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
     except VisionUnavailable as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    if os.environ.get("AGENTORA_ATELIER_MEMORY_ENABLED", "").lower() == "true":
+        try:
+            report["review_digest"] = review_memory.stage(
+                report, original_prompt=source["positive_prompt"]
+            )
+        except FeedbackMemoryError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
     return {"ok": True, "report": report}
+
+
+def _require_memory_operator(request: Request) -> None:
+    _require_render_operator(request)
+    if os.environ.get("AGENTORA_ATELIER_MEMORY_ENABLED", "").lower() != "true":
+        raise HTTPException(status_code=404, detail="local artist feedback memory disabled")
+
+
+@router.post("/studio/memory/decision")
+def studio_memory_decision(payload: HumanDecisionInput, request: Request):
+    """Explicit human decision about one pinned, staged vision report."""
+    _require_memory_operator(request)
+    try:
+        entry = review_memory.decide(**payload.model_dump())
+    except FeedbackMemoryError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    return {"ok": True, "entry": entry}
+
+
+@router.get("/studio/memory")
+def studio_memory_list(request: Request):
+    """Human-controlled local ledger, not background model context."""
+    _require_memory_operator(request)
+    try:
+        return {"ok": True, "memory": review_memory.list_decisions()}
+    except FeedbackMemoryError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+
+
+@router.get("/studio/memory/context")
+def studio_memory_context(request: Request):
+    """Show approved-only notes for manual use; never load into a model."""
+    _require_memory_operator(request)
+    try:
+        return {"ok": True, "context": review_memory.accepted_context()}
+    except FeedbackMemoryError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
