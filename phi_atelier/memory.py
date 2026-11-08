@@ -282,7 +282,13 @@ class ReviewMemory:
         """Explicit manual retrieval only; not automatically used as model context."""
         if type(limit) is not int or not 1 <= limit <= 20:
             raise MemoryError("limit must be 1..20")
-        result = self.list_decisions(limit=100)
+        with self._lock:
+            db = self._connect()
+            try:
+                rows = self._verified(db)
+            finally:
+                if db is not None:
+                    db.close()
         notes = [
             {
                 "review_digest": r["review_digest"],
@@ -291,7 +297,7 @@ class ReviewMemory:
                 "approved_guidance": r["approved_guidance"],
                 "decision": r["decision"],
             }
-            for r in result["entries"]
+            for r in reversed(rows)
             if r["decision"] in ("accepted", "revised") and r["approved_guidance"]
         ][:limit]
         return {
