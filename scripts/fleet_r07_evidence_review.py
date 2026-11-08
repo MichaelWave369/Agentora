@@ -35,7 +35,9 @@ MAX_RUN_AGE = timedelta(days=8)
 SHA40 = re.compile(r"[a-f0-9]{40}\Z")
 SHA64 = re.compile(r"[a-f0-9]{64}\Z")
 RUN_ID = re.compile(r"[0-9]{1,20}\Z")
-ALLOWED_ENTRIES = frozenset(("preflight.json", "steps.json", "final.json"))
+CORE_ENTRIES = frozenset(("preflight.json", "steps.json", "final.json"))
+TRACE_FILE = "dispatch.json"
+ALLOWED_ENTRIES = CORE_ENTRIES | {TRACE_FILE}
 
 
 class ReviewHeld(Exception):
@@ -99,7 +101,7 @@ def read_archive(raw):
                     raise ReviewHeld("ARCHIVE_JSON_INVALID") from None
                 require(isinstance(value, dict), "ARCHIVE_OBJECT_REQUIRED")
                 seen[name] = value
-            require(set(seen) == ALLOWED_ENTRIES, "INCOMPLETE_PILOT_ARTIFACT")
+            require(CORE_ENTRIES.issubset(seen), "INCOMPLETE_PILOT_ARTIFACT")
             return seen
     except (zipfile.BadZipFile, RuntimeError, OSError, EOFError):
         raise ReviewHeld("ARCHIVE_UNREADABLE") from None
@@ -235,6 +237,26 @@ def _pilot_payload(files, run_id, now):
     return sha, started, finished
 
 
+def _trace(files, run_id, pilot_sha):
+    """Optional GitHub-artifact-bound request metadata, never an approval."""
+    item = files.get(TRACE_FILE)
+    if item is None:
+        return None
+    require(type(item) is dict and set(item) == {
+        "schema", "request_id", "run_id", "pilot_source_sha",
+        "dispatch_authorized", "merge_authorized", "verified_complete",
+    } and item.get("schema") == pilot.TRACE_SCHEMA and
+        type(item.get("request_id")) is str and
+        pilot.TRACE_ID.fullmatch(item["request_id"]) is not None and
+        type(item.get("run_id")) is int and item["run_id"] == run_id and
+        item.get("pilot_source_sha") == pilot_sha and
+        item.get("dispatch_authorized") is False and
+        item.get("merge_authorized") is False and
+        item.get("verified_complete") is False,
+        "DISPATCH_TRACE_NOT_BOUND_TO_RUN")
+    return item["request_id"]
+
+
 def review(run_id, zip_bytes, github_get=fixed_github_get, token=None,
            clock=None):
     require(type(run_id) is int and 0 < run_id < 10**20, "RUN_ID_INVALID")
@@ -259,6 +281,7 @@ def review(run_id, zip_bytes, github_get=fixed_github_get, token=None,
     artifact_id, digest = _artifact(matching[0], run_id, zip_bytes)
     files = read_archive(zip_bytes)
     pilot_sha, pre_time, post_time = _pilot_payload(files, run_id, now)
+    trace_id = _trace(files, run_id, pilot_sha)
     return {
         "schema": SCHEMA,
         "state": "GITHUB_PILOT_ARTIFACT_DIGEST_CORRELATED",
@@ -279,6 +302,9 @@ def review(run_id, zip_bytes, github_get=fixed_github_get, token=None,
         "pilot_repository": PILOT_REPO,
         "pilot_repository_id": pilot.REPOSITORY_ID,
         "pilot_source_sha": pilot_sha,
+        "dispatch_request_id": trace_id,
+        "dispatch_trace_present": trace_id is not None,
+        "dispatch_origin_authenticated": False,
         "preflight_observed_utc": pre_time.isoformat(),
         "postflight_observed_utc": post_time.isoformat(),
         "observed_fixed_checks": {
