@@ -153,6 +153,17 @@ def correlate(registry, ledger, intake, capability, run_id, archive_bytes, *,
                                    token=token, clock=lambda: now)
     artifact_id, digest, pre, post = _reviewed_receipt(
         corroborated, intake, capability, run_id, row, now_ms)
+    # R0.7 independently checked the optional GitHub artifact trace.
+    # A trace is useful for mission attribution but never proves who
+    # submitted the workflow_dispatch request.
+    trace_id = corroborated.get("dispatch_request_id")
+    trace_present = corroborated.get("dispatch_trace_present", False)
+    require((trace_present is True and type(trace_id) is str
+             and evidence.pilot.TRACE_ID.fullmatch(trace_id) is not None) or
+            (trace_present is False and trace_id is None),
+            "DISPATCH_TRACE_NOT_CORROBORATED")
+    require(corroborated.get("dispatch_origin_authenticated", False) is False,
+            "DISPATCH_TRACE_CANNOT_ASSERT_AUTHORITY")
     after = source.observe(intake, capability, ledger,
                            get=source_get, token=token, clock=millis)
     require(after["state"] == "SOURCE_HEAD_MATCH_OBSERVED"
@@ -174,6 +185,9 @@ def correlate(registry, ledger, intake, capability, run_id, archive_bytes, *,
         "workflow_run_id": run_id,
         "github_artifact_id": artifact_id,
         "github_artifact_sha256": digest,
+        "dispatch_request_id": trace_id,
+        "dispatch_trace_present": trace_present,
+        "dispatch_origin_authenticated": False,
         "pilot_preflight_utc": datetime.fromtimestamp(pre / 1000, timezone.utc).isoformat(),
         "pilot_postflight_utc": datetime.fromtimestamp(post / 1000, timezone.utc).isoformat(),
         "reviewed_utc": now.astimezone(timezone.utc).isoformat(),

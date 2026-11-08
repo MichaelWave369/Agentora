@@ -134,6 +134,24 @@ class CorrelationTests(unittest.TestCase):
         self.assertNotIn(self.cap["token"], json.dumps(result))
         self.assertNotIn(self.cap["request_sha256"], json.dumps(result))
 
+    def test_verified_r07_trace_survives_r4_correlation_without_authority(self):
+        confirmed = evidence_receipt()
+        request = "r10r5-" + "a" * 40
+        confirmed["dispatch_request_id"] = request
+        confirmed["dispatch_trace_present"] = True
+        confirmed["dispatch_origin_authenticated"] = False
+        correlated, _, _ = self.correlate(payload=confirmed)
+        self.assertEqual(correlated["dispatch_request_id"], request)
+        self.assertTrue(correlated["dispatch_trace_present"])
+        self.assertFalse(correlated["dispatch_origin_authenticated"])
+        self.assertFalse(correlated["merge_authorized"])
+
+        for change in ({"dispatch_origin_authenticated": True},
+                       {"dispatch_trace_present": False},
+                       {"dispatch_request_id": "bad/id"}):
+            with self.subTest(change=change), self.assertRaises(r4.CorrelationHeld):
+                self.correlate(payload={**confirmed, **change})
+
     def test_only_one_repo_and_confirmed_operator_review(self):
         bad = intake()
         bad["repository"] = "MichaelWave369/BTM"
