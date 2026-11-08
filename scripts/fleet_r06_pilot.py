@@ -28,7 +28,7 @@ RECEIPT_SCHEMA = "agentora.fleet.pilot-check-receipt.v0.6"
 SHA40 = re.compile(r"[a-f0-9]{40}\Z")
 MAX_FILE_BYTES = 16384
 TRACE_SCHEMA = "agentora.fleet.fixed-dispatch-trace.v1"
-TRACE_ID = re.compile(r"[A-Za-z0-9_.-]{1,80}\\Z")
+TRACE_ID = re.compile(r"[A-Za-z0-9_.-]{1,80}\Z")
 CHECK_NAMES = ("install", "node_tests", "vite_build")
 
 
