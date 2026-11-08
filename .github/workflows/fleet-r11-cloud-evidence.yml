@@ -1,0 +1,79 @@
+name: Fleet R11 Cloud Evidence Review (No Local Setup)
+
+# Read-only review of the EXISTING fixed R0.6 PhiMada test workflow.
+# This runner never dispatches tests, changes source, approves, or merges.
+on:
+  workflow_run:
+    workflows:
+      - Fleet R0.6 PhiMada Sandboxed Verification Pilot
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pilot_run_id:
+        description: "Existing GitHub Actions run ID from the fixed R0.6 PhiMada pilot"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: agentora-fleet-r11-evidence-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify exact GitHub artifact (not product completion)
+    if: >-
+      github.repository == 'MichaelWave369/Agentora' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'workflow_dispatch'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout trusted main verifier only
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: false
+          lfs: false
+
+      - name: Install Python 3.12 on ephemeral GitHub runner
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Independently verify fixed GitHub workflow and ZIP digest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PILOT_RUN_ID: ${{ github.event.workflow_run.id || inputs.pilot_run_id }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          set -euo pipefail
+          python scripts/fleet_r11_cloud_evidence.py \
+            --pilot-run-id "$PILOT_RUN_ID" --output-dir cloud-review
+
+      - name: Show review or explicit hold in Actions Summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f cloud-review/summary.md ]]; then
+            cat cloud-review/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '## Evidence unavailable\n\nNo verified success, QA, merge, or deployment.\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Retain bounded read-only review receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-r11-cloud-review-${{ github.run_id }}
+          path: cloud-review/
+          retention-days: 7
+          if-no-files-found: warn
