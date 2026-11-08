@@ -251,10 +251,13 @@ def discover(ledger, mission_id, *, run_get=source.github_get,
                 break
         if truncated:
             break
-        if scanned >= catalog["total_count"] or len(runs) < PER_PAGE:
+        if scanned >= catalog["total_count"]:
             break
-        if page == max_pages:
+        if len(runs) < PER_PAGE or page == max_pages:
+            # The catalog says there are more results, but the budget,
+            # pagination or provider response stopped discovery.
             truncated = True
+            break
     return {"schema": SCHEMA, "state": (
                 "CANDIDATES_ONLY_NO_MISSION_ATTRIBUTION" if candidates
                 else "NO_CANDIDATE_IN_SCANNED_WINDOW"),
