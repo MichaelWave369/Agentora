@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
+import sqlite3
 import sys
 
 HERE = Path(__file__).resolve().parent
@@ -54,7 +55,7 @@ def _now(now=None):
 
 
 def _policy(kind, info):
-    need(kind in KINDS, "MISSION_KIND_NOT_ALLOWLISTED")
+    need(type(kind) is str and kind in KINDS, "MISSION_KIND_NOT_ALLOWLISTED")
     if kind != KIND_AUDIT:
         need(info["repository"] == pilot.REPOSITORY
              and info["repository_id"] == pilot.REPOSITORY_ID,
@@ -113,6 +114,12 @@ class MissionControl:
             old = db.execute("SELECT mission_id FROM r9_missions WHERE mission_id=?",
                              (mission_id,)).fetchone()
             need(old is None, "MISSION_ID_ALREADY_USED_NO_REPLAY")
+            prior = db.execute("SELECT mission_id FROM r9_missions WHERE github_id=? "
+                "AND state IN ('QUEUED','CLAIMING_IMPLEMENT','ASSIGNED_IMPLEMENT',"
+                "'HANDOFF_IN_PROGRESS','QA_QUEUED','CLAIMING_QA',"
+                "'ASSIGNED_QA','QA_HELD','HELD_RECONCILE')",
+                (info["repository_id"],)).fetchone()
+            need(prior is None, "REPOSITORY_HAS_UNRESOLVED_MISSION")
             db.execute("""INSERT INTO r9_missions (
                 mission_id,github_id,repository,source_sha,intake_digest,
                 kind,policy,state,created_ms,updated_ms
@@ -364,7 +371,7 @@ def main(argv=None):
         print(json.dumps(result,indent=2))
         return 0
     except (MissionHeld,leases.LeaseHeld,stewardship.HandoffHeld,
-            StewardHeld,OSError,ValueError) as exc:
+            StewardHeld,sqlite3.IntegrityError,OSError,ValueError) as exc:
         print("FLEET_R9_HELD " + str(exc),file=sys.stderr)
         return 3
 
