@@ -26,7 +26,7 @@ from app.services.agent_exchange_signed_bridge import (
 MAX_HTTP_BODY = 16384
 TOKEN_PATTERN = re.compile(r"[a-f0-9]{64}\Z")
 LOOPBACK_ORIGIN = re.compile(
-    r"(?:http://(?:localhost|127\.0\.0\.1):[1-9][0-9]{0,4}|tauri://localhost)\Z"
+    r"(?:http://(?:localhost|127\.0\.0\.1):[1-9][0-9]{0,4}|tauri://localhost|https?://tauri\.localhost)\Z"
 )
 
 
