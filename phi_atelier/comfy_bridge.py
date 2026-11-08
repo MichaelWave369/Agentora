@@ -105,6 +105,10 @@ class ComfyRenderBridge:
                 raise RenderBridgeError("render job not found in this Agentora process", 404)
             return dict(record)
 
+    def get_job(self, job_id: str) -> dict[str, Any]:
+        """Read one locally owned job without contacting a renderer."""
+        return self._snapshot(_canonical_uuid(job_id))
+
     def list_jobs(self) -> list[dict[str, Any]]:
         """In-process job metadata for an operator; never expose arbitrary image paths."""
         with self._lock:
