@@ -30,6 +30,7 @@ KIND_TEST = "PHIMADA_FIXED_TEST"
 KIND_PROPOSAL = "PHIMADA_MODEL_PROPOSAL_REVIEW"
 KINDS = {KIND_AUDIT, KIND_TEST, KIND_PROPOSAL}
 CONFIRM = "ENQUEUE_PUBLIC_REVIEW_MISSION"
+ARCHIVE_CONFIRM = "ARCHIVE_HELD_WITHOUT_APPROVAL"
 IDENT = re.compile(r"[A-Za-z0-9_.-]{1,80}\Z")
 DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 ACTIVE = ("CLAIMING_IMPLEMENT", "ASSIGNED_IMPLEMENT", "HANDOFF_IN_PROGRESS",
@@ -298,6 +299,36 @@ class MissionControl:
                 "review_approved": False, "merge_authorized": False,
                 "verified_complete": False}
 
+    def archive_held(self, mission_id, *, confirmation, now_ms=None):
+        """Manual reconciliation: archive a held record, never call it complete.
+
+        Refuses while a live local lease exists for that repository, even if
+        the mission record itself says HELD. No automatic recovery occurs.
+        """
+        need(type(mission_id) is str and IDENT.fullmatch(mission_id) is not None,
+             "MISSION_ID_INVALID")
+        need(confirmation == ARCHIVE_CONFIRM,
+             "OPERATOR_ARCHIVE_CONFIRMATION_REQUIRED")
+        moment = leases.epoch_ms(now_ms)
+        with self.leases._transaction() as db:
+            row = db.execute("SELECT * FROM r9_missions WHERE mission_id=?",
+                             (mission_id,)).fetchone()
+            need(row is not None and row["state"] in ("QA_HELD","HELD_RECONCILE"),
+                 "ONLY_HELD_MISSIONS_CAN_BE_ARCHIVED")
+            active = db.execute(
+                "SELECT state,expires_ms FROM reservations WHERE repository=?",
+                (row["repository"],)).fetchone()
+            need(active is None or active["state"] != "RESERVED" or
+                 active["expires_ms"] <= moment,
+                 "ACTIVE_LEASE_MUST_BE_RELEASED_OR_FENCED")
+            db.execute("""UPDATE r9_missions
+                SET state='ARCHIVED_NOT_APPROVED',updated_ms=?
+                WHERE mission_id=?""",(moment,mission_id))
+        return {"schema": SCHEMA, "mission_id": mission_id,
+                "state": "ARCHIVED_NOT_APPROVED",
+                "verified_complete": False, "merge_authorized": False,
+                "dispatch_authorized": False}
+
     def status(self, *, now=None):
         visible, scan = _present(self.registry, _now(now))
         with self.leases._connection() as db:
@@ -342,6 +373,9 @@ def main(argv=None):
     handoff.add_argument("--mission-id",required=True)
     handoff.add_argument("--lease-file",type=Path,required=True)
     handoff.add_argument("--evidence-sha256",required=True)
+    archive = sub.add_parser("archive-held")
+    archive.add_argument("--mission-id",required=True)
+    archive.add_argument("--confirm",required=True)
     qa = sub.add_parser("qa-hold")
     qa.add_argument("--mission-id",required=True)
     qa.add_argument("--lease-file",type=Path,required=True)
@@ -363,6 +397,8 @@ def main(argv=None):
             result=control.handoff_to_qa(a.mission_id,
                 leases.load_capability(a.lease_file.expanduser()),
                 a.evidence_sha256)
+        elif a.action=="archive-held":
+            result=control.archive_held(a.mission_id,confirmation=a.confirm)
         elif a.action=="qa-hold":
             result=control.qa_hold(a.mission_id,
                 leases.load_capability(a.lease_file.expanduser()))
