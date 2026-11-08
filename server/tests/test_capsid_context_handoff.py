@@ -201,6 +201,18 @@ def test_revoked_pack_blocks_before_source_observation(setup):
     assert gh.calls == []
 
 
+def test_revocation_during_handoff_is_detected_by_fresh_review_read(setup):
+    calls = [0]
+    def evolving_reviews():
+        calls[0] += 1
+        return {"create.xr-input-triage": (
+            "approved" if calls[0] < 3 else "revoked"
+        )}
+    with pytest.raises(bridge.CapsidHandoffHeld, match="PACK_REVOKED"):
+        call(setup, states=evolving_reviews)
+    assert calls[0] >= 3
+
+
 def test_worker_and_repository_mismatch_hold(setup):
     gh = GHFixture()
     profile = dict(setup[3], agent_id="different")
