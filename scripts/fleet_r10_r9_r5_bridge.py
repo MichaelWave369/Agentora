@@ -43,6 +43,15 @@ def need(ok, reason):
         raise BridgeHeld(reason)
 
 
+def _traced_post(sender, request_id):
+    """Supply a fixed R10 identifier to the existing workflow POST sender."""
+    need(callable(sender), "INVALID_DISPATCH_SENDER")
+    _request = request_id
+    need(type(_request) is str and r5.REQUEST.fullmatch(_request),
+         "INVALID_DISPATCH_TRACE_ID")
+    return lambda credential, sha: sender(credential, sha, request_id=_request)
+
+
 def _request_id(mission_id):
     need(type(mission_id) is str and r9.IDENT.fullmatch(mission_id) is not None,
          "MISSION_ID_INVALID")
@@ -176,8 +185,7 @@ def submit(control, mission_id, intake, capability, *, execute=False,
     # R5 remains the sole POST/HEAD/rules gate. Only the trusted built-in
     # sender attaches the deterministic mission trace to its fixed workflow.
     # Injected test senders retain the historical two-argument shape.
-    traced_post = (lambda credential, sha: r5.github_dispatch(
-        credential, sha, request_id=request_id)) if post is r5.github_dispatch else post
+    traced_post = _traced_post(post, request_id) if post is r5.github_dispatch else post
     result = r5.dispatch(control.registry, control.leases, intake, capability,
         request_id=request_id, execute=True, confirmation=r5.CONFIRM,
         token=token, get=get, post=traced_post, now=now, clock_ms=clock_ms)
