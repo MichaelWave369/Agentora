@@ -104,6 +104,18 @@ class BridgeTests(unittest.TestCase):
             get=get or self.gh, post=post or self.post,
             now=NOW, clock_ms=lambda: MS)
 
+    def test_traced_post_binds_r5_request_id_without_extra_authority(self):
+        sent = []
+        def sender(token, sha, request_id=None):
+            sent.append((token, sha, request_id))
+            return 204
+        req_id = bridge._request_id("phimada-fixed-1")
+        result = bridge._traced_post(sender, req_id)("secret", SHA)
+        self.assertEqual(result, 204)
+        self.assertEqual(sent, [("secret", SHA, req_id)])
+        with self.assertRaises(bridge.BridgeHeld):
+            bridge._traced_post(sender, "bad/id")
+
     def test_preview_does_not_write_intent_or_issue_post(self):
         result = self.run_bridge()
         self.assertEqual(result["state"], "DRY_RUN_READY_NO_DISPATCH")
