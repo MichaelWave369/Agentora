@@ -138,7 +138,8 @@ class MissionControl:
         visible, scan_id = _present(self.registry, now)
         state = "QUEUED" if phase == "implement" else "QA_QUEUED"
         rows = db.execute(
-            "SELECT * FROM r9_missions WHERE state=? ORDER BY created_ms,mission_id",
+            "SELECT rowid AS admission_order,* FROM r9_missions WHERE state=? "
+            "ORDER BY created_ms,admission_order",
             (state,)).fetchall()
         # Across repositories, prefer least recently worked / fewest starts.
         # Counts are only planning history, never evidence of completed work.
@@ -151,7 +152,7 @@ class MissionControl:
         available.sort(key=lambda row: (
             history.get(row["github_id"], (0,0))[0],
             history.get(row["github_id"], (0,0))[1],
-            row["created_ms"],row["mission_id"]))
+            row["created_ms"],row["admission_order"]))
         return available, scan_id
 
     def plan(self, *, phase="implement", now=None):
