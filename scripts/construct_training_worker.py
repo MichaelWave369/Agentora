@@ -226,6 +226,8 @@ def evaluate(image, code, function, args, expected, *, runner=subprocess.run):
             out.seek(0)
             raw = out.read(8193)
             if result.returncode != 0 or len(raw) > 8192:
+                # A failed Docker CLI may leave its container alive.
+                cleanup(cid)
                 return False
             try:
                 lines = raw.decode("utf-8").splitlines()
