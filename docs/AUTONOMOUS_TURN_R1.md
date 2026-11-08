@@ -228,3 +228,37 @@ Field feedback adds always-retained plan/authorization hold receipts and a
 redacted API request audit. It changes no approval requirement or task allowlist.
 
 Ledger Above Ego. People Above Profit. Peace Above Drama.
+
+## R1 observer hardening: delayed GitHub CI visibility
+
+On November 4, 2026, [R1 run 41875250182](https://github.com/MichaelWave369/Agentora/actions/runs/41875250182)
+passed the exact owner environment approval, isolated worker and App publisher.
+It produced [PR #87](https://github.com/MichaelWave369/Agentora/pull/87),
+but the required checks were not all visible as green before the original
+40-probe observer window elapsed. The saved observation was
+`CI_PENDING_TIMEOUT`, so the merge gate correctly skipped. PR #87 was
+subsequently closed without merging. This was a real partial hosted run,
+not an autonomous merge.
+
+The R1 observer now checks the immutable PR head up to **96 times at
+15-second intervals**, approximately 24 minutes of interval waiting plus
+API latency. Its GitHub job timeout is **35 minutes** to accommodate the
+full observation window. It still revalidates owner authorization,
+task expiry, source main SHA, PR identity and current CI evidence on every
+poll. Pending, missing and incomplete checks never count as success;
+failed checks are returned only after the required checks settle.
+A timeout continues to return `CI_PENDING_TIMEOUT` and skips the merge gate.
+
+The longer window consumes more hosted runner minutes on genuinely slow
+CI and does not solve indefinite or extremely late checks. A future
+event-driven recovery requires a separate authorization review and real
+GitHub qualification; this adjustment grants no unattended new-task
+selection, cross-repository write, model-generated patch publication,
+branch-rule bypass, or blanket merge permission.
+
+**Field qualification:** merge this infrastructure change only after
+normal CI and privileged workflow review. Then submit a **new** current-SHA
+docs R1 task through PhiMada, approve its exact task digest in the
+protected environment, and verify the published PR, both required
+CI event types, real GitHub merge SHA and return receipt. Historic
+PR #87 and its source authorization cannot be reused.
