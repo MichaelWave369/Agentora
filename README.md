@@ -704,3 +704,16 @@ fingerprints for future independent verification. No agent identity, general
 competence, or deployment authorization is inferred.
 
 See docs/CONSTRUCT_TRAINING_EXECUTOR_R4.md for operator setup and limits.
+
+
+## ΦCAPSID × Agentora: locally fenced reference handoff
+
+Agentora can now consume a locally active, HMAC-validated ΦCAPSID from a
+separately installed PhiRepoNerve checkout. The read-only
+`scripts/capsid_context_handoff.py` bridge binds a reviewed context capsule
+to the **existing** Agentora steward/lease ledger and independently observes
+the exact GitHub source HEAD before exporting reference data. It does not
+run an agent, install tools, retrain models, dispatch, merge or deploy.
+
+See [the operator guide](docs/CAPSID_AGENTORA_R1.md) for local key handling,
+prerequisites, exact command, fail-closed tests and trust boundaries.
