@@ -12,6 +12,10 @@ on:
         description: "Type RUN_PHI_MADA_TESTS to authorize this one bounded test/build pilot"
         required: true
         type: string
+      request_id:
+        description: "Optional bounded R10 mission request ID for exact run evidence correlation"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -45,6 +49,15 @@ jobs:
         run: |
           python scripts/fleet_r06_pilot.py --output pilot-control/preflight.json \
             preflight --sha "$PILOT_SHA" --confirm "$PILOT_CONFIRM"
+
+      - name: Write inert mission request trace, if dispatched by R10
+        if: ${{ inputs.request_id != '' }}
+        env:
+          PILOT_SHA: ${{ inputs.source_sha }}
+          R10_REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          python scripts/fleet_r06_pilot.py --output pilot-control/dispatch.json \
+            marker --sha "$PILOT_SHA" --request-id "$R10_REQUEST_ID"
 
       - name: Checkout fixed public pilot at exact commit
         uses: actions/checkout@v4
