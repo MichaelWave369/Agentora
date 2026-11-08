@@ -1,0 +1,109 @@
+name: Construct R4 Bounded Manual Code Lab
+# Fixed, operator-triggered diagnostic only.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Allowlisted Code Lab task"
+        required: true
+        type: choice
+        options:
+          - retry-backoff-code
+          - repo-slug-code
+      candidate_sha:
+        description: "Full Agentora commit SHA containing construct_candidates/<task>.py"
+        required: true
+        type: string
+      handoff_digest:
+        description: "sha256:... RepoNerve handoff digest (claim, not authorization)"
+        required: true
+        type: string
+      image:
+        description: "Pinned python:3.12-alpine@sha256:<64hex> image"
+        required: true
+        type: string
+      confirmation:
+        description: "Type RUN_BOUNDED_CONSTRUCT_TRAINING"
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: agentora-construct-r4-manual
+  cancel-in-progress: false
+jobs:
+  diagnostic:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout trusted controller pinned to triggering main SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: control
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: false
+          lfs: false
+      - name: Install Python 3.12 for trusted controller only
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify operator confirmation, trusted controller and fixed task
+        shell: bash
+        env:
+          TASK_ID: ${{ inputs.task }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          HANDOFF_DIGEST: ${{ inputs.handoff_digest }}
+          PINNED_IMAGE: ${{ inputs.image }}
+          OPERATOR_CONFIRM: ${{ inputs.confirmation }}
+          CONTROLLER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python control/scripts/construct_training_worker.py preflight \
+            --task "$TASK_ID" --candidate-sha "$CANDIDATE_SHA" \
+            --handoff-digest "$HANDOFF_DIGEST" --image "$PINNED_IMAGE" \
+            --controller-sha "$CONTROLLER_SHA" --controller-checkout control \
+            --confirm "$OPERATOR_CONFIRM" --output evidence/preflight.json
+      - name: Checkout exact candidate commit from fixed repository
+        uses: actions/checkout@v4
+        with:
+          repository: MichaelWave369/Agentora
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: false
+          lfs: false
+      - name: Fetch only the pinned Python runtime image
+        shell: bash
+        env:
+          PINNED_IMAGE: ${{ inputs.image }}
+        run: |
+          set -euo pipefail
+          docker pull "$PINNED_IMAGE"
+      - name: Execute only fixed Python checks inside restricted Docker
+        shell: bash
+        env:
+          TASK_ID: ${{ inputs.task }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          HANDOFF_DIGEST: ${{ inputs.handoff_digest }}
+          PINNED_IMAGE: ${{ inputs.image }}
+          CONTROLLER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python control/scripts/construct_training_worker.py execute \
+            --task "$TASK_ID" --candidate-sha "$CANDIDATE_SHA" \
+            --handoff-digest "$HANDOFF_DIGEST" --image "$PINNED_IMAGE" \
+            --controller-sha "$CONTROLLER_SHA" --controller-checkout control \
+            --candidate-checkout candidate \
+            --preflight evidence/preflight.json --output evidence/result.json
+      - name: Retain review-only evidence for later independent verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: construct-r4-${{ github.run_id }}
+          path: evidence/*.json
+          retention-days: 7
+          if-no-files-found: warn

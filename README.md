@@ -692,3 +692,14 @@ revalidates the steward/lease. All training-result claims, including
 no execution or deployment authority.
 
 See [Construct R3](docs/CONSTRUCT_TRAINING_EVIDENCE_R3.md).
+
+
+## PhiConstruct R4 manually triggered training runner
+
+The Construct now has a manual-only, fixed-task GitHub Actions Code Lab.
+It reads a single candidate Python function from an exact Agentora commit,
+runs checks in restricted Docker, and retains bounded source/task/image
+fingerprints for future independent verification. No agent identity, general
+competence, or deployment authorization is inferred.
+
+See docs/CONSTRUCT_TRAINING_EXECUTOR_R4.md for operator setup and limits.
