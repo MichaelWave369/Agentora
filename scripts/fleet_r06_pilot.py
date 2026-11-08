@@ -27,6 +27,8 @@ PREFLIGHT_SCHEMA = "agentora.fleet.pilot-preflight.v0.6"
 RECEIPT_SCHEMA = "agentora.fleet.pilot-check-receipt.v0.6"
 SHA40 = re.compile(r"[a-f0-9]{40}\Z")
 MAX_FILE_BYTES = 16384
+TRACE_SCHEMA = "agentora.fleet.fixed-dispatch-trace.v1"
+TRACE_ID = re.compile(r"[A-Za-z0-9_.-]{1,80}\Z")
 CHECK_NAMES = ("install", "node_tests", "vite_build")
 
 
@@ -221,6 +223,21 @@ def finalize_pilot(sha: str, preflight: dict[str, Any],
     }
 
 
+def dispatch_trace(sha, request_id, run_id):
+    """Inert exact-run correlation marker, not execution authorization."""
+    validate_sha(sha)
+    require(type(request_id) is str and TRACE_ID.fullmatch(request_id) is not None,
+            "TRACE_REQUEST_ID_INVALID")
+    require(type(run_id) is str and re.fullmatch(r"[1-9][0-9]{0,19}", run_id) is not None,
+            "TRACE_RUN_ID_INVALID")
+    return {
+        "schema": TRACE_SCHEMA, "request_id": request_id,
+        "run_id": int(run_id), "pilot_source_sha": sha,
+        "dispatch_authorized": False, "merge_authorized": False,
+        "verified_complete": False,
+    }
+
+
 def write_new(path: Path, result: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
     require(not path.exists() and not path.is_symlink(), "OUTPUT_ALREADY_EXISTS")
@@ -249,6 +266,9 @@ def main(argv=None) -> int:
     pre = sub.add_parser("preflight")
     pre.add_argument("--sha", required=True)
     pre.add_argument("--confirm", required=True)
+    marker = sub.add_parser("marker")
+    marker.add_argument("--sha", required=True)
+    marker.add_argument("--request-id", required=True)
     post = sub.add_parser("finalize")
     post.add_argument("--sha", required=True)
     post.add_argument("--preflight", required=True, type=Path)
@@ -258,16 +278,20 @@ def main(argv=None) -> int:
         token = os.environ.get("GITHUB_TOKEN")
         if options.command == "preflight":
             result = prepare_pilot(options.sha, options.confirm, token=token)
+        elif options.command == "marker":
+            result = dispatch_trace(options.sha, options.request_id,
+                                    os.environ.get("GITHUB_RUN_ID"))
         else:
             prior = parse_json_file(options.preflight)
             steps = parse_json_file(options.steps) if options.steps and options.steps.exists() else None
             result = finalize_pilot(options.sha, prior, steps, token=token,
                                     workflow_run_id=os.environ.get("GITHUB_RUN_ID"))
         write_new(options.output, result)
-        print(json.dumps({"state": result["state"], "repository": REPOSITORY,
+        print(json.dumps({"state": result.get("state", "TRACE_ONLY"),
+                          "repository": REPOSITORY,
                           "merge_authorized": False, "verified_complete": False},
                          sort_keys=True))
-        return 0 if result["state"] in (
+        return 0 if options.command == "marker" or result["state"] in (
             "SOURCE_HEAD_MATCH_OBSERVED",
             "AUTOMATED_CHECKS_PASSED_AT_OBSERVED_SHA") else 2
     except (PilotHeld, source.ObservationHeld, OSError, ValueError) as exc:

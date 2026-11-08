@@ -54,6 +54,25 @@ def steps(install=0, test=0, build=0, checkout=SHA):
 
 
 class FleetPilotTests(unittest.TestCase):
+    def test_r10_dispatch_trace_is_only_a_checked_run_marker(self):
+        marker = pilot.dispatch_trace(SHA, "r10r5-" + "a" * 40, "1234567")
+        self.assertEqual(marker["schema"], pilot.TRACE_SCHEMA)
+        self.assertEqual(marker["run_id"], 1234567)
+        self.assertEqual(marker["pilot_source_sha"], SHA)
+        self.assertFalse(marker["dispatch_authorized"])
+        self.assertFalse(marker["merge_authorized"])
+        self.assertFalse(marker["verified_complete"])
+        for sha, trace, run in (
+            ("not-a-sha", "r10r5-" + "a" * 40, "1234567"),
+            (SHA, "bad/request/id", "1234567"),
+            (SHA, "r10r5-" + "a" * 40, "no-run"),
+            (SHA, "r10r5-" + "a" * 40, "0"),
+            (SHA, "", "1234567"),
+        ):
+            with self.subTest(sha=sha, trace=trace, run=run):
+                with self.assertRaises(pilot.PilotHeld):
+                    pilot.dispatch_trace(sha, trace, run)
+
     def test_preflight_fixed_repo_sha_and_no_execution_authority(self):
         get = FakeGitHub()
         proof = pilot.prepare_pilot(SHA, pilot.CONFIRMATION, get,
