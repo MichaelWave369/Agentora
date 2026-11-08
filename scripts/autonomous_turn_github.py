@@ -387,7 +387,12 @@ def publish(api, task, value, sandbox, run_id, control_sha, previous_head=None):
             "task_sha256": task_digest(task), "attempt": value["attempt"]}
 
 
-def observe(api, task, published, proposal, run_id, control_sha, sleep=time.sleep, polls=40):
+OBSERVE_POLL_INTERVAL_SECONDS = 15
+OBSERVE_MAX_POLLS = 96
+
+
+def observe(api, task, published, proposal, run_id, control_sha,
+            sleep=time.sleep, polls=OBSERVE_MAX_POLLS):
     authority(api, task, run_id, control_sha)
     head = published["head_sha"]
     need(published.get("task_sha256") == task_digest(task), "PUBLISHED_TASK_MISMATCH")
@@ -422,7 +427,7 @@ def observe(api, task, published, proposal, run_id, control_sha, sleep=time.slee
             failures = list(grouped.values())
             return {**result, "state": "CI_FAILED", "checks": checks, "failures": failures}
         if index+1 < polls:
-            sleep(15)
+            sleep(OBSERVE_POLL_INTERVAL_SECONDS)
     return {**result, "state": "CI_PENDING_TIMEOUT", "checks": checks, "failures": []}
 
 
