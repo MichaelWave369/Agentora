@@ -145,7 +145,9 @@ jobs:
   observe:
     needs: [worker, publish]
     runs-on: ubuntu-latest
-    timeout-minutes: 13
+    # 96 checks every 15s (~24 minutes) plus bounded GitHub API latency.
+    # Do not terminate the observer before it can return CI_PASSED or a safe hold.
+    timeout-minutes: 35
     outputs:
       state: ${{ steps.observe.outputs.state }}
       observation_sha256: ${{ steps.observe.outputs.observation_sha256 }}

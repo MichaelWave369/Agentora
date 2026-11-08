@@ -421,6 +421,41 @@ class AutonomousGitHubTests(unittest.TestCase):
         with self.assertRaises(c.Held): g.check_runs(self.api,published["head_sha"])
         self.assertFalse(any(p.endswith("/merge") for p,_,_ in self.api.calls))
 
+    def test_late_ci_green_is_observed_without_a_second_owner_action(self):
+        # Simulate delayed GitHub check visibility from a real bot-published PR.
+        # An initially pending result must not become a premature merge or HOLD.
+        published = self.publish()
+        calls = 0
+
+        def delayed_checks(rows):
+            nonlocal calls
+            calls += 1
+            if calls < 3:
+                return [{**row, "status": "queued", "conclusion": None}
+                        for row in rows]
+            return rows
+
+        self.api.check_mutation = delayed_checks
+        sleeps = []
+        observed = g.observe(
+            self.api, self.t, published, self.value, 11, CONTROL,
+            sleep=sleeps.append, polls=4)
+        self.assertEqual(observed["state"], "CI_PASSED")
+        self.assertEqual(observed["head_sha"], published["head_sha"])
+        self.assertEqual(sleeps, [15, 15])
+        self.assertFalse(any(path.endswith("/merge")
+                             for path, _, _ in self.api.calls))
+        result = g.finish(
+            self.api, self.t, published, self.value, self.sandbox, 11, CONTROL)
+        self.assertEqual(result["state"], "MERGED")
+
+    def test_observer_budget_remains_longer_than_github_ci_delay(self):
+        self.assertGreaterEqual(
+            g.OBSERVE_MAX_POLLS * g.OBSERVE_POLL_INTERVAL_SECONDS, 20 * 60)
+        workflow = (ROOT/".github/workflows/autonomous-turn-attempt.yml").read_text()
+        observer = workflow.split("  observe:", 1)[1]
+        self.assertIn("timeout-minutes: 35", observer)
+
     def test_real_shaped_failure_is_bound_to_current_job_and_bounded_log(self):
         published = self.publish()
         self.api.check_mutation = lambda rows: [{**r,"conclusion":"failure"} if r["name"]=="web" else r for r in rows]
