@@ -91,6 +91,38 @@ class EvidenceReviewTests(unittest.TestCase):
                              github_get=gh or self.github, token="not-in-report",
                              clock=lambda: NOW)
 
+    def test_r10_marker_is_bound_to_exact_run_artifact_not_authority(self):
+        files = make_files()
+        req_id = "r10r5-" + "e" * 40
+        files["dispatch.json"] = pilot.dispatch_trace(SHA, req_id, str(RUN))
+        raw = pack(files)
+        result = self.review(raw=raw, gh=GitHub(raw))
+        self.assertEqual(result["dispatch_request_id"], req_id)
+        self.assertTrue(result["dispatch_trace_present"])
+        self.assertFalse(result["dispatch_origin_authenticated"])
+        self.assertFalse(result["dispatch_authorized"])
+        self.assertFalse(result["merge_authorized"])
+
+    def test_r10_marker_mutation_or_conflicting_run_is_rejected(self):
+        marker = pilot.dispatch_trace(SHA, "r10r5-" + "e" * 40, str(RUN))
+        for change in (
+            {"run_id": RUN + 1},
+            {"pilot_source_sha": "c" * 40},
+            {"request_id": "malicious/id"},
+            {"merge_authorized": True},
+            {"dispatch_authorized": True},
+            {"verified_complete": True},
+            {"schema": "not-trace"},
+            {"other": "extra"},
+        ):
+            with self.subTest(change=change):
+                files = make_files()
+                files["dispatch.json"] = {**marker, **change}
+                raw = pack(files)
+                with self.assertRaisesRegex(
+                        review.ReviewHeld, "DISPATCH_TRACE_NOT_BOUND"):
+                    self.review(raw=raw, gh=GitHub(raw))
+
     def test_matching_github_zip_produces_provenance_only(self):
         result = self.review()
         self.assertEqual(result["state"], "GITHUB_PILOT_ARTIFACT_DIGEST_CORRELATED")
