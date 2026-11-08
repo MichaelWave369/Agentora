@@ -51,14 +51,17 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def github_dispatch(token, sha):
-    """Exactly one POST to a fixed GitHub Actions workflow. Never retry a timeout."""
+def github_dispatch(token, sha, request_id=None):
+    """Exactly one POST to a fixed workflow, optionally with R10 trace ID."""
     need(type(token) is str and bool(token.strip()), "ACTIONS_WRITE_TOKEN_REQUIRED")
     need(pilot.SHA40.fullmatch(sha) is not None, "SHA_INVALID")
-    body = json.dumps({
-        "ref": "main",
-        "inputs": {"source_sha": sha, "confirmation": pilot.CONFIRMATION},
-    }, separators=(",", ":")).encode("utf-8")
+    need(request_id is None or (type(request_id) is str and
+         REQUEST.fullmatch(request_id) is not None), "DISPATCH_TRACE_ID_INVALID")
+    inputs = {"source_sha": sha, "confirmation": pilot.CONFIRMATION}
+    if request_id is not None:
+        inputs["request_id"] = request_id
+    body = json.dumps({"ref": "main", "inputs": inputs},
+                      separators=(",", ":")).encode("utf-8")
     request = Request(
         "https://api.github.com" + WORKFLOW_ENDPOINT + "/dispatches",
         data=body, method="POST",
