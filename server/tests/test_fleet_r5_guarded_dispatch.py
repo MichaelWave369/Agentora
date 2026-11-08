@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import fleet_r5_guarded_dispatch as r5
@@ -71,6 +72,38 @@ class FakeGitHub:
                      and self.branch_reads >= self.drift_after else self.sha)
             return {"name": "main", "commit": {"sha": value}}
         raise AssertionError("unexpected URL " + path)
+
+
+class R5TraceTests(unittest.TestCase):
+    def test_optional_request_trace_is_fixed_bounded_post_input(self):
+        calls = []
+        class Response:
+            status = 204
+            def __enter__(self):
+                return self
+            def __exit__(self, *_args):
+                return False
+        class Opener:
+            def open(self, request, timeout):
+                calls.append((request, timeout))
+                return Response()
+        request_id = "r10r5-" + "d" * 40
+        with patch.object(r5, "build_opener", return_value=Opener()):
+            result = r5.github_dispatch("operator-token", SHA, request_id)
+            self.assertEqual(result, 204)
+            payload = json.loads(calls[0][0].data)
+            self.assertEqual(payload["ref"], "main")
+            self.assertEqual(payload["inputs"], {
+                "source_sha": SHA, "confirmation": r5.pilot.CONFIRMATION,
+                "request_id": request_id})
+            self.assertNotIn("operator-token", json.dumps(payload))
+            self.assertEqual(
+                r5.github_dispatch("operator-token", SHA), 204)
+            legacy = json.loads(calls[1][0].data)
+            self.assertNotIn("request_id", legacy["inputs"])
+        with self.assertRaisesRegex(r5.DispatchHeld, "DISPATCH_TRACE_ID_INVALID"):
+            r5.github_dispatch("operator-token", SHA, "evil/workflow")
+        self.assertEqual(len(calls), 2)
 
 
 class R5Tests(unittest.TestCase):
