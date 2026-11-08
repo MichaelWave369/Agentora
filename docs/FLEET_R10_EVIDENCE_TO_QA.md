@@ -18,6 +18,11 @@ This rung returns R0.7's trace through R4 and stores **one** matching verified
 run next to the **original R9 mission**. The second explicit operation uses
 R9's existing implementer-to-independent-QA transition, not a new queue.
 
+To locate possible run IDs without hunting through Actions history, use the
+[read-only R10 run discovery](FLEET_R10_READONLY_RUN_DISCOVERY.md) first.
+It never attributes a run to a mission until the original GitHub ZIP
+and R0.7/R4 evidence have been verified.
+
 ## Before correlating
 
 From your trusted local checkout:
