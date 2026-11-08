@@ -121,17 +121,21 @@ def create_bridge_server(
         def do_OPTIONS(self):
             expected_host = f"127.0.0.1:{self.server.server_port}"
             origin = self.headers.get("Origin")
-            if (self.headers.get("Host") != expected_host
-                    or origin not in origins
-                    or self.headers.get("Access-Control-Request-Method") != "POST"
-                    or self.headers.get("Access-Control-Request-Headers", "").lower()
-                       not in ("authorization,content-type", "content-type,authorization")):
+            requested_method = self.headers.get("Access-Control-Request-Method")
+            requested_headers = self.headers.get("Access-Control-Request-Headers", "").lower()
+            permitted = (
+                (requested_method == "GET" and requested_headers == "authorization")
+                or (requested_method == "POST" and requested_headers in (
+                    "authorization,content-type", "content-type,authorization"
+                ))
+            )
+            if self.headers.get("Host") != expected_host or origin not in origins or not permitted:
                 self._respond(403, {"error": "CORS_DENIED"})
                 return
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
-            self.send_header("Access-Control-Allow-Methods", "POST")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST")
             self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
             self.send_header("Access-Control-Max-Age", "60")
             self.send_header("Content-Length", "0")
