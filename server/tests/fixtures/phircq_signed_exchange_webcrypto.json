@@ -1,0 +1,33 @@
+{
+  "schema": "phircq.agent-exchange.signed-bundle.v1",
+  "frame": {
+    "id": "fixture-frame-301",
+    "peerId": "peer-btm",
+    "sentAt": "2026-11-07T20:00:00.000Z",
+    "payload": {
+      "kind": "agent.exchange",
+      "message": {
+        "schema": "commonline.agent-exchange.v1",
+        "messageId": "btm-quest-301",
+        "threadId": "tracking-301",
+        "sender": "agent:btm",
+        "recipient": "agent:overstrings",
+        "kind": "offer_work",
+        "issuedAt": "2026-11-07T19:59:00.000Z",
+        "expiresAt": "2026-11-07T20:59:00.000Z",
+        "summary": "Investigate Quest tracking Δ regression. No execution permitted.",
+        "sourceSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "authority": "advisory-only"
+      }
+    },
+    "publicKey": {
+      "key_ops": ["verify"],
+      "ext": true,
+      "kty": "EC",
+      "x": "GoPgtAHlRer0bZKvNDreUD5GcVWKY4bGeCUpOR46zW8",
+      "y": "wP9-Q_XlozEXO5Ur2UObaIUInCm-onKT7zCcqAIK_Ys",
+      "crv": "P-256"
+    },
+    "signature": "VAI25MiFemSAN0d3Y2PDlo3cIPpQb/2J5T3slNu9V2yFLpUCV4t5oFKxjVF53WZXo8jV8yxl9MLKIYCZ2IpdvQ=="
+  }
+}
