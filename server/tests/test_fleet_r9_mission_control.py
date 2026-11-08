@@ -242,7 +242,7 @@ class R9Tests(unittest.TestCase):
         destination=self.root / "private" / "worker.lease"
         destination.parent.mkdir(mode=0o700)
         destination.write_text("old secret",encoding="utf-8")
-        with self.assertRaisesRegex(r9.HandoffHeld,"LEASE_FILE_EXISTS"):
+        with self.assertRaisesRegex(r9.stewardship.HandoffHeld,"LEASE_FILE_EXISTS"):
             self.control.claim_next(self.btm,"worker1",destination,
                                     now=NOW,now_ms=MS)
         state=self.control.status(now=NOW)["missions"][0]["state"]
@@ -260,6 +260,28 @@ class R9Tests(unittest.TestCase):
                          "HELD_RECONCILE")
         self.assertEqual(self.lease.status(now_ms=MS)["active_reservations"],1)
         self.lease.release(external,now_ms=MS+1)
+
+    def test_archive_held_requires_operator_and_no_active_lease(self):
+        self.enqueue()
+        external=self.lease.reserve(self.btm,"externalWorker",ttl_seconds=300,
+                                    now_ms=MS)
+        with self.assertRaises(leases.LeaseHeld):
+            self.claim()
+        with self.assertRaisesRegex(r9.MissionHeld,"ACTIVE_LEASE"):
+            self.control.archive_held("mission1",confirmation=r9.ARCHIVE_CONFIRM,
+                                      now_ms=MS+1)
+        with self.assertRaisesRegex(r9.MissionHeld,"OPERATOR_ARCHIVE"):
+            self.control.archive_held("mission1",confirmation="yes",
+                                      now_ms=MS+1)
+        self.lease.release(external,now_ms=MS+2)
+        result=self.control.archive_held("mission1",
+                                         confirmation=r9.ARCHIVE_CONFIRM,
+                                         now_ms=MS+3)
+        self.assertEqual(result["state"],"ARCHIVED_NOT_APPROVED")
+        self.assertFalse(result["merge_authorized"])
+        # A new, independently authorized mission may now be queued.
+        later=self.enqueue("mission2")
+        self.assertEqual(later["state"],"QUEUED_LOCAL_ONLY")
 
     def test_enqueue_and_plans_are_persistent_across_process_restarts(self):
         self.enqueue()
