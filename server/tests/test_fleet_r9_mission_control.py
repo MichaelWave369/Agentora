@@ -294,5 +294,100 @@ class R9Tests(unittest.TestCase):
         self.assertEqual(self.control.status(now=NOW)["missions"][0]["state"],
                          "ASSIGNED_IMPLEMENT")
 
+    def observed(self, event_id=501, event_type="push_activity_observed",
+                 scan=2, repo="BTM", repo_id=AUDIT_ID):
+        data = observations(scan=scan)
+        data["recent_events"] = [{
+            "id": event_id, "github_id": repo_id,
+            "full_name": "MichaelWave369/" + repo,
+            "event_type": event_type,
+            "observed_at": (NOW - timedelta(minutes=1)).isoformat()}]
+        return data
+
+    def test_r10_ingested_reponerve_event_enters_original_r9_queue_once(self):
+        source = self.observed()
+        self.registry.ingest(source, now=NOW)
+        queued = self.control.enqueue_observed(
+            source, 501, self.btm, confirmation=r9.CONFIRM, now=NOW, now_ms=MS)
+        self.assertEqual(queued["state"], "QUEUED_LOCAL_ONLY")
+        self.assertEqual(queued["source_event_id"], 501)
+        self.assertEqual(queued["source_scan_id"], 2)
+        self.assertEqual(queued["mission_id"], "r10-e501-gh21")
+        self.assertFalse(queued["dispatch_authorized"])
+        self.assertFalse(queued["merge_authorized"])
+        self.assertFalse(queued["head_revalidated"])
+        self.assertEqual(
+            self.control.plan(now=NOW)["missions"][0]["mission_id"],
+            "r10-e501-gh21")
+        later = r9.MissionControl(self.registry, leases.LeaseLedger(self.lease.path))
+        replay = later.enqueue_observed(
+            source, 501, self.btm, confirmation=r9.CONFIRM, now=NOW, now_ms=MS+1)
+        self.assertEqual(replay["state"], "EVENT_ALREADY_QUEUED_NO_NEW_MISSION")
+        with self.lease._connection() as db:
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM r9_missions").fetchone()[0], 1)
+            link = db.execute("SELECT * FROM r10_event_links").fetchone()
+            self.assertEqual(link["source_event_id"], 501)
+            self.assertEqual(link["source_scan_id"], 2)
+            self.assertEqual(link["event_type"], "push_activity_observed")
+
+    def test_r10_refuses_uningested_or_tampered_observation_and_wrong_intake(self):
+        source = self.observed()
+        with self.assertRaisesRegex(r9.MissionHeld, "NOT_CURRENT_INGESTED"):
+            self.control.enqueue_observed(
+                source, 501, self.btm, confirmation=r9.CONFIRM, now=NOW, now_ms=MS)
+        self.registry.ingest(source, now=NOW)
+        tampered = {**source, "observed_at": NOW.isoformat()}
+        with self.assertRaisesRegex(r9.MissionHeld, "NOT_CURRENT_INGESTED"):
+            self.control.enqueue_observed(
+                tampered, 501, self.btm, confirmation=r9.CONFIRM, now=NOW, now_ms=MS)
+        with self.assertRaisesRegex(r9.MissionHeld, "IDENTITY_MISMATCH"):
+            self.control.enqueue_observed(
+                source, 501, self.phios, confirmation=r9.CONFIRM, now=NOW, now_ms=MS)
+        with self.assertRaisesRegex(r9.MissionHeld, "SOURCE_EVENT_NOT_IN"):
+            self.control.enqueue_observed(
+                source, 502, self.btm, confirmation=r9.CONFIRM, now=NOW, now_ms=MS)
+        with self.assertRaisesRegex(r9.MissionHeld, "OPERATOR_ENQUEUE"):
+            self.control.enqueue_observed(
+                source, 501, self.btm, confirmation="yes", now=NOW, now_ms=MS)
+        with self.lease._connection() as db:
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM r9_missions").fetchone()[0], 0)
+
+    def test_r10_replay_different_source_intake_holds_after_scan_advances(self):
+        first = self.observed()
+        self.registry.ingest(first, now=NOW)
+        self.control.enqueue_observed(
+            first, 501, self.btm, confirmation=r9.CONFIRM, now=NOW, now_ms=MS)
+        second = self.observed(scan=3)
+        second["observed_at"] = NOW.isoformat()
+        self.registry.ingest(second, now=NOW)
+        with self.assertRaisesRegex(r9.MissionHeld, "NOT_CURRENT_INGESTED"):
+            self.control.enqueue_observed(
+                first, 501, self.btm, confirmation=r9.CONFIRM, now=NOW, now_ms=MS+1)
+        altered_intake = {**self.btm, "source_sha": "c" * 40}
+        with self.assertRaisesRegex(r9.MissionHeld, "EVENT_REPLAY_CONFLICT"):
+            self.control.enqueue_observed(
+                second, 501, altered_intake,
+                confirmation=r9.CONFIRM, now=NOW, now_ms=MS+1)
+        with self.lease._connection() as db:
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM r9_missions").fetchone()[0], 1)
+
+    def test_r10_rejects_non_candidate_events_and_authority_forgeries(self):
+        rename = self.observed(event_type="renamed")
+        self.registry.ingest(rename, now=NOW)
+        with self.assertRaisesRegex(r9.MissionHeld, "NOT_REVIEW_CANDIDATE"):
+            self.control.enqueue_observed(
+                rename, 501, self.btm, confirmation=r9.CONFIRM, now=NOW, now_ms=MS)
+        forged = {**rename, "dispatch_authorized": True}
+        with self.assertRaisesRegex(Exception, "AUTHORITY_FORGERY"):
+            self.control.enqueue_observed(
+                forged, 501, self.btm, confirmation=r9.CONFIRM, now=NOW, now_ms=MS)
+        with self.lease._connection() as db:
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM r9_missions").fetchone()[0], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

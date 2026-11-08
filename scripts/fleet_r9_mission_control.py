@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -19,7 +20,8 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "server"))
-from app.services.fleet_stewards import StewardRegistry, StewardHeld
+from app.services.fleet_stewards import (StewardRegistry, StewardHeld,
+    validate_observation, MAX_INPUT_BYTES)
 import fleet_r04_leases as leases
 import fleet_r3_steward_claim as stewardship
 import fleet_r06_pilot as pilot
@@ -38,6 +40,8 @@ ACTIVE = ("CLAIMING_IMPLEMENT", "ASSIGNED_IMPLEMENT", "HANDOFF_IN_PROGRESS",
 SLOTS = ("CLAIMING_IMPLEMENT", "ASSIGNED_IMPLEMENT",
          "HANDOFF_IN_PROGRESS", "CLAIMING_QA", "ASSIGNED_QA")
 PUBLIC_ALLOWED = "PUBLIC_REVIEW_ONLY_NEVER_EXECUTE"
+R10_EVENT_KINDS = {"first_observed", "visible_again", "push_activity_observed"}
+R10_SCHEMA = "agentora.fleet.reponerve-event-queue.v1"
 
 
 class MissionHeld(ValueError):
@@ -92,6 +96,14 @@ class MissionControl:
                 qa_generation INTEGER, evidence_sha256 TEXT,
                 issue TEXT
             )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS r10_event_links (
+                source_event_id INTEGER PRIMARY KEY,
+                mission_id TEXT NOT NULL UNIQUE,
+                github_id INTEGER NOT NULL,
+                source_scan_id INTEGER NOT NULL,
+                source_payload_digest TEXT NOT NULL,
+                event_type TEXT NOT NULL
+            )""")
             db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS
                 r9_one_active_mission_per_repo ON r9_missions(github_id)
                 WHERE state IN (
@@ -101,7 +113,7 @@ class MissionControl:
                 )""")
 
     def enqueue(self, mission_id, kind, intake, *, confirmation, now=None,
-                now_ms=None):
+                now_ms=None, event_binding=None):
         need(type(mission_id) is str and IDENT.fullmatch(mission_id) is not None,
              "MISSION_ID_INVALID")
         need(confirmation == CONFIRM, "OPERATOR_ENQUEUE_CONFIRMATION_REQUIRED")
@@ -110,8 +122,42 @@ class MissionControl:
         now = _now(now)
         identity = stewardship.eligible(self.registry, intake, now=now)
         need(identity["github_id"] == info["repository_id"], "STEWARD_MISMATCH")
+        if event_binding is not None:
+            need(type(event_binding) is dict and
+                 set(event_binding) == {"event_id", "source_scan_id",
+                                        "payload_digest", "event_type"} and
+                 type(event_binding["event_id"]) is int and
+                 0 < event_binding["event_id"] <= 9007199254740991 and
+                 event_binding["event_type"] in R10_EVENT_KINDS and
+                 type(event_binding["source_scan_id"]) is int and
+                 identity["source_scan_id"] == event_binding["source_scan_id"] and
+                 type(event_binding["payload_digest"]) is str and
+                 DIGEST.fullmatch(event_binding["payload_digest"]),
+                 "EVENT_BINDING_INVALID_OR_SOURCE_ADVANCED")
         moment = leases.epoch_ms(now_ms)
         with self.leases._transaction() as db:
+            if event_binding is not None:
+                prior_event = db.execute("""SELECT e.mission_id,e.github_id,
+                    e.event_type,m.repository,m.source_sha,m.intake_digest,m.kind
+                    FROM r10_event_links e JOIN r9_missions m
+                    ON m.mission_id=e.mission_id WHERE e.source_event_id=?""",
+                    (event_binding["event_id"],)).fetchone()
+                if prior_event is not None:
+                    need(prior_event["mission_id"] == mission_id and
+                         prior_event["github_id"] == info["repository_id"] and
+                         prior_event["event_type"] == event_binding["event_type"] and
+                         prior_event["repository"] == info["repository"] and
+                         prior_event["source_sha"] == info["source_sha"] and
+                         prior_event["intake_digest"] == info["request_sha256"] and
+                         prior_event["kind"] == kind,
+                         "EVENT_REPLAY_CONFLICT")
+                    return {"schema": R10_SCHEMA,
+                            "state": "EVENT_ALREADY_QUEUED_NO_NEW_MISSION",
+                            "mission_id": mission_id,
+                            "source_event_id": event_binding["event_id"],
+                            "source_scan_id": event_binding["source_scan_id"],
+                            "dispatch_authorized": False, "merge_authorized": False,
+                            "execution_authorized": False}
             old = db.execute("SELECT mission_id FROM r9_missions WHERE mission_id=?",
                              (mission_id,)).fetchone()
             need(old is None, "MISSION_ID_ALREADY_USED_NO_REPLAY")
@@ -128,11 +174,69 @@ class MissionControl:
                 mission_id, info["repository_id"], info["repository"],
                 info["source_sha"], info["request_sha256"], kind, policy,
                 "QUEUED", moment, moment))
+            if event_binding is not None:
+                db.execute("""INSERT INTO r10_event_links
+                    (source_event_id,mission_id,github_id,source_scan_id,
+                     source_payload_digest,event_type) VALUES (?,?,?,?,?,?)""",
+                    (event_binding["event_id"], mission_id, info["repository_id"],
+                     event_binding["source_scan_id"], event_binding["payload_digest"],
+                     event_binding["event_type"]))
         return {"schema": SCHEMA, "state": "QUEUED_LOCAL_ONLY",
                 "mission_id": mission_id, "steward_key": identity["steward_key"],
                 "source_scan_id": identity["source_scan_id"],
                 "mission_kind": kind, "execution_authorized": False,
                 "dispatch_authorized": False, "merge_authorized": False}
+
+    def enqueue_observed(self, observation, event_id, intake, *,
+                         confirmation, now=None, now_ms=None):
+        """Bind one already-ingested RepoNerve event to R9's review-only queue.
+
+        This cross-system handoff cannot dispatch jobs. The exact observation
+        must already be present in the local steward registry. Its fingerprint
+        is a consistency check against the local store, not source authentication.
+        """
+        now = _now(now)
+        need(type(observation) is dict and
+             len(json.dumps(observation).encode("utf-8")) <= MAX_INPUT_BYTES,
+             "OBSERVATION_SIZE_OR_TYPE_INVALID")
+        validated = validate_observation(observation, now=now)
+        fingerprint = hashlib.sha256(json.dumps(
+            observation, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        with self.registry._tx() as db:
+            source = self.registry._source(db)
+            need(source is not None and
+                 source["scan_id"] == validated["scan_id"] and
+                 source["payload_digest"] == fingerprint,
+                 "OBSERVATION_NOT_CURRENT_INGESTED_SCAN")
+        need(type(event_id) is int and 0 < event_id <= 9007199254740991,
+             "SOURCE_EVENT_ID_INVALID")
+        matches = [event for event in observation["recent_events"]
+                   if event["id"] == event_id]
+        need(len(matches) == 1, "SOURCE_EVENT_NOT_IN_CURRENT_SCAN")
+        event = matches[0]
+        need(event["event_type"] in R10_EVENT_KINDS,
+             "SOURCE_EVENT_NOT_REVIEW_CANDIDATE")
+        info = leases.validate_intake(intake)
+        need(event["github_id"] == info["repository_id"] and
+             event["full_name"] == info["repository"],
+             "SOURCE_EVENT_INTAKE_IDENTITY_MISMATCH")
+        need(confirmation == CONFIRM, "OPERATOR_ENQUEUE_CONFIRMATION_REQUIRED")
+        mission_id = f"r10-e{event_id}-gh{info['repository_id']}"
+        result = self.enqueue(mission_id, KIND_AUDIT, intake,
+            confirmation=confirmation, now=now, now_ms=now_ms,
+            event_binding={"event_id": event_id,
+                           "source_scan_id": validated["scan_id"],
+                           "payload_digest": fingerprint,
+                           "event_type": event["event_type"]})
+        return {**result, "source_event_id": event_id,
+                "source_scan_id": validated["scan_id"],
+                "source_event_type": event["event_type"],
+                "source_payload_sha256": fingerprint,
+                "source_authenticated": False,
+                "head_revalidated": False,
+                "execution_authorized": False,
+                "dispatch_authorized": False, "merge_authorized": False,
+                "verified_complete": False}
 
     def _eligible(self, now, phase, *, db):
         visible, scan_id = _present(self.registry, now)
@@ -357,6 +461,11 @@ def main(argv=None):
                    default=Path("~/.agentora/fleet-leases.sqlite3"))
     p.add_argument("--capacity",type=int,default=2)
     sub = p.add_subparsers(dest="action",required=True)
+    observed = sub.add_parser("enqueue-observed")
+    observed.add_argument("--observations", type=Path, required=True)
+    observed.add_argument("--event-id", type=int, required=True)
+    observed.add_argument("--intake", type=Path, required=True)
+    observed.add_argument("--confirm", required=True)
     enqueue = sub.add_parser("enqueue")
     enqueue.add_argument("--mission-id",required=True)
     enqueue.add_argument("--kind",required=True,choices=sorted(KINDS))
@@ -385,7 +494,15 @@ def main(argv=None):
         control=MissionControl(StewardRegistry(a.steward_db.expanduser()),
                                leases.LeaseLedger(a.lease_db.expanduser()),
                                capacity=a.capacity)
-        if a.action=="enqueue":
+        if a.action=="enqueue-observed":
+            path = a.observations.expanduser()
+            need(path.is_file() and not path.is_symlink() and
+                 0 < path.stat().st_size <= MAX_INPUT_BYTES,
+                 "OBSERVATION_FILE_UNSAFE")
+            observation = json.loads(path.read_text(encoding="utf-8"))
+            result = control.enqueue_observed(observation, a.event_id,
+                leases.load_intake(a.intake.expanduser()), confirmation=a.confirm)
+        elif a.action=="enqueue":
             result=control.enqueue(a.mission_id,a.kind,
                 leases.load_intake(a.intake.expanduser()),confirmation=a.confirm)
         elif a.action in ("plan","qa-plan"):
