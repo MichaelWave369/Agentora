@@ -113,8 +113,9 @@ class SignedBridgeCliTests(unittest.TestCase):
         forged = json.loads(self.bundle.read_text())
         forged["frame"]["publicKey"]["x"] = "A" * 43
         self.bundle.write_text(json.dumps(forged))
-        with self.assertRaises(ExchangeHeld):
+        with self.assertRaises(SystemExit) as captured:
             self.run_command("import", *self.shared(), "--bundle", str(self.bundle))
+        self.assertEqual(captured.exception.code, 2)
 
     def test_world_readable_trust_file_rejected(self):
         if os.name != "posix":
