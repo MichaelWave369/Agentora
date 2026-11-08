@@ -256,7 +256,7 @@ class EvidenceBridgeTests(unittest.TestCase):
         with self.assertRaisesRegex(e10.EvidenceHeld, "EXPLICIT_EVIDENCE_REVIEW"):
             self.correlate(confirmation="yes")
         with patch.object(e10.r4, "correlate") as verifier:
-            with self.assertRaisesRegex(e10.EvidenceHeld, "LEASE_EXPIRED"):
+            with self.assertRaisesRegex(dispatch.BridgeHeld, "LEASE_EXPIRED"):
                 e10.correlate(self.control, self.mission,
                     self.source, self.cap, RUN, b"archive",
                     confirmation=e10.CORRELATE_CONFIRM,
