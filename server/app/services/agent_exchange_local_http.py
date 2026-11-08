@@ -84,6 +84,10 @@ def create_bridge_server(
         server_version = "AgentoraLocalBridge/1"
         sys_version = ""
 
+        def setup(self):
+            super().setup()
+            self.connection.settimeout(5)
+
         def log_message(self, _fmt, *_args):
             # Keep private message bodies, query strings and bearer tokens out of logs.
             return
@@ -154,6 +158,9 @@ def create_bridge_server(
                 self._respond(400, {"error": "CHUNKED_NOT_SUPPORTED"})
                 return
             length = self.headers.get("Content-Length", "")
+            if len(length) > 6:
+                self._respond(413, {"error": "BODY_SIZE_INVALID"})
+                return
             if not length.isascii() or not length.isdigit():
                 self._respond(411, {"error": "LENGTH_REQUIRED"})
                 return
