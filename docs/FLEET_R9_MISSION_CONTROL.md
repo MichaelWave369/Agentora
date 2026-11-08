@@ -127,6 +127,10 @@ assignment slots and may be configured from 1 through 6.
   distributed runners. Registry and lease DBs are not one transaction; R3
   source double-check narrows but cannot remove that cross-DB race.
 
+For the first **review-only** RepoNerve event → R9 queue handoff, see
+[Fleet R10 event queue](FLEET_R10_EVENT_QUEUE.md). That extension does not
+replace R9 leases or authorize worker execution.
+
 ## R10 direction
 
 Introduce authenticated, explicitly granted **mission execution
