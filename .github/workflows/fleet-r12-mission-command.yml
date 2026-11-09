@@ -1,0 +1,118 @@
+name: Fleet R12 Mission Command (Owner-Gated)
+
+# Explicit owner-triggered, repository-scoped Issue journal only.
+# This never launches an agent, writes source code, approves QA, or merges.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "One bounded mission journal command"
+        required: true
+        type: choice
+        options:
+          - triage
+          - propose_worker
+          - link_evidence
+          - queue_qa
+          - qa_hold
+      issue_number:
+        description: "Existing owner-created [Fleet Mission] Issue number"
+        type: string
+        required: true
+      worker:
+        description: "Proposed worker role (recorded only; not launched)"
+        type: string
+        required: false
+      reviewer:
+        description: "Different independent QA reviewer role (recorded only)"
+        type: string
+        required: false
+      pr_number:
+        description: "Open PR number in mission target repo for queue_qa"
+        type: string
+        required: false
+      evidence_run_id:
+        description: "Successful R11 cloud evidence workflow run ID for link_evidence"
+        type: string
+        required: false
+      confirmation:
+        description: "Type RECORD_FLEET_MISSION_TRANSITION"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: agentora-r12-mission-${{ inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  journal:
+    if: >-
+      github.repository == 'MichaelWave369/Agentora' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == 'MichaelWave369'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted main mission journal only
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: false
+          lfs: false
+      - name: Run bounded, owner-confirmed Issue transition
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          R12_ACTION: ${{ inputs.action }}
+          R12_ISSUE: ${{ inputs.issue_number }}
+          R12_WORKER: ${{ inputs.worker }}
+          R12_REVIEWER: ${{ inputs.reviewer }}
+          R12_PR: ${{ inputs.pr_number }}
+          R12_EVIDENCE: ${{ inputs.evidence_run_id }}
+          R12_CONFIRM: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import sys
+          sys.path.insert(0, "scripts")
+          import fleet_r12_github_missions as f
+          def parse_num(key):
+              value = os.environ.get(key, "").strip()
+              return int(value) if value.isdigit() else None
+          sys.exit(f.main([
+              os.environ["R12_ACTION"], "--issue-number",
+              str(parse_num("R12_ISSUE") or 0),
+              "--worker", os.environ.get("R12_WORKER", ""),
+              "--reviewer", os.environ.get("R12_REVIEWER", ""),
+              "--pr-number", str(parse_num("R12_PR") or 0),
+              "--evidence-run-id", str(parse_num("R12_EVIDENCE") or 0),
+              "--confirmation", os.environ.get("R12_CONFIRM", ""),
+              "--out", "fleet-r12"
+          ]))
+          PY
+      - name: Display mission state or explicit hold
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f fleet-r12/summary.md ]]; then
+            cat fleet-r12/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Fleet R12 held: no mission transition confirmed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain bounded journal receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-r12-command-${{ github.run_id }}
+          path: fleet-r12/
+          retention-days: 14
+          if-no-files-found: warn
