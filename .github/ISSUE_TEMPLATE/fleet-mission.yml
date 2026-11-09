@@ -1,0 +1,50 @@
+name: "Φ Fleet Mission"
+description: "Create one cloud-native Agentora mission; planning only, never automatic execution or merge."
+title: "[Fleet Mission] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This Issue is a mission proposal, not authorization to run tools, change code, or merge.
+        The Mission Command workflow is manually triggered by the repository owner.
+  - type: input
+    id: target-repository
+    attributes:
+      label: Target repository
+      description: Public repository owned by MichaelWave369 (owner/name).
+      placeholder: MichaelWave369/PhiMadaPrime
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Mission kind
+      options:
+        - Read-only audit
+        - Feature proposal
+        - Documentation
+        - Fixed PhiMada test review
+    validations:
+      required: true
+  - type: textarea
+    id: requested-outcome
+    attributes:
+      label: Requested outcome
+      description: Describe the desired change or report. No tokens, credentials or private data.
+      placeholder: Make the purpose, user impact, and boundaries clear.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: Conditions a different reviewer should evaluate.
+      placeholder: What should independent QA inspect?
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        After creating the issue: Agentora → Actions → Fleet R12 Mission Command
+        → `triage` with this issue number. Role assignment and QA remain
+        explicitly operator-gated. No agent is started by creating the Issue.
