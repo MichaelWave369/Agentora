@@ -257,6 +257,70 @@ class HandoffTests(unittest.TestCase):
         with self.assertRaisesRegex(r12.MissionHeld, "R14_QA_TIME_NOT_CORRELATED"):
             self.correlate()
 
+    def test_pasted_boundary_whitespace_is_safely_normalized(self):
+        for value, expected in (
+            ("132", 132),
+            (" \t132\t ", 132),
+            ("\n42551226704\r", 42551226704),
+            ("\t42551247697", 42551247697),
+        ):
+            with self.subTest(value=repr(value)):
+                self.assertEqual(r14.parse_cli_id(value), expected)
+
+    def test_malformed_identifiers_hold_without_executing_mission(self):
+        for value in ("", "  ", "0", "-12", "1 32", "132\n999",
+                      "425\t51247697", "12; echo unsafe",
+                      "\u00a042551247697", "9" * 17):
+            with self.subTest(value=repr(value)), self.assertRaisesRegex(
+                    r12.MissionHeld, "R14_NUMERIC_INPUT_INVALID"):
+                r14.parse_cli_id(value)
+
+    def test_cli_normalizes_all_three_pasted_ids_before_transition(self):
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        with TemporaryDirectory() as temp:
+            with patch.object(r14, "transition", return_value={
+                "schema": r14.SCHEMA,
+                "state": r14.PHASE_EVIDENCE,
+                "mission_url": "https://github.com/MichaelWave369/Agentora/issues/132",
+                "audit_url": "https://github.com/MichaelWave369/Agentora/actions/runs/42551226704",
+                "qa_url": "https://github.com/MichaelWave369/Agentora/actions/runs/42551247697",
+                "source_sha": "a" * 40,
+                "audit_artifact_sha256": "a" * 64,
+                "qa_artifact_sha256": "b" * 64,
+                "default_branch_protected": False,
+                "owner_acknowledged": False,
+            }) as change:
+                result = r14.main([
+                    "link", "--issue-number", "\t132 ",
+                    "--audit-run-id", "42551226704\r",
+                    "--qa-run-id", "\t42551247697",
+                    "--confirmation", r14.CONFIRM_LINK, "--out", temp,
+                ])
+                self.assertEqual(result, 0)
+                self.assertEqual(change.call_args.args[:4],
+                                 (132, "link", 42551226704, 42551247697))
+                receipt = json.loads((Path(temp) / "receipt.json").read_text())
+                self.assertEqual(receipt["state"], r14.PHASE_EVIDENCE)
+
+    def test_bad_cli_id_emits_held_artifact_without_transition(self):
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        with TemporaryDirectory() as temp:
+            with patch.object(r14, "transition") as change:
+                result = r14.main([
+                    "link", "--issue-number", "132",
+                    "--audit-run-id", "42551226704",
+                    "--qa-run-id", "425\t51247697",
+                    "--confirmation", r14.CONFIRM_LINK, "--out", temp,
+                ])
+                self.assertEqual(result, 3)
+                change.assert_not_called()
+                receipt = json.loads((Path(temp) / "receipt.json").read_text())
+                self.assertEqual(receipt["state"], "HELD_R14_MISSION_EVIDENCE")
+                self.assertFalse(receipt["merge_authorized"])
+                self.assertFalse(receipt["deployment_authorized"])
+
     def test_workflow_permissions_and_careful_owner_gate(self):
         path = ROOT / ".github/workflows/fleet-r14-mission-handoff.yml"
         text = path.read_text()
@@ -267,6 +331,8 @@ class HandoffTests(unittest.TestCase):
         self.assertNotIn("pull-requests: write", text)
         self.assertNotIn("workflow_run:", text)
         self.assertIn("persist-credentials: false", text)
+        self.assertIn("python scripts/fleet_r14_evidence_handoff.py", text)
+        self.assertNotIn('[[ "$value" =~', text)
 
 
 if __name__ == "__main__":

@@ -72,9 +72,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for value in "$R14_ISSUE" "$R14_AUDIT" "$R14_QA"; do
-            [[ "$value" =~ ^[1-9][0-9]{0,15}$ ]] || exit 3
-          done
+          # Let the Python CLI normalize harmless pasted outer whitespace.
+          # It still rejects internal junk, records an explicit HELD receipt,
+          # and performs no Issue write if an ID cannot be safely parsed.
           python scripts/fleet_r14_evidence_handoff.py "$R14_COMMAND" \
             --issue-number "$R14_ISSUE" --audit-run-id "$R14_AUDIT" \
             --qa-run-id "$R14_QA" --confirmation "$R14_CONFIRM" \

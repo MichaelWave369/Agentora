@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sys
 
@@ -260,7 +261,8 @@ def transition(number, command, audit_run_id, qa_run_id, *,
 
 
 def summary(data):
-    if data.get("schema") != SCHEMA:
+    if (data.get("schema") != SCHEMA or
+            data.get("state") not in (PHASE_EVIDENCE, PHASE_ACK)):
         return ("## Fleet R14: evidence HELD\n\n"
                 "No QA approval, worker write, merge or deployment.\n")
     status = data.get("state", "")
@@ -285,18 +287,36 @@ def summary(data):
     ])
 
 
+def parse_cli_id(raw):
+    """Accept pasted outer ASCII whitespace, reject all internal junk.
+
+    GitHub Actions workflow_dispatch text inputs often include an accidental
+    leading tab or trailing newline. Tolerating only boundary whitespace
+    preserves the strict positive-integer trust boundary.
+    """
+    need(type(raw) is str and
+         re.fullmatch(r"[ \t\r\n]*[1-9][0-9]{0,15}[ \t\r\n]*", raw)
+         is not None, "R14_NUMERIC_INPUT_INVALID")
+    return int(raw.strip(" \t\r\n"))
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("command", choices=sorted(COMMANDS))
-    p.add_argument("--issue-number", type=int, required=True)
-    p.add_argument("--audit-run-id", type=int, required=True)
-    p.add_argument("--qa-run-id", type=int, required=True)
+    p.add_argument("--issue-number", required=True)
+    p.add_argument("--audit-run-id", required=True)
+    p.add_argument("--qa-run-id", required=True)
     p.add_argument("--confirmation", required=True)
     p.add_argument("--out", type=Path, default=Path("fleet-r14"))
     args = p.parse_args(argv)
     try:
-        value = transition(args.issue_number, args.command, args.audit_run_id,
-                           args.qa_run_id, confirmation=args.confirmation,
+        # Normalize only boundary ASCII whitespace inside the guarded
+        # receipt-producing CLI; invalid inputs still emit a HELD artifact.
+        number = parse_cli_id(args.issue_number)
+        audit_id = parse_cli_id(args.audit_run_id)
+        qa_id = parse_cli_id(args.qa_run_id)
+        value = transition(number, args.command, audit_id,
+                           qa_id, confirmation=args.confirmation,
                            actor=os.getenv("GITHUB_ACTOR"),
                            token=os.getenv("GITHUB_TOKEN"))
         status = 0
