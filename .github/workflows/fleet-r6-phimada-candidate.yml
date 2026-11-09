@@ -37,7 +37,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Preflight: fixed repo, exact HEAD, operator confirmation
+      - name: "Preflight: fixed repo, exact HEAD, operator confirmation"
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
