@@ -1,0 +1,99 @@
+name: Fleet R14 Verified Evidence to Owner Review Gate
+
+# Two owner-confirmed actions. Never dispatches work, writes code, approves PRs,
+# merges, deploys, or upgrades an automated evidence check into human QA.
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Record verified R13 evidence or acknowledge its human review"
+        required: true
+        type: choice
+        options:
+          - link
+          - acknowledge
+      issue_number:
+        description: "Existing R12 owner-created Fleet Mission Issue number"
+        required: true
+        type: string
+      audit_run_id:
+        description: "Successful Fleet R13 hosted audit GitHub run ID"
+        required: true
+        type: string
+      qa_run_id:
+        description: "Successful downstream Fleet R13 separate QA GitHub run ID"
+        required: true
+        type: string
+      confirmation:
+        description: "For link: LINK_VERIFIED_R13_EVIDENCE. For acknowledge: I_REVIEWED_R13_RECEIPTS_NO_MERGE_APPROVAL"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: agentora-r14-issue-${{ inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  correlate:
+    if: >-
+      github.repository == 'MichaelWave369/Agentora' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == 'MichaelWave369'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout trusted main evidence verifier only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: false
+          lfs: false
+      - name: Install Python 3.12 on ephemeral GitHub host
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Correlate GitHub-owned audit and QA ZIPs before Issue write
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          R14_COMMAND: ${{ inputs.command }}
+          R14_ISSUE: ${{ inputs.issue_number }}
+          R14_AUDIT: ${{ inputs.audit_run_id }}
+          R14_QA: ${{ inputs.qa_run_id }}
+          R14_CONFIRM: ${{ inputs.confirmation }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for value in "$R14_ISSUE" "$R14_AUDIT" "$R14_QA"; do
+            [[ "$value" =~ ^[1-9][0-9]{0,15}$ ]] || exit 3
+          done
+          python scripts/fleet_r14_evidence_handoff.py "$R14_COMMAND" \
+            --issue-number "$R14_ISSUE" --audit-run-id "$R14_AUDIT" \
+            --qa-run-id "$R14_QA" --confirmation "$R14_CONFIRM" \
+            --out fleet-r14
+      - name: Show linked evidence and human gate or an explicit hold
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f fleet-r14/summary.md ]]; then
+            cat fleet-r14/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '## Fleet R14 HELD\n\nNo QA approval or merge authority.\n' \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain minimal handoff record for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-r14-mission-handoff-${{ github.run_id }}
+          path: fleet-r14/
+          retention-days: 14
+          if-no-files-found: warn
