@@ -96,6 +96,8 @@ class R13Tests(unittest.TestCase):
     def setUp(self):
         self.gh = GitHub()
         self.gh.init_mission()
+        # Keep the simulated drift clock scoped to the audit itself.
+        self.gh.head_reads = 0
 
     def audit(self, **kwargs):
         return worker.audit(ISSUE, actor=kwargs.get("actor", r12.OWNER),
