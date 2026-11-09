@@ -58,7 +58,7 @@ class GitHub(FakeGH):
         if path == "/repos/" + TARGET + "/branches/main":
             self.head_reads += 1
             sha = ("e" * 40 if self.fail_head_recheck
-                   and self.head_reads >= 4 else self.head)
+                   and self.head_reads >= 3 else self.head)
             return {"commit": {"sha": sha},
                     "protected": self.branch_protected}
         if path == "/repos/" + TARGET + "/commits/" + self.head:
