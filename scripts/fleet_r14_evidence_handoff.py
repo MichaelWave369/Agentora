@@ -261,7 +261,8 @@ def transition(number, command, audit_run_id, qa_run_id, *,
 
 
 def summary(data):
-    if data.get("schema") != SCHEMA:
+    if (data.get("schema") != SCHEMA or
+            data.get("state") not in (PHASE_EVIDENCE, PHASE_ACK)):
         return ("## Fleet R14: evidence HELD\n\n"
                 "No QA approval, worker write, merge or deployment.\n")
     status = data.get("state", "")
