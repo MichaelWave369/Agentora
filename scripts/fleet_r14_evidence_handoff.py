@@ -293,9 +293,9 @@ def parse_cli_id(raw):
     preserves the strict positive-integer trust boundary.
     """
     need(type(raw) is str and
-         re.fullmatch(r"[ \\t\\r\\n]*[1-9][0-9]{0,15}[ \\t\\r\\n]*", raw)
+         re.fullmatch(r"[ \t\r\n]*[1-9][0-9]{0,15}[ \t\r\n]*", raw)
          is not None, "R14_NUMERIC_INPUT_INVALID")
-    return int(raw.strip(" \\t\\r\\n"))
+    return int(raw.strip(" \t\r\n"))
 
 
 def main(argv=None):
