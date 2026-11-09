@@ -1,0 +1,44 @@
+name: Fleet R12 GitHub Mission Board (Read Only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  snapshot:
+    if: github.repository == 'MichaelWave369/Agentora'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout trusted board reader
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: false
+          lfs: false
+      - name: Render bounded public Issue mission queue
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/fleet_r12_github_missions.py board --out fleet-r12
+      - name: Show mission board in GitHub Actions Summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f fleet-r12/summary.md ]]; then
+            cat fleet-r12/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Fleet R12 held: no trustworthy board snapshot" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload bounded board snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-r12-board-${{ github.run_id }}
+          path: fleet-r12/
+          retention-days: 14
+          if-no-files-found: warn
