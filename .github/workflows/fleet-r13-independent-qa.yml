@@ -1,0 +1,75 @@
+name: Fleet R13 Separate Audit Evidence QA
+
+# Separate trusted-main, read-only verifier for completed R13 audits.
+# Automatic workflow_run QA is distinct from the authorized audit workflow.
+on:
+  workflow_run:
+    workflows:
+      - Fleet R13 Hosted Read-Only Mission Audit
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      audit_run_id:
+        description: "Existing GitHub Actions run ID of an R13 hosted audit"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+  actions: read
+
+concurrency:
+  group: agentora-r13-qa-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: >-
+      github.repository == 'MichaelWave369/Agentora' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.event == 'workflow_dispatch'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Checkout trusted main QA implementation
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: false
+          lfs: false
+      - name: Python 3.12 on GitHub runner
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Independently corroborate original audit artifact and source
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          R13_AUDIT_RUN_ID: ${{ github.event.workflow_run.id || inputs.audit_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$R13_AUDIT_RUN_ID" =~ ^[1-9][0-9]{0,15}$ ]] || exit 3
+          python scripts/fleet_r13_independent_qa.py \
+            --audit-run-id "$R13_AUDIT_RUN_ID" --out fleet-r13-qa
+      - name: Display verified QA evidence or explicit hold
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f fleet-r13-qa/summary.md ]]; then
+            cat fleet-r13-qa/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Fleet R13 QA held: no verified evidence" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Retain separate QA receipt for human review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-r13-qa-${{ github.run_id }}
+          path: fleet-r13-qa/
+          retention-days: 7
+          if-no-files-found: warn
