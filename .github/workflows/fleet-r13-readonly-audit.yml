@@ -1,0 +1,77 @@
+name: Fleet R13 Hosted Read-Only Mission Audit
+
+# A deliberate owner-triggered public-metadata audit, NOT model execution.
+# No automatic issue, PR, schedule or push trigger.
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Existing R12 Fleet Mission Issue, with proposed builder_a role"
+        type: string
+        required: true
+      confirmation:
+        description: "Type RUN_FLEET_R13_READ_ONLY_AUDIT"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: agentora-r13-audit-${{ inputs.issue_number }}
+  cancel-in-progress: false
+
+jobs:
+  metadata-audit:
+    if: >-
+      github.repository == 'MichaelWave369/Agentora' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == 'MichaelWave369' &&
+      inputs.confirmation == 'RUN_FLEET_R13_READ_ONLY_AUDIT'
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - name: Checkout trusted Agentora audit controller only
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: false
+          lfs: false
+      - name: Python 3.12 on GitHub runner
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Inspect fixed GitHub mission and public repository metadata
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          MISSION_ISSUE: ${{ inputs.issue_number }}
+          MISSION_CONFIRM: ${{ inputs.confirmation }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$MISSION_ISSUE" =~ ^[1-9][0-9]{0,15}$ ]] || exit 3
+          python scripts/fleet_r13_readonly_audit.py \
+            --issue-number "$MISSION_ISSUE" \
+            --confirmation "$MISSION_CONFIRM" \
+            --out fleet-r13
+      - name: Show audit receipt or explicit hold
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f fleet-r13/summary.md ]]; then
+            cat fleet-r13/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Fleet R13 audit held: no authoritative receipt" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload inspectable audit receipt for separate QA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-r13-audit-${{ github.run_id }}
+          path: fleet-r13/
+          retention-days: 7
+          if-no-files-found: warn
