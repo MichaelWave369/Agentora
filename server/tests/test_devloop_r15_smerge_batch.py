@@ -35,7 +35,8 @@ def pr(filename="docs/README.md", sha=HEAD):
 
 def docs_file(filename="docs/test.md"):
     return {"filename":filename,"status":"modified","additions":1,"deletions":1,
-            "sha":"c"*40,"changes":2}
+            "sha":"c"*40,"changes":2,
+            "patch":"@@ -1 +1 @@\n-before\n+after\n"}
 
 
 class SmergeR15(unittest.TestCase):
@@ -98,6 +99,14 @@ class SmergeR15(unittest.TestCase):
         f=docs_file()
         changed=dict(f);changed["sha"]="d"*40
         self.assertNotEqual(s.file_fingerprint([f]),s.file_fingerprint([changed]))
+        # Same head blob, filenames and changed-line counts do not prove
+        # that the effective patch against a newer main is still identical.
+        same_blob=dict(f);same_blob["patch"]="@@ -1 +1 @@\n-old\n+new\n"
+        self.assertNotEqual(s.file_fingerprint([f]),s.file_fingerprint([same_blob]))
+        for bad in (dict(f,patch=None),dict(f,patch=""),
+                    dict(f,patch="binary"),dict(f,patch="@@ "+("x"*30001))):
+            with self.assertRaises(s.Hold):
+                s.docs_snapshot(pr(),31,HEAD,[bad])
 
     def test_incomplete_pr_files_refused(self):
         with patch.object(s,"api",return_value=[]):
@@ -139,20 +148,30 @@ class SmergeR15(unittest.TestCase):
     def test_merged_requires_fresh_authority_and_real_readback(self):
         rows=[(31,HEAD)]
         calls={"inspect":0,"writes":0}
+        live={"sha":BASE}
         def reader(_token,n,sha):
             calls["inspect"]+=1
             return {"number":n,"head_sha":sha,"base_sha":BASE,"files_sha256":"a"*64}
         def fetch(_token,path,payload=None,method=None):
+            if path.endswith("/git/ref/heads/main"):
+                return {"ref":"refs/heads/main",
+                        "object":{"type":"commit","sha":live["sha"]}}
             if method=="PUT":
                 calls["writes"]+=1
                 self.assertEqual(payload,{"sha":HEAD,"merge_method":"squash"})
-                return {"merged":True}
+                live["sha"]="e"*40
+                return {"merged":True,"sha":live["sha"]}
             return {"merged":True,"merge_commit_sha":"e"*40}
         report=s.run_batch("token","merge",rows,reader,fetch)
         self.assertEqual(report[0]["state"],"MERGED_GITHUB_READBACK")
         self.assertEqual(calls,{"inspect":2,"writes":1})
-        def fail_readback(*args):
-            if len(args)>2:return {"merged":True}
+        live["sha"]=BASE
+        def fail_readback(_token,path,payload=None,method=None):
+            if path.endswith("/git/ref/heads/main"):
+                return {"ref":"refs/heads/main",
+                        "object":{"type":"commit","sha":live["sha"]}}
+            if method=="PUT":
+                return {"merged":True,"sha":"e"*40}
             return {"merged":False}
         report=s.run_batch("token","merge",rows,reader,fail_readback)
         self.assertEqual(report[0]["state"],"HELD_AFTER_WRITE_ATTEMPT")
@@ -164,6 +183,91 @@ class SmergeR15(unittest.TestCase):
             return {"head_sha":sha,"base_sha":BASE if seen["n"]==1 else "f"*40}
         report=s.run_batch("token","merge",[(31,HEAD)],reader,lambda *a: self.fail("write"))
         self.assertEqual(report[0]["state"],"HELD_AFTER_WRITE_ATTEMPT")
+
+
+    def test_two_docs_merge_sequentially_when_main_moves_only_by_verified_merge(self):
+        first_merge="e"*40
+        second_merge="f"*40
+        second_head="d"*40
+        rows=[(31,HEAD),(32,second_head)]
+        read_counts={31:0,32:0}
+        live={"sha":BASE,"writes":0}
+        def reader(_token,n,sha):
+            read_counts[n]+=1
+            # Preflight both PRs against the original main. The second PR
+            # refreshes its base after #31 has actually merged.
+            base=BASE if n==31 or read_counts[n]==1 else first_merge
+            return {"number":n,"head_sha":sha,"base_sha":base,
+                    "files_sha256":"c"*64}
+        def fetch(_token,path,payload=None,method=None):
+            if path.endswith("/git/ref/heads/main"):
+                return {"ref":"refs/heads/main",
+                        "object":{"type":"commit","sha":live["sha"]}}
+            if method=="PUT":
+                live["writes"]+=1
+                self.assertEqual(payload["merge_method"],"squash")
+                live["sha"]=first_merge if live["writes"]==1 else second_merge
+                return {"merged":True,"sha":live["sha"]}
+            return {"merged":True,"merge_commit_sha":live["sha"]}
+        report=s.run_batch("token","merge",rows,reader,fetch)
+        self.assertEqual([d["state"] for d in report],
+                         ["MERGED_GITHUB_READBACK","MERGED_GITHUB_READBACK"])
+        self.assertEqual(live["writes"],2)
+        self.assertEqual(read_counts,{31:2,32:2})
+
+    def test_second_candidate_holds_when_base_or_patch_changes(self):
+        first_merge="e"*40
+        second_head="d"*40
+        for case in ("stale_base","patch_changed","outside_writer"):
+            with self.subTest(case=case):
+                read_counts={31:0,32:0}
+                live={"sha":BASE,"writes":0}
+                def reader(_token,n,sha):
+                    read_counts[n]+=1
+                    base=BASE if n==31 or read_counts[n]==1 else first_merge
+                    fingerprint="c"*64
+                    if n==32 and read_counts[n]>1:
+                        if case=="stale_base":base=BASE
+                        if case=="patch_changed":fingerprint="d"*64
+                    return {"number":n,"head_sha":sha,"base_sha":base,
+                            "files_sha256":fingerprint}
+                def fetch(_token,path,payload=None,method=None):
+                    if path.endswith("/git/ref/heads/main"):
+                        return {"ref":"refs/heads/main","object":{"type":"commit",
+                                "sha":("f"*40 if case=="outside_writer"
+                                       and live["writes"]>0 else live["sha"])}}
+                    if method=="PUT":
+                        live["writes"]+=1
+                        live["sha"]=first_merge
+                        return {"merged":True,"sha":first_merge}
+                    return {"merged":True,"merge_commit_sha":first_merge}
+                results=s.run_batch("token","merge",[(31,HEAD),(32,second_head)],
+                                    reader,fetch)
+                self.assertEqual(live["writes"],1)
+                if case=="outside_writer":
+                    # The first merge itself cannot be certified as current
+                    # main once a concurrent writer advances it.
+                    self.assertEqual(results[0]["state"],"HELD_AFTER_WRITE_ATTEMPT")
+                    self.assertEqual(results[1]["state"],"NOT_ATTEMPTED_AFTER_HOLD")
+                else:
+                    self.assertEqual(results[0]["state"],"MERGED_GITHUB_READBACK")
+                    self.assertEqual(results[1]["state"],"HELD_AFTER_WRITE_ATTEMPT")
+
+    def test_initial_main_base_inconsistent_prevents_all_merges(self):
+        def reader(_token,n,sha):
+            return {"number":n,"head_sha":sha,
+                    "base_sha":BASE if n==31 else "f"*40,
+                    "files_sha256":"a"*64}
+        report=s.run_batch("token","merge",[(31,HEAD),(32,"d"*40)],
+                           reader,lambda *a: self.fail("no network writes"))
+        self.assertEqual(report[1]["state"],"HELD")
+        self.assertEqual(report[0]["state"],"READY_FOR_OWNER_DISPATCH")
+
+    def test_current_main_ref_must_equal_exact_expected_sha(self):
+        for wrong in ("f"*40, None):
+            with self.subTest(wrong=wrong),self.assertRaises(s.Hold):
+                s.verify_live_main("token",BASE,lambda *_: {
+                    "ref":"refs/heads/main","object":{"type":"commit","sha":wrong}})
 
     def test_no_automatic_trigger_in_workflow(self):
         path=Path(__file__).resolve().parents[2]/".github/workflows/devloop-r15-smerge-batch.yml"
