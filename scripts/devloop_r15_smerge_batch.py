@@ -91,10 +91,21 @@ def fetch_files(token, number, expected_count):
 
 
 def file_fingerprint(files):
+    """Fingerprint the actual displayed patch, not merely blob/count metadata.
+
+    A changed base can alter diff context without changing the head blob SHA
+    or line totals. Missing/truncated/binary patches therefore HOLD.
+    """
     entries = []
     for row in files:
-        entries.append({key: row.get(key) for key in
-            ("filename", "status", "sha", "additions", "deletions", "changes")})
+        patch = row.get("patch")
+        need(type(patch) is str and patch.startswith("@@ ")
+             and len(patch.encode("utf8")) <= 30_000,
+             "DOC_PATCH_MISSING_OR_TOO_LARGE")
+        item = {key: row.get(key) for key in
+            ("filename", "status", "sha", "additions", "deletions", "changes")}
+        item["patch_sha256"] = hashlib.sha256(patch.encode("utf8")).hexdigest()
+        entries.append(item)
     encoded = json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
 
@@ -166,6 +177,23 @@ def inspect_candidate(token, number, sha):
     return snapshot
 
 
+def verify_live_main(token, expected_sha, fetch=api):
+    """Require that the actual branch ref equals the last verified merge.
+
+    PR metadata may lag a squash merge, and another actor may advance main
+    between batch items. Neither condition grants an implicit rebase.
+    """
+    need(type(expected_sha) is str and _SHA.fullmatch(expected_sha),
+         "EXPECTED_MAIN_SHA_INVALID")
+    ref = fetch(token, f"/repos/{REPO}/git/ref/heads/main")
+    need(type(ref) is dict and ref.get("ref") == "refs/heads/main"
+         and type(ref.get("object")) is dict
+         and ref["object"].get("type") == "commit"
+         and ref["object"].get("sha") == expected_sha,
+         "MAIN_HEAD_CHANGED_OR_NOT_YET_OBSERVED")
+    return expected_sha
+
+
 def run_batch(token, mode, rows, reader=inspect_candidate, fetch=api):
     decisions = []
     # All candidates must pass before the first write. A single HOLD means
@@ -180,21 +208,50 @@ def run_batch(token, mode, rows, reader=inspect_candidate, fetch=api):
             decisions.append({"pr":number,"sha":sha,"state":"HELD","reason":reason[:90]})
     if mode == "preview" or any(d["state"] == "HELD" for d in decisions):
         return decisions
+
+    # Every candidate must begin against the same source baseline. If this
+    # is not true, no PR is attempted, even when all checks are green.
+    baseline = decisions[0]["snapshot"].get("base_sha")
+    for row in decisions:
+        if row["snapshot"].get("base_sha") != baseline:
+            row.update(state="HELD", reason="INITIAL_MAIN_BASES_DIVERGE")
+    if any(row["state"] == "HELD" for row in decisions):
+        return decisions
+
+    expected_main = baseline
     for i, row in enumerate(decisions):
         number, sha, original = row["pr"], row["sha"], row["snapshot"]
         try:
+            # Fresh GitHub PR/diff/rules/CI, not the earlier preflight result.
             latest = reader(token, number, sha)
-            need(latest == original, "PR_OR_BASE_CHANGED_DURING_BATCH")
+            need(type(latest) is dict, "FRESH_PR_SNAPSHOT_INVALID")
+            if i == 0:
+                need(latest == original, "PR_OR_BASE_CHANGED_DURING_BATCH")
+            else:
+                # Permit precisely one change after our preceding squash
+                # merge: the base ref can advance to that *verified merge SHA*.
+                # All other approved identity/diff fields must remain exact.
+                unchanged = {k:v for k,v in latest.items() if k != "base_sha"}
+                approved = {k:v for k,v in original.items() if k != "base_sha"}
+                need(unchanged == approved,
+                     "PR_OR_PATCH_CHANGED_AFTER_PRIOR_MERGE")
+                need(latest.get("base_sha") == expected_main,
+                     "SUBSEQUENT_PR_BASE_NOT_PREVIOUS_MERGE")
+            verify_live_main(token, expected_main, fetch)
             response = fetch(token, f"/repos/{REPO}/pulls/{number}/merge",
                              {"sha":sha,"merge_method":"squash"}, "PUT")
-            need(type(response) is dict and response.get("merged") is True,
+            need(type(response) is dict and response.get("merged") is True
+                 and type(response.get("sha")) is str
+                 and _SHA.fullmatch(response["sha"]),
                  "GITHUB_DID_NOT_CONFIRM_MERGE")
             readback = fetch(token, f"/repos/{REPO}/pulls/{number}")
             need(type(readback) is dict and readback.get("merged") is True
-                 and type(readback.get("merge_commit_sha")) is str
-                 and _SHA.fullmatch(readback["merge_commit_sha"]),
+                 and readback.get("merge_commit_sha") == response["sha"],
                  "MERGE_READBACK_UNVERIFIED")
-            row.update(state="MERGED_GITHUB_READBACK", merge_commit_sha=readback["merge_commit_sha"])
+            # Do not proceed if another writer advanced main meanwhile.
+            expected_main = response["sha"]
+            verify_live_main(token, expected_main, fetch)
+            row.update(state="MERGED_GITHUB_READBACK", merge_commit_sha=expected_main)
         except (Hold, guard.Block, ValueError, KeyError, TypeError) as error:
             reason = str(error) if isinstance(error,(Hold,guard.Block)) else "INVALID_REMOTE_EVIDENCE"
             row.update(state="HELD_AFTER_WRITE_ATTEMPT",reason=reason[:90])
