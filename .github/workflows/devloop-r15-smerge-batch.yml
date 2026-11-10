@@ -1,0 +1,93 @@
+name: Φ DevLoop R15 - Owner Smerge Batch (Agentora docs only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Preview first; merge runs only with exact owner approval"
+        required: true
+        default: preview
+        type: choice
+        options: [preview, merge]
+      pr_heads:
+        description: "Up to 5 exact PR@SHA entries, comma-separated, e.g. 71@<40 hex>"
+        required: true
+        type: string
+      confirmation:
+        description: "For merge only: SMERGE_AGENTORA_DOCS_EXACT_SHA"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentora-smerge-r15
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    if: >-
+      inputs.mode == 'preview' &&
+      github.repository == 'MichaelWave369/Agentora' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    steps:
+      - name: Checkout trusted main, no checkout token
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Preview exact-SHA docs-only PRs, no writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_ACTOR_ID: ${{ github.actor_id }}
+          GITHUB_REPOSITORY_ID: ${{ github.repository_id }}
+        run: python3 scripts/devloop_r15_smerge_batch.py
+      - name: Retain preview or HOLD receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r15-smerge-preview-${{ github.run_id }}
+          path: smerge-r15/receipt.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  merge:
+    if: >-
+      inputs.mode == 'merge' &&
+      github.repository == 'MichaelWave369/Agentora' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    # This privileged job can merge ONLY manually supplied exact SHAs after
+    # its full policy validation; the separate preview job is read-only.
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+    steps:
+      - name: Checkout trusted main, never PR head
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Owner-confirmed exact-SHA docs batch, guarded merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_ACTOR_ID: ${{ github.actor_id }}
+          GITHUB_REPOSITORY_ID: ${{ github.repository_id }}
+        run: python3 scripts/devloop_r15_smerge_batch.py
+      - name: Retain exact merge readbacks or hold receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r15-smerge-merge-${{ github.run_id }}
+          path: smerge-r15/receipt.json
+          if-no-files-found: warn
+          retention-days: 30
