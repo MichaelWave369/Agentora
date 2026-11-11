@@ -20,6 +20,7 @@ TOOLCHAIN = "leanprover/lean4:v4.35.0"
 SOURCE_FILES = (
     "formal/phi-evidence/PhiEvidence.lean",
     "formal/phi-evidence/lakefile.toml",
+    "formal/phi-evidence/lake-manifest.json",
     "formal/phi-evidence/lean-toolchain",
     "scripts/phi_evidence_wire.py",
     "scripts/phi_evidence_live.py",
