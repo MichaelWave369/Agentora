@@ -1,0 +1,6 @@
+name = "phi_evidence"
+version = "0.3.0"
+defaultTargets = ["PhiEvidence"]
+
+[[lean_lib]]
+name = "PhiEvidence"
