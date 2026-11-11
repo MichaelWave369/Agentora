@@ -115,6 +115,11 @@ class EvidenceWireTests(unittest.TestCase):
         bad["source_sha"] = "c" * 40
         self.assert_held(r=bad)
 
+    def test_r14_malformed_state_holds(self):
+        bad = r14()
+        bad["state"] = []
+        self.assert_held(r=bad)
+
     def test_r14_fake_owner_ack(self):
         bad = r14()
         bad["owner_acknowledged"] = True
