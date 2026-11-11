@@ -1,0 +1,58 @@
+name: Phi Evidence Formal Model R0.3
+
+on:
+  pull_request:
+    paths:
+      - 'formal/phi-evidence/**'
+      - 'scripts/phi_proof_model.py'
+      - 'scripts/phi_evidence_wire.py'
+      - 'scripts/phi_evidence_live.py'
+      - 'server/tests/test_phi_proof_model.py'
+      - '.github/workflows/phi-evidence-formal-model.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'formal/phi-evidence/**'
+      - 'scripts/phi_proof_model.py'
+      - 'scripts/phi_evidence_wire.py'
+      - 'scripts/phi_evidence_live.py'
+      - 'server/tests/test_phi_proof_model.py'
+      - '.github/workflows/phi-evidence-formal-model.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lean-model:
+    name: Lean abstract authority model
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install pinned Lean toolchain
+        uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: formal/phi-evidence
+          auto-config: 'false'
+          build: 'false'
+          test: 'false'
+          use-github-cache: 'false'
+          use-mathlib-cache: 'false'
+      - name: Kernel-check the model and bind exact checkout hashes
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          RECEIPT: ${{ runner.temp }}/phi-evidence-r03.json
+        run: |
+          python3 scripts/phi_proof_model.py --expected-sha "$EXPECTED_SHA" --output "$RECEIPT"
+          python3 -m json.tool "$RECEIPT" > /dev/null
+          echo "Lean abstract-model proof receipt recorded; no software verification or merge permission."
+      - name: Preserve evidence without granting authority
+        uses: actions/upload-artifact@v4
+        with:
+          name: phi-evidence-r03-model-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/phi-evidence-r03.json
+          if-no-files-found: error
+          retention-days: 14
