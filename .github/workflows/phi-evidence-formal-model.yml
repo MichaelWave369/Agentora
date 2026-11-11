@@ -1,4 +1,4 @@
-name: Phi Evidence Formal Model R0.3
+name: Phi Evidence Formal Model and Correspondence R0.4
 
 on:
   pull_request:
@@ -7,6 +7,9 @@ on:
       - 'scripts/phi_proof_model.py'
       - 'scripts/phi_evidence_wire.py'
       - 'scripts/phi_evidence_live.py'
+      - 'scripts/devloop_r2_policy.py'
+      - 'scripts/phi_policy_correspondence.py'
+      - 'server/tests/test_phi_policy_correspondence.py'
       - 'server/tests/test_phi_proof_model.py'
       - '.github/workflows/phi-evidence-formal-model.yml'
   push:
@@ -16,6 +19,9 @@ on:
       - 'scripts/phi_proof_model.py'
       - 'scripts/phi_evidence_wire.py'
       - 'scripts/phi_evidence_live.py'
+      - 'scripts/devloop_r2_policy.py'
+      - 'scripts/phi_policy_correspondence.py'
+      - 'server/tests/test_phi_policy_correspondence.py'
       - 'server/tests/test_phi_proof_model.py'
       - '.github/workflows/phi-evidence-formal-model.yml'
   workflow_dispatch:
@@ -49,10 +55,25 @@ jobs:
           python3 scripts/phi_proof_model.py --expected-sha "$EXPECTED_SHA" --output "$RECEIPT"
           python3 -m json.tool "$RECEIPT" > /dev/null
           echo "Lean abstract-model proof receipt recorded; no software verification or merge permission."
-      - name: Preserve evidence without granting authority
+      - name: Preserve Lean model evidence without granting authority
         uses: actions/upload-artifact@v4
         with:
           name: phi-evidence-r03-model-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/phi-evidence-r03.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Compare Lean oracle against read-only Python policy adapter
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          RECEIPT: ${{ runner.temp }}/phi-evidence-r04.json
+        run: |
+          python3 scripts/phi_policy_correspondence.py --expected-sha "$EXPECTED_SHA" --output "$RECEIPT"
+          python3 -m json.tool "$RECEIPT" > /dev/null
+          echo "Finite correspondence reviewed; not a source-code proof or permission grant."
+      - name: Preserve finite-correspondence evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phi-evidence-r04-correspondence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/phi-evidence-r04.json
           if-no-files-found: error
           retention-days: 14
