@@ -12,6 +12,7 @@ import json
 import os
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.parse import quote
 
 import phi_evidence_wire as wire
 
@@ -166,6 +167,8 @@ def r14_comment(get, r14):
             raise wire.EvidenceHeld("R14_JOURNAL_JSON_INVALID") from exc
         wire.need(type(parsed) is dict, "R14_JOURNAL_NOT_OBJECT")
         if parsed == r14:
+            wire.need(type(comment.get("id")) is int and comment["id"] > 0,
+                      "R14_COMMENT_ID_INVALID")
             found.append(comment["id"])
     wire.need(len(found) == 1, "R14_ORIGINAL_JOURNAL_NOT_UNIQUELY_MATCHED")
     return found[0]
@@ -186,6 +189,8 @@ def corroborate(repo: str, pr: int, sha: str, gmed: dict, r14: dict,
               ((pull.get("base") or {}).get("repo") or {}).get("full_name") == repo,
               "LIVE_PR_MERGE_IDENTITY_HELD")
     base = pull["base"]["ref"]
+    wire.need(type(base) is str and 0 < len(base) <= 200 and
+              not base.startswith("."), "LIVE_PR_BASE_BRANCH_INVALID")
     repository = one(fetch, root)
     wire.need(repository.get("full_name") == repo and
               repository.get("private") is False and
@@ -193,7 +198,7 @@ def corroborate(repo: str, pr: int, sha: str, gmed: dict, r14: dict,
               repository.get("disabled") is False and
               repository.get("default_branch") == base,
               "LIVE_REPOSITORY_IDENTITY_HELD")
-    branch_path = root + "/branches/" + base
+    branch_path = root + "/branches/" + quote(base, safe="")
     branch = one(fetch, branch_path)
     wire.need((branch.get("commit") or {}).get("sha") == sha and
               type(branch.get("protected")) is bool,
@@ -201,6 +206,9 @@ def corroborate(repo: str, pr: int, sha: str, gmed: dict, r14: dict,
     check_runs = pages(fetch, root + "/commits/" + sha +
                        "/check-runs?filter=latest", "check_runs",
                        total_key="total_count")
+    ids = [item.get("id") for item in check_runs if type(item) is dict]
+    wire.need(len(ids) == len(check_runs) and all(type(x) is int and x > 0 for x in ids)
+              and len(set(ids)) == len(ids), "LIVE_CHECK_RUN_IDS_INVALID")
     status_rows = pages(fetch, root + "/commits/" + sha + "/status",
                         "statuses")
     live_rows = ([normalize_live_check(x, sha) for x in check_runs] +
