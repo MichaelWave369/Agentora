@@ -158,3 +158,40 @@ def require_independent_review(api, token, number, head_sha, author_login):
     if not trusted:
         raise CodeHeld("R2_INDEPENDENT_WRITE_REVIEW_REQUIRED")
     return sorted(trusted)
+
+
+# R0.4: advisory correspondence to the Lean evidence/authority model.
+# Not called by devloop_automerge.py. In particular, True here is NOT
+# approval to merge, dispatch, write code, deploy or change branch rules.
+MODEL_EVIDENCE_LEVELS = frozenset({
+    "declared", "githubCorroborated", "formallyCheckedModel",
+})
+
+
+def correspondence_policy_snapshot(owner_approval, active_branch_policy,
+                                   exact_source, required_checks,
+                                   evidence_level):
+    """Executable READ-ONLY interpretation of the R0.3 abstract Lean model.
+
+    This function does not invoke Github, mutate settings, issue permissions,
+    or replace real gate checks in the privileged DevLoop. Inputs are synthetic
+    bools for exhaustive specification-consistency tests, not authentic
+    operator or GitHub attestations.
+    """
+    gates = (owner_approval, active_branch_policy, exact_source,
+             required_checks)
+    if any(type(x) is not bool for x in gates):
+        raise CodeHeld("R04_MODEL_GATE_NOT_BOOL")
+    if type(evidence_level) is not str or evidence_level not in MODEL_EVIDENCE_LEVELS:
+        raise CodeHeld("R04_MODEL_EVIDENCE_LEVEL_INVALID")
+    return {
+        "model_gate_conjunction": all(gates),
+        "evidence_authority": {
+            "code_write": False,
+            "worker_dispatch": False,
+            "merge": False,
+            "deploy": False,
+        },
+        "action_authorized": False,
+        "review_only": True,
+    }
