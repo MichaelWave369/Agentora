@@ -93,6 +93,7 @@ def r14_observation(receipt: dict, repo: str, sha: str) -> dict:
     need(receipt.get("schema") == "agentora.fleet.r14.evidence-handoff.v1"
          and receipt.get("target_repository") == repo
          and receipt.get("source_sha") == sha
+         and type(receipt.get("state")) is str
          and receipt.get("state") in R14_STATES, "R14_SOURCE_IDENTITY_HELD")
     state = receipt["state"]
     need(receipt.get("owner_acknowledged") is R14_STATES[state] and
