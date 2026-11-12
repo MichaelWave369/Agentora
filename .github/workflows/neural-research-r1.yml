@@ -1,0 +1,40 @@
+name: Neural Research R1 offline contracts
+
+on:
+  push:
+    paths:
+      - scripts/neural_research_r1.py
+      - tests/test_neural_research_r1.py
+      - docs/NEURAL_RESEARCH_R1.md
+      - .github/workflows/neural-research-r1.yml
+  pull_request:
+    paths:
+      - scripts/neural_research_r1.py
+      - tests/test_neural_research_r1.py
+      - docs/NEURAL_RESEARCH_R1.md
+      - .github/workflows/neural-research-r1.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        python-version: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile offline planner
+        run: python -m py_compile scripts/neural_research_r1.py
+      - name: Run isolated adversarial tests
+        run: python -m unittest discover -s tests -p 'test_neural_research_r1.py' -v
+      - name: CLI help is harmless
+        run: python scripts/neural_research_r1.py --help
