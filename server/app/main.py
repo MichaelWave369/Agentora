@@ -10,7 +10,7 @@ from app.routers import marketplace, multimodal, voice, analytics, integrations,
 from app.services.mission_watcher import mission_watcher
 from app.services.mission_compactor import mission_compactor
 from app.routers import development_board
-from app.routers import phireponerve, atelier
+from app.routers import phireponerve, atelier, discovery
 
 
 @asynccontextmanager
@@ -71,6 +71,7 @@ def create_app() -> FastAPI:
     app.include_router(development_board.router)
     app.include_router(phireponerve.router)
     app.include_router(atelier.router)
+    app.include_router(discovery.router)
     return app
 
 
