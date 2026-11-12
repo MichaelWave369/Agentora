@@ -11,6 +11,13 @@ Agentora is a **local-first, private-by-default, memory-aware agent operating st
 - **Workflow + Operator Mode:** run, replay, pause/resume/advance/retry/skip.
 - **Optional worker assist:** offload path with graceful fallback when worker is unavailable.
 
+## ΦDiscovery blind reviewer bridge (experimental)
+
+- Opt-in, operator-key-gated local endpoint for one research review at a time: `POST /api/discovery/review`.
+- Validates PhiDiscovery role packets and uses Agentora's existing Ollama structured-chat client **without tools, memory, or team-run side effects**.
+- Disabled by default; mock model mode is rejected; responses remain unverified and do not count as scientific evidence.
+- See [PhiDiscovery Research Bridge](docs/PHIDISCOVERY_REVIEW_BRIDGE.md) for local configuration, security, and limitations.
+
 ## ΦAtelier: original-art direction (experimental)
 
 - `POST /api/atelier/preview`: offline three-direction prompt preview, no model call or image generation.
