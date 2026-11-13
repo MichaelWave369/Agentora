@@ -89,7 +89,7 @@ def observe(get):
     if not matching:
         return {"state": "NO_EXACT_HEAD_CI", "head_sha": head,
                 "run_id": None, "run_attempt": None, "failed_jobs": []}
-    run = max(matching, key=lambda r: (r["run_attempt"], r["id"]))
+    run = max(matching, key=lambda r: (r["id"], r["run_attempt"]))
     status, conclusion = run.get("status"), run.get("conclusion")
     if status != "completed":
         state = "CI_PENDING_EXACT_HEAD"
