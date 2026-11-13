@@ -97,6 +97,33 @@ class ObserveTests(unittest.TestCase):
         self.assertEqual(report["state"], "CI_FAILURE_EXACT_HEAD")
 
 
+class HeadDriftTests(unittest.TestCase):
+    def test_same_head_can_proceed(self):
+        get, calls = mock_get()
+        report = watch.observe(get)
+        watch.ensure_head_unchanged(get, report)
+        self.assertEqual(calls.count("/repos/" + watch.TARGET + "/branches/main"), 2)
+
+    def test_changed_head_holds_before_issue_write(self):
+        get, _ = mock_get()
+        report = watch.observe(get)
+        moved, _ = mock_get(sha=OLD)
+        with self.assertRaisesRegex(watch.Held, "MAIN_CHANGED_DURING_OBSERVATION"):
+            watch.ensure_head_unchanged(moved, report)
+
+    def test_missing_second_branch_response_holds(self):
+        get, _ = mock_get()
+        report = watch.observe(get)
+        with self.assertRaisesRegex(watch.Held, "MAIN_CHANGED_DURING_OBSERVATION"):
+            watch.ensure_head_unchanged(lambda path: {}, report)
+
+    def test_invalid_observation_cannot_be_confirmed(self):
+        with self.assertRaisesRegex(watch.Held, "OBSERVED_HEAD_INVALID"):
+            watch.ensure_head_unchanged(lambda path: self.fail("must not query"),
+                                        {"head_sha": "unverified"})
+
+
+
 class JournalTests(unittest.TestCase):
     report = {"state": "CI_SUCCESS_EXACT_HEAD", "head_sha": HEAD,
               "run_id": 12, "run_attempt": 1, "failed_jobs": []}
