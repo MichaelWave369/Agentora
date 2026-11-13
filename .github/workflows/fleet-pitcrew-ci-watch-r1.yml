@@ -1,0 +1,48 @@
+name: Φ Pit Crew R1 - One-Repo CI Watch
+
+# Bounded, scheduled observation of one known public repository's exact main CI.
+# Writes only one deduplicated status comment on the pre-existing Agentora mission
+# issue #124. No code writes, worker dispatch, PRs, labels, merges, or deploys.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */2 * * *'
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: agentora-pitcrew-one-repo-ci
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    if: >-
+      github.repository == 'MichaelWave369/Agentora' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout trusted observer on main, never target repository code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - name: Observe exact head and maintain one issue status
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 scripts/fleet_pitcrew_ci_watch_r1.py
+      - name: Retain observation or explicit hold
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pitcrew-ci-watch-${{ github.run_id }}
+          path: pitcrew-r1/
+          retention-days: 7
+          if-no-files-found: warn
