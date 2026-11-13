@@ -73,13 +73,15 @@ def observe(get):
     branch = get("/repos/" + TARGET + "/branches/" + BRANCH)
     head = (branch.get("commit") or {}).get("sha") if isinstance(branch, dict) else None
     need(isinstance(head, str) and SHA.fullmatch(head), "MAIN_HEAD_UNAVAILABLE")
+    # GitHub's server-side head_sha filter keeps the response bounded.
+    # Do not relax the API byte budget or treat a partial result as success.
     path = ("/repos/" + TARGET + "/actions/workflows/ci.yml/runs"
-            "?branch=main&event=push&per_page=30")
+            "?branch=main&event=push&head_sha=" + head + "&per_page=5")
     result = get(path)
     need(isinstance(result, dict)
          and isinstance(result.get("workflow_runs"), list)
          and isinstance(result.get("total_count"), int)
-         and len(result["workflow_runs"]) <= 30,
+         and len(result["workflow_runs"]) <= 5,
          "RUN_LIST_UNAVAILABLE")
     matching = [r for r in result["workflow_runs"]
                 if isinstance(r, dict) and r.get("head_sha") == head
