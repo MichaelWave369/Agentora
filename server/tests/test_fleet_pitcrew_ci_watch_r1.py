@@ -26,7 +26,7 @@ def mock_get(*, runs=None, sha=HEAD, target_ok=True, jobs=None):
                     "archived": False, "default_branch": "main"}
         if path == "/repos/" + watch.TARGET + "/branches/main":
             return {"commit": {"sha": sha}}
-        if path.endswith("/actions/workflows/ci.yml/runs?branch=main&event=push&per_page=30"):
+        if path.endswith("/actions/workflows/ci.yml/runs?branch=main&event=push&head_sha=" + sha + "&per_page=5"):
             return {"total_count": len(selected), "workflow_runs": selected}
         if "/jobs?per_page=100" in path:
             listing = jobs if jobs is not None else []
@@ -48,6 +48,19 @@ def issue_get(comments=None, *, modified=False):
 
 
 class ObserveTests(unittest.TestCase):
+    def test_api_query_is_head_filtered_and_bounded(self):
+        get, requests = mock_get()
+        self.assertEqual(watch.observe(get)["state"], "CI_SUCCESS_EXACT_HEAD")
+        run_requests = [p for p in requests if "/actions/workflows/" in p]
+        self.assertEqual(run_requests, ["/repos/" + watch.TARGET
+            + "/actions/workflows/ci.yml/runs"
+            + "?branch=main&event=push&head_sha=" + HEAD + "&per_page=5"])
+
+    def test_oversized_run_page_is_never_partial_success(self):
+        get, _ = mock_get(runs=[run(ident=20 + i) for i in range(6)])
+        with self.assertRaisesRegex(watch.Held, "RUN_LIST_UNAVAILABLE"):
+            watch.observe(get)
+
     def test_success_at_current_head(self):
         get, _ = mock_get()
         result = watch.observe(get)

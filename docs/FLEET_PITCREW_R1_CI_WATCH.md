@@ -81,7 +81,7 @@ PYTHONPATH=.:server python -m pytest -q server/tests/test_fleet_pitcrew_ci_watch
   a product acceptance, live browser, VR, or hardware qualification.
 - If the current SHA has no observed main push CI run, the outcome remains
   `NO_EXACT_HEAD_CI` rather than borrowing a green check from older code.
-- Only the most recent 30 qualifying CI runs and first 99 Issue comments
+- Only the first five server-filtered, exact-SHA CI runs and first 99 Issue comments
   are examined; incomplete comment history deliberately holds.
 
 ## Next step toward the real closed loop
@@ -94,3 +94,20 @@ a read-only viewer, and do not expand from one repository until that chain
 has passed a real hosted field trial.
 
 **Ledger Above Ego. More Bounce, Less Copy-Paste.**
+
+## R1.3 first hosted-run repair (bounded API response)
+
+The first live `workflow_run` trigger succeeded after Agentora main CI,
+but [run 43381078494](https://github.com/MichaelWave369/Agentora/actions/runs/43381078494)
+held with `API_RESPONSE_OVERSIZED`. The original request fetched up to 30
+workflow-run objects; GitHub's verbose JSON exceeded the deliberate 300 kB
+response limit. The watcher correctly refused to claim success or comment
+on the Issue.
+
+R1.3 asks GitHub to filter by the **observed target SHA** on the server
+(`head_sha`) and limits the query to five matching push CI runs. Keep the
+existing response-size cap rather than allowing arbitrarily large payloads.
+GitHub's documented workflow-run endpoint supports the `head_sha` filter.
+If no exact current-head run is returned, report `NO_EXACT_HEAD_CI`, not
+success. Verify the next hosted run and the canonical Issue comment before
+calling the pit crew live-qualified.
