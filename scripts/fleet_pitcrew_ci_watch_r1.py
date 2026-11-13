@@ -5,6 +5,7 @@ approver or merge authority. No target-code checkout or model execution.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -135,6 +136,55 @@ def ensure_head_unchanged(get, report):
     need(current == report["head_sha"], "MAIN_CHANGED_DURING_OBSERVATION")
 
 
+def review_candidate(report):
+    """Construct one inert, replay-stable failure review handoff.
+
+    A CI failure alone is not a diagnosis, a RepoNerve event, an R9 mission,
+    or an approval to run code. The dedupe key is a *local identity*, not an
+    authenticated GitHub receipt, signature, or cross-run lock.
+    """
+    need(isinstance(report, dict), "CANDIDATE_REPORT_INVALID")
+    if report.get("state") != "CI_FAILURE_EXACT_HEAD":
+        return None
+    head = report.get("head_sha")
+    run_id = report.get("run_id")
+    attempt = report.get("run_attempt")
+    jobs = report.get("failed_jobs")
+    need(isinstance(head, str) and SHA.fullmatch(head)
+         and type(run_id) is int and run_id > 0
+         and type(attempt) is int and 0 < attempt <= 10000
+         and type(jobs) is list and len(jobs) <= 12
+         and all(type(job) is str and job == safe_name(job)
+                 and len(job) <= 90 for job in jobs),
+         "CANDIDATE_EVIDENCE_INVALID")
+    origin = {
+        "target_repository": TARGET, "target_repo_id": TARGET_ID,
+        "default_branch": BRANCH, "source_sha": head,
+        "workflow": WORKFLOW, "source_run_id": run_id,
+        "source_run_attempt": attempt
+    }
+    material = json.dumps(origin, sort_keys=True, separators=(",", ":")).encode()
+    return {
+        "schema": "agentora.pitcrew.failure-review-candidate.v1",
+        "state": "NEEDS_REVIEW_NO_WORKER",
+        **origin,
+        "dedupe_key": "sha256:" + hashlib.sha256(material).hexdigest(),
+        "source_run_url": ("https://github.com/" + TARGET
+                           + "/actions/runs/" + str(run_id)),
+        "failed_jobs_advisory": jobs,
+        "canonical_mission_issue": ISSUE,
+        "recommended_next_action": "Inspect the failed CI run and prepare a separately authorized bounded task in existing Agentora R9 / Autonomous R1. No remediation is authorized by this receipt.",
+        "source_authenticated_independently": False,
+        "cause_identified": False,
+        "worker_started": False,
+        "independent_qa_complete": False,
+        "repair_authorized": False,
+        "dispatch_authorized": False,
+        "merge_authorized": False,
+        "verified_complete": False
+    }
+
+
 def render(report):
     state = report["state"]
     run_id = report["run_id"]
@@ -204,6 +254,10 @@ def main():
         report["publication"] = publish(
             get, lambda method, path, body: github(method, path, token, body),
             report)
+        candidate = review_candidate(report)
+        if candidate is not None:
+            (output / "failure-review-candidate.json").write_text(
+                json.dumps(candidate, indent=2, sort_keys=True) + "\n")
         (output / "observation.json").write_text(
             json.dumps(report, indent=2, sort_keys=True) + "\n")
         summary = ("## Phi Pit Crew R1\n\n" + render(report) +
