@@ -119,6 +119,22 @@ def observe(get):
             "failed_jobs": failed}
 
 
+def ensure_head_unchanged(get, report):
+    """Recheck target main immediately before writing the status comment.
+
+    A branch can still move *after* this read; the periodic observer corrects
+    the snapshot on its next run. This check closes the ordinary read/write
+    window without pretending to provide GitHub-level atomicity.
+    """
+    need(isinstance(report, dict)
+         and isinstance(report.get("head_sha"), str)
+         and SHA.fullmatch(report["head_sha"]),
+         "OBSERVED_HEAD_INVALID")
+    branch = get("/repos/" + TARGET + "/branches/" + BRANCH)
+    current = (branch.get("commit") or {}).get("sha") if isinstance(branch, dict) else None
+    need(current == report["head_sha"], "MAIN_CHANGED_DURING_OBSERVATION")
+
+
 def render(report):
     state = report["state"]
     run_id = report["run_id"]
@@ -184,6 +200,7 @@ def main():
         need(bool(token), "GITHUB_TOKEN_MISSING")
         get = lambda path: github("GET", path, token)
         report = observe(get)
+        ensure_head_unchanged(get, report)
         report["publication"] = publish(
             get, lambda method, path, body: github(method, path, token, body),
             report)
