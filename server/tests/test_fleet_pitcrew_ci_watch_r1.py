@@ -124,6 +124,61 @@ class HeadDriftTests(unittest.TestCase):
 
 
 
+class FailureReviewCandidateTests(unittest.TestCase):
+    def test_failed_exact_head_produces_inert_stable_candidate(self):
+        report = {"state": "CI_FAILURE_EXACT_HEAD", "head_sha": HEAD,
+                  "run_id": 989, "run_attempt": 2,
+                  "failed_jobs": ["backend (3.13)"]}
+        a = watch.review_candidate(report)
+        b = watch.review_candidate(dict(report))
+        self.assertEqual(a, b)
+        self.assertEqual(a["target_repo_id"], watch.TARGET_ID)
+        self.assertEqual(a["source_sha"], HEAD)
+        self.assertEqual(a["source_run_id"], 989)
+        self.assertEqual(a["source_run_attempt"], 2)
+        self.assertEqual(a["canonical_mission_issue"], 124)
+        self.assertEqual(a["state"], "NEEDS_REVIEW_NO_WORKER")
+        self.assertTrue(a["dedupe_key"].startswith("sha256:"))
+        for key in ("worker_started", "dispatch_authorized", "repair_authorized",
+                    "merge_authorized", "verified_complete",
+                    "independent_qa_complete", "cause_identified"):
+            self.assertIs(a[key], False)
+
+    def test_changes_in_source_run_or_attempt_change_dedupe(self):
+        report = {"state": "CI_FAILURE_EXACT_HEAD", "head_sha": HEAD,
+                  "run_id": 989, "run_attempt": 2, "failed_jobs": []}
+        original = watch.review_candidate(report)["dedupe_key"]
+        self.assertNotEqual(original, watch.review_candidate(
+            {**report, "run_id": 990})["dedupe_key"])
+        self.assertNotEqual(original, watch.review_candidate(
+            {**report, "run_attempt": 3})["dedupe_key"])
+        self.assertNotEqual(original, watch.review_candidate(
+            {**report, "head_sha": OLD})["dedupe_key"])
+        # Job names are hints; partial API job visibility cannot create new work.
+        self.assertEqual(original, watch.review_candidate(
+            {**report, "failed_jobs": ["backend (3.12)"]})["dedupe_key"])
+
+    def test_no_repair_candidate_when_green_or_pending(self):
+        report = {"head_sha": HEAD, "run_id": 989,
+                  "run_attempt": 2, "failed_jobs": []}
+        for state in ("CI_SUCCESS_EXACT_HEAD", "CI_PENDING_EXACT_HEAD",
+                      "NO_EXACT_HEAD_CI", "CI_INCONCLUSIVE_EXACT_HEAD"):
+            self.assertIsNone(watch.review_candidate({**report, "state": state}))
+
+    def test_bad_failure_identity_holds(self):
+        report = {"state": "CI_FAILURE_EXACT_HEAD", "head_sha": "not-verified",
+                  "run_id": 989, "run_attempt": 1, "failed_jobs": []}
+        with self.assertRaisesRegex(watch.Held, "CANDIDATE_EVIDENCE_INVALID"):
+            watch.review_candidate(report)
+        with self.assertRaisesRegex(watch.Held, "CANDIDATE_EVIDENCE_INVALID"):
+            watch.review_candidate({**report, "head_sha": HEAD,
+                                    "failed_jobs": ["\\x00malformed"]})
+        with self.assertRaisesRegex(watch.Held, "CANDIDATE_EVIDENCE_INVALID"):
+            watch.review_candidate({**report, "head_sha": HEAD, "run_id": True})
+
+
+
+
 class JournalTests(unittest.TestCase):
     report = {"state": "CI_SUCCESS_EXACT_HEAD", "head_sha": HEAD,
               "run_id": 12, "run_attempt": 1, "failed_jobs": []}

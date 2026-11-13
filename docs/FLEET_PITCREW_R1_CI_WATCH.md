@@ -7,8 +7,10 @@ on the existing [Agentora fleet mission #124](https://github.com/MichaelWave369/
 ## What happens automatically
 
 The GitHub-hosted `Φ Pit Crew R1 - One-Repo CI Watch` workflow runs at
-minute 17 every two hours, or when the owner clicks **Run workflow**.
-GitHub scheduled runs may be late or skipped.
+minute 17 every two hours, when the owner clicks **Run workflow**, or after a
+**successful push-triggered Agentora main-branch CI** completes. The last
+trigger reads *only* trusted default-branch controller code, never workflow
+artifacts or PR-head source. GitHub scheduled runs may be late or skipped.
 
 1. Verify that the fixed public repository `MichaelWave369/PhiMadaPrime`
    still has the known immutable GitHub repository ID, is not private/archived,
@@ -25,8 +27,15 @@ GitHub scheduled runs may be late or skipped.
    Identical observations cause no write; a change updates the existing
    comment. A renamed/closed mission or incomplete comment history causes a
    HOLD, not a fallback to some other Issue.
-5. Store the observation or explicit HOLD as a seven-day GitHub Actions
-   artifact and summarize it on the workflow run.
+5. For a verified **CI_FAILURE_EXACT_HEAD**, add an **inert structured
+   failure-review-candidate.json** artifact. It binds the existing issue,
+   target repository ID, SHA, exact CI run ID/attempt, sanitized failed job
+   hints, and a deterministic sha256 replay identity. These records are
+   *not authenticated release receipts* and must be independently rechecked
+   at any later effect-time gate. No candidate is produced for success,
+   pending, unknown, or inconclusive results.
+6. Store the observation, optional candidate, or explicit HOLD as a seven-day
+   GitHub Actions artifact and summarize it on the workflow run.
 
 The public hosted watcher needs **no local install**, SQLite, personal GitHub
 token, or manually copied report. Its GitHub-issued workflow token has
@@ -49,6 +58,11 @@ After normal PR review and merge:
    On a genuinely different upstream run, it may **UPDATE**, not duplicate.
 5. Inspect the first scheduled run separately; passing PR CI does not prove
    that a scheduled run, cross-repo read, or Issue write actually worked.
+
+The current proposal is **not** inserted into the local Agentora R9
+SQLite queue automatically; doing so from a GitHub-hosted runner would
+require a real authenticated event-to-queue bridge. Do not treat its
+`dedupe_key` as a real queue lock or an owner authorization.
 
 Test locally or in Agentora CI:
 
