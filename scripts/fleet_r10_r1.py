@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta, timezone
 import io
+from itertools import count
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener
 import zipfile
@@ -37,6 +39,16 @@ CONFIRM = "QUEUE_AGENTORA_R1_DOCS"
 WORKER = "autonomous-r1"
 PUBLISHER_ID = 352553105
 MAX_ARCHIVE = 512_000
+MIN_INTERVAL = 60
+MAX_RECOVERY_READS = 3
+RECOVERY_DELAY_MS = MIN_INTERVAL * 1_000
+RECOVERY_TRANSIENT = {
+    "GITHUB_API_UNAVAILABLE", "GITHUB_HTTP_403", "GITHUB_HTTP_429",
+    "GITHUB_HTTP_500", "GITHUB_HTTP_502", "GITHUB_HTTP_503", "GITHUB_HTTP_504",
+}
+HOLDS = (contract.Held, r9.MissionHeld, r9.StewardHeld, r9.stewardship.HandoffHeld,
+         RepoNerveUnavailable, leases.LeaseHeld, artifacts.CloudReviewHeld)
+INPUT_ERRORS = (OSError, ValueError, KeyError, TypeError, sqlite3.Error, subprocess.SubprocessError)
 JOB_NAMES = {"plan", "owner-authorization", "attempt-0 / worker",
              "attempt-0 / publish", "attempt-0 / observe", "merge-gate"}
 need = contract.need
@@ -266,11 +278,12 @@ class TurnLane:
         if all(row[k] == v for k, v in {"state": state, "reason": reason, **fields}.items()):
             return
         columns = ("origin", "run_id", "pr_number", "tested_sha", "merge_sha",
-                   "active_job", "ci_status", "ci_runs", "run_terminal")
+                   "active_job", "ci_status", "ci_runs", "run_terminal",
+                   "recovery_reads", "recovery_due_ms")
         changes = {k: fields[k] if k in fields else row[k] for k in columns}
         changed = db.execute("""UPDATE r10_r1_turns SET state=?,reason=?,origin=?,run_id=?,
             pr_number=?,tested_sha=?,merge_sha=?,active_job=?,ci_status=?,ci_runs=?,
-            run_terminal=?,version=version+1
+            run_terminal=?,recovery_reads=?,recovery_due_ms=?,version=version+1
             WHERE mission_id=? AND version=?""",
             (state, reason, *changes.values(), row["mission_id"], row["version"])).rowcount
         need(changed == 1, "R1_RECONCILE_VERSION_CHANGED")
@@ -292,7 +305,8 @@ class TurnLane:
             need(busy < self.control.capacity and available and
                  available[0]["mission_id"] == row["mission_id"], "R1_WAITING_FOR_R9_TURN")
             self.update(row, "SUBMISSION_UNCERTAIN", "RECONCILE_BEFORE_ANY_NEW_REQUEST",
-                        db=db, origin=origin)
+                        db=db, origin=origin,
+                        recovery_due_ms=int(self.clock().timestamp() * 1000) + RECOVERY_DELAY_MS)
 
     def dispatch(self, row, authenticate, submit):
         need(row["state"] == "REQUESTED" and row["origin"] is None, "R1_SUBMISSION_ALREADY_FENCED")
@@ -313,6 +327,7 @@ class TurnLane:
         fenced = self.row(row["mission_id"])
         try:
             response = submit({"ref": "main", "inputs": {"task_json": row["task_json"]}})
+            need(isinstance(response, dict), "R1_DISPATCH_RUN_ID_UNAVAILABLE")
             run_id = response.get("workflow_run_id")
             need(positive(run_id) and response.get("html_url") ==
                  f"{REPO_URL}/actions/runs/{run_id}", "R1_DISPATCH_RUN_ID_UNAVAILABLE")
@@ -340,10 +355,25 @@ class TurnLane:
             self.update(row, "DISPATCHED", origin=run["event"], run_id=run_id)
 
     def recover_submission(self, row, download):
-        """Bound lookup to one page and never repeat a network write."""
+        """Spend a durable, spaced read budget on the original submission."""
+        need(row["state"] == "SUBMISSION_UNCERTAIN" and row["run_id"] is None,
+             "R1_NO_SUBMISSION_TO_RECOVER")
+        now = self.clock()
+        now_ms = int(now.timestamp() * 1000)
+        if now_ms < row["recovery_due_ms"]:
+            return
         task = self.task(row)
         event = row["origin"]
         need(event in {"issues", "workflow_dispatch"}, "R1_NO_SUBMISSION_TO_RECOVER")
+        attempt = row["recovery_reads"] + 1
+        if attempt > MAX_RECOVERY_READS or now >= contract.instant(task["expires_utc"]):
+            self.update(row, "HELD", "R1_SUBMISSION_NEEDS_ORIGINAL_RUN_REVIEW")
+            return
+        # Reserve the read slot before calling GitHub. A crash consumes the
+        # slot, and a parallel tick cannot reclaim it or repeat the POST.
+        self.update(row, "SUBMISSION_UNCERTAIN", "R1_SUBMISSION_PENDING_LOOKUP",
+                    recovery_reads=attempt, recovery_due_ms=now_ms + RECOVERY_DELAY_MS)
+        row = self.row(row["mission_id"])
         try:
             listed = self.api(f"{RUNS}?head_sha={task['source_sha']}&event={event}&per_page=12")
             runs = listed.get("workflow_runs")
@@ -365,10 +395,14 @@ class TurnLane:
                         continue
                     raise
                 matches.append(run_id)
-            need(len(matches) == 1, "R1_SUBMISSION_NEEDS_ORIGINAL_RUN_REVIEW")
-            self.attach(row, matches[0], download)
+            need(len(matches) < 2, "R1_ORIGINAL_RUN_AMBIGUOUS")
+            if matches:
+                self.attach(row, matches[0], download)
+            elif attempt == MAX_RECOVERY_READS:
+                self.update(row, "HELD", "R1_SUBMISSION_NEEDS_ORIGINAL_RUN_REVIEW")
         except (contract.Held, artifacts.CloudReviewHeld) as exc:
-            self.update(row, "HELD", str(exc))
+            if str(exc) not in RECOVERY_TRANSIENT or attempt == MAX_RECOVERY_READS:
+                self.update(row, "HELD", str(exc))
 
     def retry_preflight(self, row):
         need(row["state"] == "HELD" and row["origin"] is None and row["run_id"] is None,
@@ -425,6 +459,47 @@ class TurnLane:
             fields = {"active_job": None}
         self.update(row, state, reason, **fields)
 
+    def tick(self, *, authenticate=None, submit=None, download):
+        row = self.row()
+        if row is not None:
+            if submit is not None and row["state"] == "REQUESTED":
+                try:
+                    self.dispatch(row, authenticate, submit)
+                except contract.Held as exc:
+                    if str(exc) != "R1_WAITING_FOR_R9_TURN":
+                        raise
+            elif row["state"] == "SUBMISSION_UNCERTAIN":
+                self.recover_submission(row, download)
+            else:
+                self.reconcile(row)
+        return self.snapshot()
+
+
+def watch(tick, *, interval, cycles=None, sleep=time.sleep):
+    """Poll the existing lane serially using one bounded interval."""
+    need(type(interval) is int and MIN_INTERVAL <= interval <= 3600,
+         "R1_WATCH_INTERVAL_UNSAFE")
+    need(cycles is None or type(cycles) is int and 1 <= cycles <= 10_000,
+         "R1_WATCH_CYCLE_COUNT_UNSAFE")
+    failures = 0
+    for cycle in count(1):
+        try:
+            tick()
+            failures = 0
+            print(f"R9_R1_WATCH cycle={cycle} observed", flush=True)
+        except HOLDS as exc:
+            failures += 1
+            reason = str(exc)
+            code = reason if re.fullmatch(r"[A-Z0-9_]{1,100}", reason) else "R1_WATCH_CYCLE_HELD"
+            print(f"R9_R1_WATCH cycle={cycle} held={code}", file=sys.stderr, flush=True)
+        except INPUT_ERRORS:
+            failures += 1
+            print(f"R9_R1_WATCH cycle={cycle} held=INPUT_OR_RECONCILIATION_UNAVAILABLE",
+                  file=sys.stderr, flush=True)
+        if failures == 3 or cycle == cycles:
+            return 3 if failures else 0
+        sleep(interval)
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
@@ -444,6 +519,11 @@ def main(argv=None):
     tick = sub.add_parser("tick")
     tick.add_argument("--dispatch", action="store_true")
     tick.add_argument("--snapshot", type=Path)
+    scheduler = sub.add_parser("watch")
+    scheduler.add_argument("--dispatch", action="store_true")
+    scheduler.add_argument("--snapshot", type=Path)
+    scheduler.add_argument("--interval-seconds", type=int, default=MIN_INTERVAL)
+    scheduler.add_argument("--cycles", type=int)
     attach = sub.add_parser("attach")
     attach.add_argument("--mission-id", required=True)
     attach.add_argument("--run-id", type=int, required=True)
@@ -461,6 +541,9 @@ def main(argv=None):
             return 0
         read_token = os.environ.get("AGENTORA_R1_READ_TOKEN")
         write_token = os.environ.get("AGENTORA_R1_DISPATCH_TOKEN")
+        if args.action in ("tick", "watch") and args.dispatch:
+            need(bool(write_token), "AGENTORA_R1_DISPATCH_TOKEN_REQUIRED")
+            need(bool(read_token), "AGENTORA_R1_READ_TOKEN_REQUIRED")
         lane = TurnLane(r9.MissionControl(r9.StewardRegistry(args.steward_db.expanduser()),
                         leases.LeaseLedger(args.lease_db.expanduser())), github.GitHub(read_token))
         if args.action == "enqueue":
@@ -483,30 +566,28 @@ def main(argv=None):
         elif args.action == "retry-preflight":
             lane.retry_preflight(lane.row(args.mission_id))
             output_json(lane.snapshot())
-        elif args.action == "tick":
-            row = lane.row()
-            if row is not None:
-                if args.dispatch and row["state"] == "REQUESTED":
-                    if write_token:
-                        lane.dispatch(row, lambda: github_request(write_token, "/user"),
-                                      lambda payload: github_request(write_token, DISPATCH, payload))
-                    else:
-                        lane.update(row, "HELD", "AGENTORA_R1_DISPATCH_TOKEN_REQUIRED")
-                elif row["state"] == "SUBMISSION_UNCERTAIN":
-                    lane.recover_submission(row, lambda aid: artifacts.download_artifact(aid, read_token))
-                else:
-                    lane.reconcile(row)
-            output_json(lane.snapshot(), args.snapshot)
+        elif args.action in ("tick", "watch"):
+            def step():
+                snapshot = lane.tick(
+                    authenticate=(lambda: github_request(write_token, "/user")) if args.dispatch else None,
+                    submit=(lambda payload: github_request(write_token, DISPATCH, payload)) if args.dispatch else None,
+                    download=lambda aid: artifacts.download_artifact(aid, read_token))
+                if args.snapshot is not None or args.action == "tick":
+                    output_json(snapshot, args.snapshot)
+            if args.action == "watch":
+                return watch(step, interval=args.interval_seconds, cycles=args.cycles)
+            step()
         else:
             output_json(lane.snapshot(), args.out)
         return 0
-    except (contract.Held, r9.MissionHeld, r9.StewardHeld, r9.stewardship.HandoffHeld, RepoNerveUnavailable,
-            leases.LeaseHeld, artifacts.CloudReviewHeld) as exc:
+    except HOLDS as exc:
         print("R9_R1_HELD " + str(exc), file=sys.stderr)
         return 3
-    except (OSError, ValueError, KeyError, TypeError, sqlite3.Error, subprocess.SubprocessError):
+    except INPUT_ERRORS:
         print("R9_R1_HELD INPUT_OR_RECONCILIATION_UNAVAILABLE", file=sys.stderr)
         return 3
+    except KeyboardInterrupt:
+        return 130
 
 
 if __name__ == "__main__":

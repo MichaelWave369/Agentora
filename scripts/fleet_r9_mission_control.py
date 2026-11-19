@@ -119,8 +119,14 @@ class MissionControl:
                 tested_sha TEXT, merge_sha TEXT, reason TEXT, active_job TEXT,
                 ci_status TEXT NOT NULL DEFAULT 'NOT_OBSERVED', ci_runs TEXT NOT NULL DEFAULT '[]',
                 run_terminal INTEGER NOT NULL DEFAULT 0,
+                recovery_reads INTEGER NOT NULL DEFAULT 0,
+                recovery_due_ms INTEGER NOT NULL DEFAULT 0,
                 version INTEGER NOT NULL DEFAULT 0
             )""")
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(r10_r1_turns)")}
+            for column in ("recovery_reads", "recovery_due_ms"):
+                if column not in columns:
+                    db.execute(f"ALTER TABLE r10_r1_turns ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0")
             db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS
                 r9_one_active_mission_per_repo ON r9_missions(github_id)
                 WHERE state IN (

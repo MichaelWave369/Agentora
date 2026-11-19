@@ -2,10 +2,12 @@
 from datetime import timedelta
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -26,6 +28,7 @@ class TurnAPI(SyntheticGitHub):
         self.read = []
         self.run.update(status="waiting")
         self.jobs = [self.job("plan", 1), self.job("owner-authorization", 2, "waiting")]
+        self.listed = []
         memory = io.BytesIO()
         with zipfile.ZipFile(memory, "w") as archive:
             archive.writestr("task.json", contract.canonical(spec))
@@ -39,6 +42,8 @@ class TurnAPI(SyntheticGitHub):
 
     def __call__(self, path, payload=None, method=None):
         self.read.append(path)
+        if path.startswith(bridge.RUNS + "?head_sha="):
+            return {"total_count": len(self.listed), "workflow_runs": self.listed}
         if path == bridge.RUNS + "/11/jobs?per_page=20":
             return {"total_count": len(self.jobs), "jobs": self.jobs}
         if path == bridge.RUNS + "/11/artifacts?per_page=20":
@@ -113,6 +118,91 @@ class TurnBridgeTests(unittest.TestCase):
         with self.assertRaisesRegex(contract.Held, "UNSUBMITTED"):
             self.lane.retry_preflight(self.row())
         self.assertEqual(len(submitted), 1)
+
+    def test_scheduled_tick_discovers_new_admission_and_submits_once(self):
+        submissions, sleeps = [], []
+        self.api.run["event"] = "workflow_dispatch"
+
+        def submit(payload):
+            self.assertEqual(self.row()["state"], "SUBMISSION_UNCERTAIN")
+            submissions.append(payload)
+            return {"workflow_run_id": 11, "html_url": f"{bridge.REPO_URL}/actions/runs/11"}
+
+        def wait(interval):
+            sleeps.append(interval)
+            if len(sleeps) == 1:
+                self.enqueue()
+                self.lane = bridge.TurnLane(self.control, self.api, clock=lambda: self.now)
+
+        def tick():
+            self.lane.tick(authenticate=lambda: self.api.owner, submit=submit,
+                           download=lambda _: self.fail("no recovery expected"))
+
+        self.assertEqual(bridge.watch(tick, interval=60, cycles=3, sleep=wait), 0)
+        self.assertEqual(sleeps, [60, 60])
+        self.assertEqual(len(submissions), 1)
+        self.assertEqual(json.loads(submissions[0]["inputs"]["task_json"]), self.spec)
+        self.assertEqual((self.row()["state"], self.row()["run_id"]), ("OWNER_REVIEW", 11))
+
+    def test_read_only_recovery_waits_for_delayed_plan_and_survives_restart(self):
+        self.enqueue()
+        self.api.run["event"] = "workflow_dispatch"
+        self.lane.dispatch(self.row(), lambda: self.api.owner, lambda _: {})
+        self.lane.recover_submission(self.row(), lambda _: self.api.archive)
+        self.assertEqual(self.row()["recovery_reads"], 0)
+        self.now += timedelta(seconds=60)
+        self.lane.recover_submission(self.row(), lambda _: self.api.archive)
+        self.assertEqual(self.row()["recovery_reads"], 1)
+        self.assertEqual(self.row()["state"], "SUBMISSION_UNCERTAIN")
+        self.lane = bridge.TurnLane(r9.MissionControl(self.control.registry, self.control.leases),
+                                   self.api, clock=lambda: self.now)
+        self.api.listed = [self.api.run]
+        self.lane.recover_submission(self.row(), lambda _: self.api.archive)
+        self.assertIsNone(self.row()["run_id"])
+        self.now += timedelta(seconds=60)
+        self.lane.recover_submission(self.row(), lambda _: self.api.archive)
+        self.assertEqual((self.row()["run_id"], self.row()["recovery_reads"]), (11, 2))
+
+    def test_wait_for_r9_capacity_does_not_fail_the_watcher(self):
+        self.enqueue()
+        with patch.object(self.control, "capacity", 0):
+            def tick():
+                self.lane.tick(authenticate=lambda: self.api.owner,
+                               submit=lambda _: self.fail("no R9 slot is available"),
+                               download=lambda _: self.fail("no original run"))
+
+            self.assertEqual(bridge.watch(tick, interval=60, cycles=4, sleep=lambda _: None), 0)
+        self.assertEqual((self.row()["state"], self.row()["origin"]), ("REQUESTED", None))
+
+    def test_recovery_budget_ends_in_hold_without_a_second_post(self):
+        self.enqueue()
+        calls = []
+        self.lane.dispatch(self.row(), lambda: self.api.owner, lambda payload: calls.append(payload))
+        for _ in range(bridge.MAX_RECOVERY_READS + 1):
+            self.now += timedelta(seconds=60)
+            self.lane.tick(authenticate=lambda: self.api.owner,
+                           submit=lambda _: self.fail("ambiguous POST must never be repeated"),
+                           download=lambda _: self.fail("no original run"))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self.row()["recovery_reads"], bridge.MAX_RECOVERY_READS)
+        self.assertEqual(self.row()["state"], "HELD")
+        self.assertEqual(self.row()["reason"], "R1_SUBMISSION_NEEDS_ORIGINAL_RUN_REVIEW")
+
+    def test_startup_without_both_tokens_preserves_the_queued_mission(self):
+        self.enqueue()
+        for env in ({}, {"AGENTORA_R1_DISPATCH_TOKEN": "test-value"}):
+            with self.subTest(configured=tuple(env)), patch.dict(os.environ, env, clear=True):
+                self.assertEqual(bridge.main(["watch", "--dispatch", "--cycles", "1"]), 3)
+            self.assertEqual((self.row()["state"], self.row()["origin"]), ("REQUESTED", None))
+
+    def test_watch_exits_after_three_consecutive_failed_cycles(self):
+        sleeps = []
+
+        def failed_cycle():
+            raise contract.Held("GITHUB_API_UNAVAILABLE")
+
+        self.assertEqual(bridge.watch(failed_cycle, interval=60, sleep=sleeps.append), 3)
+        self.assertEqual(sleeps, [60, 60])
 
     def test_attach_requires_original_digest_and_approval_is_a_distinct_state(self):
         self.enqueue()
