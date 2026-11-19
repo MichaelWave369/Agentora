@@ -54,7 +54,7 @@ class GitHub:
         request = Request("https://api.github.com"+path,
             data=None if payload is None else canonical(payload),
             method=method or ("POST" if payload is not None else "GET"),
-            headers={"Authorization": "Bearer "+self.token,
+            headers={**({"Authorization": "Bearer "+self.token} if self.token else {}),
                      "Accept": "application/vnd.github+json",
                      "Content-Type": "application/json",
                      "X-GitHub-Api-Version": "2022-11-28",
@@ -128,13 +128,9 @@ def main_head(api):
     return first
 
 
-def authority(api, task, run_id, control_sha):
-    """JSON/comments/labels cannot satisfy this GitHub-owned review record."""
-    validate(task)
-    identity(api)
+def run_identity(run, task, run_id, control_sha):
     need(type(run_id) is int and run_id > 0 and HEX40.fullmatch(control_sha) and
          control_sha == task["source_sha"], "RUN_IDENTITY")
-    run = api(BASE+f"/actions/runs/{run_id}")
     need(run.get("id") == run_id and run.get("repository", {}).get("id") == REPO_ID and
          run.get("head_sha") == control_sha and run.get("head_branch") == "main" and
          run.get("event") in ("workflow_dispatch", "issues") and run.get("run_attempt") == 1 and
@@ -142,15 +138,34 @@ def authority(api, task, run_id, control_sha):
          all(run.get(k, {}).get("id") == OWNER_ID and
              run.get(k, {}).get("type") == "User" for k in ("actor", "triggering_actor")),
          "RUN_NOT_OWNER_DISPATCHED_TRUSTED_MAIN")
+
+
+def owner_environment(api):
     env = api(BASE+"/environments/"+ENVIRONMENT)
     need(type(env.get("id")) is int and env.get("name") == ENVIRONMENT, "ENVIRONMENT_IDENTITY")
     reviewers = [r for rule in env.get("protection_rules", [])
                  if rule.get("type") == "required_reviewers" for r in rule.get("reviewers", [])]
     need(len(reviewers) == 1 and reviewers[0].get("type") == "User" and
          reviewers[0].get("reviewer", {}).get("id") == OWNER_ID, "OWNER_REVIEWER_CONFIGURATION_REQUIRED")
+    return env
+
+
+def owner_review(api, task, run_id, control_sha):
+    env = owner_environment(api)
+    return original_owner_review(api, task, run_id, control_sha, environment_id=env["id"])
+
+
+def original_owner_review(api, task, run_id, control_sha, *, environment_id=None):
+    """Read the original review after the trusted authorization job passed."""
     reviews = api(BASE+f"/actions/runs/{run_id}/approvals")
     need(isinstance(reviews, list) and 0 < len(reviews) < 100, "ENVIRONMENT_REVIEW_REQUIRED")
-    relevant = [r for r in reviews if any(e.get("id") == env["id"] and
+    if environment_id is None:
+        ids = [e.get("id") for r in reviews for e in r.get("environments", [])
+               if e.get("name") == ENVIRONMENT]
+        need(ids and all(type(n) is int and n > 0 and n == ids[0] for n in ids),
+             "ORIGINAL_REVIEW_ENVIRONMENT_AMBIGUOUS")
+        environment_id = ids[0]
+    relevant = [r for r in reviews if any(e.get("id") == environment_id and
                 e.get("name") == ENVIRONMENT for e in r.get("environments", []))]
     need(relevant and not any(r.get("state") != "approved" for r in relevant), "ENVIRONMENT_REJECTED")
     approvals = [r for r in relevant if r.get("user", {}).get("id") == OWNER_ID and
@@ -159,9 +174,18 @@ def authority(api, task, run_id, control_sha):
     need(len(approvals) == 1, "EXACT_TASK_OWNER_APPROVAL_REQUIRED")
     # The review evidence is fetched fresh by every privileged stage. This hash
     # identifies GitHub's record; it is not a fabricated approval certificate.
-    return {"run_id": run_id, "environment_id": env["id"], "owner_id": OWNER_ID,
+    return {"run_id": run_id, "environment_id": environment_id, "owner_id": OWNER_ID,
             "task_sha256": task_digest(task), "control_sha": control_sha,
             "github_review_sha256": digest(canonical(approvals[0]))}
+
+
+def authority(api, task, run_id, control_sha):
+    """JSON/comments/labels cannot satisfy this GitHub-owned review record."""
+    validate(task)
+    need(type(run_id) is int and run_id > 0, "RUN_IDENTITY")
+    identity(api)
+    run_identity(api(BASE+f"/actions/runs/{run_id}"), task, run_id, control_sha)
+    return owner_review(api, task, run_id, control_sha)
 
 
 def source_files(api, task):
@@ -260,14 +284,18 @@ def verify_pr(api, task, pr, proposal, run_id, merged=False):
     return files
 
 
+CI_EVENTS = {"push", "pull_request"}
+
+
 def check_runs(api, sha):
-    value = api(BASE+f"/commits/{sha}/check-runs?per_page=100")
+    value = api(BASE+f"/commits/{sha}/check-runs?per_page=100&filter=all")
     need(type(value.get("total_count")) is int and 0 <= value["total_count"] < 100 and
          isinstance(value.get("check_runs"), list) and
          len(value["check_runs"]) == value["total_count"], "CHECKS_INCOMPLETE")
     checks, ci_runs = [], {}
     for name in sorted(devloop.REQUIRED):
         found = [r for r in value["check_runs"] if r.get("name") == name]
+        events = set()
         for row in found:
             need(row.get("head_sha") == sha and
                  row.get("app", {}).get("slug") == "github-actions" and
@@ -280,14 +308,17 @@ def check_runs(api, sha):
             ci = ci_runs[rid]
             need(ci.get("head_sha") == sha and ci.get("repository", {}).get("id") == REPO_ID and
                  ci.get("path", "").split("@")[0] == ".github/workflows/ci.yml" and
-                 ci.get("event") in ("push", "pull_request"), "REQUIRED_CHECK_WRONG_WORKFLOW")
-        # Both push and PR CI exist in Agentora. Every observed run must pass;
-        # an earlier green result never conceals a newer failed or pending run.
-        for row in found or [{}]:
+                 ci.get("event") in CI_EVENTS, "REQUIRED_CHECK_WRONG_WORKFLOW")
+            event = ci["event"]
+            events.add(event)
             checks.append({"name": name, "id": row.get("id"),
-                           "status": row.get("status", "missing"),
+                           "status": row.get("status"), "event": event,
                            "conclusion": row.get("conclusion"), "head_sha": sha,
                            "details_url": row.get("details_url")})
+        for event in sorted(CI_EVENTS - events):
+            checks.append({"name": name, "id": None, "status": "missing",
+                           "event": event, "conclusion": None, "head_sha": sha,
+                           "details_url": None})
     for row in value["check_runs"]:
         if row.get("name") not in devloop.REQUIRED:
             need(row.get("conclusion") not in ("failure", "timed_out", "action_required", "cancelled"),
@@ -296,7 +327,8 @@ def check_runs(api, sha):
 
 
 def green(checks):
-    return (len(checks) >= 3 and {r["name"] for r in checks} == devloop.REQUIRED and
+    return ({(r["name"], r["event"]) for r in checks} ==
+            {(name, event) for name in devloop.REQUIRED for event in CI_EVENTS} and
             all(r["status"] == "completed" and r["conclusion"] == "success" for r in checks))
 
 
@@ -530,18 +562,27 @@ def return_receipt(api, task, value):
     text = canonical({"task": task, "receipt": value}).decode()
     need(len(text.encode()) <= 60000, "RETURN_RECEIPT_SIZE")
     name = "Autonomous Turn R1 receipt"
-    existing = api(BASE+f"/commits/{value['tested_pr_sha']}/check-runs?per_page=100")
+    existing = api(BASE+f"/commits/{value['tested_pr_sha']}/check-runs?per_page=100&filter=all")
     need(type(existing.get("total_count")) is int and existing["total_count"] < 100 and
          len(existing.get("check_runs", [])) == existing["total_count"], "RETURN_CHECKS_INCOMPLETE")
     matches = [r for r in existing["check_runs"] if r.get("name") == name and
-               r.get("external_id") == value["task_sha256"] and r.get("details_url") == value["run_url"] and
-               r.get("app", {}).get("id") == 15368]
+               r.get("external_id") == value["task_sha256"] and r.get("app", {}).get("id") == 15368]
     need(len(matches) <= 1, "RETURN_RECEIPT_AMBIGUOUS")
     fields = {"name": name, "details_url": value["run_url"], "external_id": value["task_sha256"],
         "status": "completed", "conclusion": "success" if value["merge_commit_sha"] else "neutral",
         "output": {"title": value["merge_decision"], "summary":
                    "GitHub records were re-read. Project acceptance remains outstanding.", "text": text}}
     if matches:
-        api(BASE+f"/check-runs/{matches[0]['id']}", fields, method="PATCH")
+        match = matches[0]
+        # GitHub Actions may host the check page and replace the supplied URL.
+        # Recover the actual workflow identity from the prior bound payload.
+        try:
+            prior = json.loads(match["output"]["text"])
+            need(match.get("head_sha") == value["tested_pr_sha"] and
+                 prior["task"] == task and prior["receipt"]["run_url"] == value["run_url"],
+                 "RETURN_RECEIPT_PRIOR_IDENTITY")
+        except (KeyError, ValueError, TypeError):
+            raise Held("RETURN_RECEIPT_PRIOR_IDENTITY") from None
+        api(BASE+f"/check-runs/{match['id']}", fields, method="PATCH")
     else:
         api(BASE+"/check-runs", {**fields, "head_sha": value["tested_pr_sha"]})

@@ -20,8 +20,10 @@ from app.integrations.phireponerve_client import collect_public_observations
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--event-offset", type=int, default=0,
+                        help="Select an older local event page in increments of 200")
     args = parser.parse_args()
-    result = collect_public_observations()
+    result = collect_public_observations(event_offset=args.event_offset)
     target = args.output.expanduser().resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix=".phireponerve-public-", dir=target.parent)

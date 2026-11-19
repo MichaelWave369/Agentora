@@ -90,10 +90,10 @@ class SyntheticGitHub:
 
     def checks(self):
         head = self.pr["head"]["sha"]
-        rows = [{"name": name, "id": 20+i, "status": "completed", "conclusion": "success",
+        rows = [{"name": name, "id": rid+i, "status": "completed", "conclusion": "success",
                  "head_sha": head, "app": {"slug": "github-actions", "id": 15368},
-                 "details_url": f"https://github.com/{c.REPO}/actions/runs/100/job/{20+i}"}
-                for i, name in enumerate(sorted(g.devloop.REQUIRED))]
+                 "details_url": f"https://github.com/{c.REPO}/actions/runs/{rid}/job/{rid+i}"}
+                for rid in (100, 110) for i, name in enumerate(sorted(g.devloop.REQUIRED))]
         rows = self.check_mutation(rows)+self.extra_checks
         return {"total_count": len(rows), "check_runs": rows}
 
@@ -161,13 +161,15 @@ class SyntheticGitHub:
         if s == "/pulls/99": return self.pr
         if s == "/pulls/99/files?per_page=100": return self.files()
         if s.startswith("/compare/"): return {"merge_base_commit": {"sha": SOURCE}, "status": "ahead"}
-        if s.startswith("/commits/") and s.endswith("/check-runs?per_page=100"): return self.checks()
-        if s == "/actions/runs/100": return {"head_sha": self.pr["head"]["sha"], "repository": self.repo,
-                                                "event": "pull_request", "path": self.ci_path}
+        if s.startswith("/commits/") and s.endswith("/check-runs?per_page=100&filter=all"):
+            return self.checks()
+        if s in ("/actions/runs/100", "/actions/runs/110"):
+            return {"head_sha": self.pr["head"]["sha"], "repository": self.repo,
+                    "event": "pull_request" if s.endswith("/100") else "push", "path": self.ci_path}
         if s.startswith("/actions/jobs/"):
             job_id = int(s.rsplit("/",1)[1])
             row = next(row for row in self.checks()["check_runs"] if row["id"] == job_id)
-            return {"id": job_id, "run_id": 100, "head_sha": row["head_sha"],
+            return {"id": job_id, "run_id": 100 if job_id < 110 else 110, "head_sha": row["head_sha"],
                     "name": row["name"], "conclusion": row["conclusion"]}
         if s.startswith("/rulesets?"): return [{"id": 7, "enforcement": "active"}]
         if s == "/rulesets/7": return {"enforcement": "active", "target": "branch",
@@ -402,6 +404,8 @@ class AutonomousGitHubTests(unittest.TestCase):
             with self.assertRaises(c.Held): g.check_runs(self.api,head)
         self.api.check_mutation = lambda rows: rows+deepcopy(rows)
         self.assertTrue(g.green(g.check_runs(self.api,head)))
+        self.api.check_mutation = lambda rows: rows[:3]
+        self.assertFalse(g.green(g.check_runs(self.api,head)))
         def mixed(rows):
             duplicate=deepcopy(rows[0]); duplicate["conclusion"]="failure"; return rows+[duplicate]
         self.api.check_mutation = mixed
