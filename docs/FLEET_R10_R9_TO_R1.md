@@ -49,6 +49,13 @@ intake carry no merge authority.
    failed cycles exit with status 3 and emit a bounded reason for the
    service manager. A restart reloads the same mission and submission fence.
 
+   **Windows 11 owner workstation:** a reviewable per-user Task Scheduler
+   adapter is provided in [Fleet R10 Windows runner](FLEET_R10_WINDOWS_RUNNER.md).
+   It stores the two tokens as user-bound encrypted SecureStrings, pins the
+   reviewed checkout SHA, and starts the same existing watch command at login.
+   It remains unqualified until tested on a real Windows host; it does not
+   remove frozen-task owner approvals or run before user sign-in.
+
 ## Submit the next turn
 
 1. Refresh the public RepoNerve scan and a clean Agentora main checkout.
