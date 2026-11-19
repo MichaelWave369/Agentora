@@ -5,7 +5,10 @@ workers, authorize merges, or make a GitHub Actions runner persistent.
 """
 from __future__ import annotations
 
-import fcntl
+try:
+    import fcntl
+except ImportError:  # Allow Windows import; durable mode itself is POSIX-only.
+    fcntl = None
 import json
 from contextlib import closing
 import os
@@ -95,6 +98,7 @@ class VolumeState:
         self._inflight = False
 
     def __enter__(self):
+        need(fcntl is not None, "R9_VOLUME_POSIX_FLOCK_REQUIRED")
         try:
             self.root.mkdir(parents=True, mode=0o700, exist_ok=True)
             st = self.root.stat()
