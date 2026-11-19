@@ -100,6 +100,36 @@ def good_preflight(client, scoped_task):
 
 
 class HostedDispatchTests(unittest.TestCase):
+    @staticmethod
+    def _run_identity(actor, *, event="workflow_dispatch", triggered=None, attempt=1):
+        return {
+            "id": 12345, "repository": {"id": hosted.REPO_ID},
+            "head_sha": "a" * 40, "head_branch": "main",
+            "event": event, "run_attempt": attempt,
+            "path": ".github/workflows/autonomous-turn-r1.yml@refs/heads/main",
+            "actor": actor, "triggering_actor": triggered or actor,
+        }
+
+    def test_fixed_actions_bot_run_is_only_dispatch_intent(self):
+        bot = {"id": hosted.BOT_ID, "type": "Bot", "login": "github-actions[bot]"}
+        run = self._run_identity(bot)
+        self.assertIsNone(hosted.github.run_identity(run, task(), 12345, "a" * 40))
+
+    def test_bot_issue_and_mixed_actor_are_rejected(self):
+        bot = {"id": hosted.BOT_ID, "type": "Bot", "login": "github-actions[bot]"}
+        human = {"id": hosted.OWNER_ID, "type": "User", "login": "MichaelWave369"}
+        for run in (self._run_identity(bot, event="issues"),
+                    self._run_identity(bot, triggered=human),
+                    self._run_identity(bot, attempt=2)):
+            with self.subTest(run=run):
+                with self.assertRaises(hosted.contract.Held):
+                    hosted.github.run_identity(run, task(), 12345, "a" * 40)
+
+    def test_original_owner_run_remains_allowed(self):
+        human = {"id": hosted.OWNER_ID, "type": "User", "login": "MichaelWave369"}
+        run = self._run_identity(human, event="issues")
+        self.assertIsNone(hosted.github.run_identity(run, task(), 12345, "a" * 40))
+
     def test_owner_only(self):
         wrong = issue(owner=5)
         client = FakeAPI([wrong])
