@@ -63,7 +63,7 @@ class FakeAPI:
 
     def request(self, path, *, payload=None):
         if path.startswith("/issues?"):
-            page = int(path.rsplit("page=", 1)[-1])
+            page = int(path.split("&page=", 1)[-1].split("&", 1)[0])
             return self.issues[(page - 1) * 100:page * 100]
         if path.endswith("/comments?per_page=100&page=1") or (
                 "/comments?per_page=100&page=" in path):
