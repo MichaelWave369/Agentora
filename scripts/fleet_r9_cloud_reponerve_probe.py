@@ -65,7 +65,7 @@ def authenticated_public_opener(token, *, transport=None):
     A non-redirectable header prevents forwarding the token on redirects.
     """
     need(type(token) is str and 8 <= len(token) <= 4096 and
-         not any(c in token for c in "\\r\\n\\x00 "),
+         not any(c in token for c in "\r\n\x00 "),
          "REPONERVE_READ_TOKEN_MISSING_OR_UNSAFE")
     transport = transport or request.urlopen
 
