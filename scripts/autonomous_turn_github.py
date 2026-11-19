@@ -243,7 +243,7 @@ def verify_commit_tree(api, task, head, proposal):
 
 def verify_pr(api, task, pr, proposal, run_id, merged=False):
     need(type(pr.get("number")) is int and pr["number"] > 0 and
-         pr.get("draft") is False and
+         pr.get("draft") is (task["merge_policy"] == "draft-review") and
          (pr.get("merged") is True if merged else pr.get("state") == "open") and
          pr.get("base", {}).get("repo", {}).get("id") == REPO_ID and
          pr.get("base", {}).get("repo", {}).get("full_name") == REPO and
@@ -409,6 +409,7 @@ def publish(api, task, value, sandbox, run_id, control_sha, previous_head=None):
         pr = api(BASE+f"/pulls/{prs[0]['number']}")
     else:
         pr = api(BASE+"/pulls", {"title": "Autonomous R1: "+task["task_id"], "head": branch,
+            "draft": task["merge_policy"] == "draft-review",
             "base": "main", "body": "One owner-approved bounded task.\n\nTask SHA-256: `"+
             task_digest(task)+"`\n\nAuthorization: https://github.com/"+REPO+
             f"/actions/runs/{run_id}\n\nPolicy: `{task['merge_policy']}`. "
@@ -485,11 +486,15 @@ def finish(api, task, published, proposal, sandbox, run_id, control_sha):
     # Recover a previous successful merge after a lost network response, but
     # still re-read GitHub's record and exact blobs/checks before reporting it.
     was_merged = pr.get("merged") is True
+    need(not was_merged or task["merge_policy"] != "draft-review",
+         "MODEL_DRAFT_REQUIRES_SEPARATE_HUMAN_REVIEW")
     files = verify_pr(api, task, pr, proposal, run_id, merged=was_merged)
     checks = check_runs(api, head)
     need(green(checks), "EXACT_HEAD_REQUIRED_CI_NOT_GREEN")
     decision = "PUBLISH_ONLY_OWNER_REVIEW_REQUIRED"
-    if not was_merged and task["merge_policy"] != "publish-only":
+    if task["merge_policy"] == "draft-review":
+        decision = "DRAFT_READY_FOR_HUMAN_REVIEW"
+    if not was_merged and task["merge_policy"] not in ("publish-only", "draft-review"):
         need(main_head(api) == task["source_sha"], "SOURCE_DRIFT")
         rules(api)
         if task["merge_policy"] == "reviewed-code":

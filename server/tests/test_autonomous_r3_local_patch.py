@@ -190,14 +190,31 @@ class R3LocalPatchTests(unittest.TestCase):
             fake = lambda t,b,m,p: {"content":AFTER,"summary":"Adds aria-label"}
             test = lambda path: {"name":"web-build","exit_code":0,
                                  "network_disabled":True,"containerized":True}
-            with patch.object(r3,"source_file",return_value=BEFORE):
-                workspace,receipt=r3.execute(task(),Path(tmp),"test-model",11434,
-                                             build=test,ask=fake)
+            root = Path(tmp)
+            (root/".gitignore").write_text(".env\n")
+            (root/".env").write_text("LOCAL_ONLY_MARKER")
+            def git(*args):
+                return r3.subprocess.check_output(["git", "-C", tmp, *args], text=True)
+            git("init", "-q")
+            git("add", ".")
+            git("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                "commit", "-qm", "fixture")
+            spec = {**task(), "source_sha": git("rev-parse", "HEAD").strip()}
+            workspace,receipt=r3.execute(spec,root,"test-model",11434,build=test,ask=fake)
             try:
                 self.assertEqual(receipt["state"],"REVIEW_READY_NOT_AUTHORIZED")
                 self.assertFalse(receipt["eligible_for_merge"])
                 self.assertEqual((workspace/"candidate"/FILE).read_text(),AFTER)
                 self.assertEqual((Path(tmp)/FILE).read_text(),BEFORE)
+                self.assertFalse((workspace/"candidate"/".env").exists())
+                export = r3.export_r1_draft(spec, root, workspace, receipt["patch_sha256"])
+                self.assertEqual(export["merge_policy"], "draft-review")
+                self.assertEqual(export["edits"][0]["new"], AFTER)
+                with self.assertRaisesRegex(c.Held, "REVIEWED_PATCH_DIGEST"):
+                    r3.export_r1_draft(spec, root, workspace, "0"*64)
+                (workspace/"candidate"/FILE).write_text(BEFORE)
+                with self.assertRaises(c.Held):
+                    r3.export_r1_draft(spec, root, workspace, receipt["patch_sha256"])
                 self.assertEqual(json.loads((workspace/"proposal-receipt.json").read_text())["after_sha256"],
                                  c.digest(AFTER.encode()))
             finally:

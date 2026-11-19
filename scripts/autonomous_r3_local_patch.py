@@ -6,18 +6,20 @@ is untrusted data; real tests execute only in R1's credential-free Docker cage.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta, timezone
 import difflib
 from http.client import HTTPConnection
 import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 
 from autonomous_turn_contract import Held, canonical, digest, need, parse, HEX40, HEX64
+import autonomous_turn_contract as r1
 from autonomous_turn import sandbox_command
 from devloop_r2_policy import LOW_RISK_UI
 
@@ -188,6 +190,20 @@ def run_build(candidate, runner=subprocess.run):
             "network_disabled": True, "containerized": True}
 
 
+def tracked_source(source, sha, candidate):
+    """Do not mount ignored files or the operator's local Git metadata."""
+    with tempfile.TemporaryFile() as archive:
+        subprocess.run(["git", "-C", str(source), "archive", "--format=tar", sha],
+                       stdout=archive, check=True, timeout=30)
+        need(0 < archive.tell() <= 64 * 1024 * 1024, "R3_SOURCE_ARCHIVE_SIZE")
+        archive.seek(0)
+        with tarfile.open(fileobj=archive) as entries:
+            members = entries.getmembers()
+            need(len(members) <= 5000 and all(m.isfile() or m.isdir() for m in members),
+                 "R3_SOURCE_ARCHIVE_MEMBERS")
+            entries.extractall(candidate, filter="data")
+
+
 def execute(task, source, model, port, build=run_build, ask=ask_ollama):
     before = source_file(task, source)
     response = ask(task, before, model, port)
@@ -196,11 +212,11 @@ def execute(task, source, model, port, build=run_build, ask=ask_ollama):
     try:
         (workspace/"frozen-task.json").write_bytes(canonical(task)+b"\n")
         candidate = workspace/"candidate"
-        shutil.copytree(source, candidate, ignore=shutil.ignore_patterns(".git"),
-                        symlinks=True)
+        tracked_source(source, task["source_sha"], candidate)
         target = candidate/task["target_path"]
         need(target.is_file() and not target.is_symlink() and
-             target.resolve().is_relative_to(candidate.resolve()),
+             target.resolve().is_relative_to(candidate.resolve()) and
+             digest(target.read_bytes()) == task["before_sha256"],
              "R3_CANDIDATE_PATH_CHANGED")
         target.write_bytes(response["content"].encode("utf-8"))
         need(digest(target.read_bytes()) == record["after_sha256"],
@@ -212,7 +228,7 @@ def execute(task, source, model, port, build=run_build, ask=ask_ollama):
         record["state"] = "REVIEW_READY_NOT_AUTHORIZED"
         (workspace/"proposal-receipt.json").write_bytes(canonical(record)+b"\n")
         return workspace, record
-    except (Held, OSError, subprocess.TimeoutExpired) as exc:
+    except (Held, OSError, subprocess.SubprocessError, tarfile.TarError) as exc:
         reason = str(exc) if isinstance(exc, Held) else "R3_BUILD_OR_IO_UNAVAILABLE"
         (workspace/"hold.json").write_bytes(canonical({
             "state": "HELD", "reason": reason,
@@ -220,6 +236,50 @@ def execute(task, source, model, port, build=run_build, ask=ask_ollama):
             "eligible_for_merge": False})+b"\n")
         raise
     # Disposable workspace stays local. No git push or API credentials.
+
+
+def export_r1_draft(task, source, workspace, approved_patch, now=None):
+    """Freeze tested model bytes into the existing R1 draft-only intake."""
+    original = source_file(task, source)
+    path = task["target_path"]
+    # Hosted R1 binds Git blob bytes, not local checkout line-ending filters.
+    blob = subprocess.check_output(
+        ["git", "-C", str(source), "show", task["source_sha"] + ":" + path])
+    need(blob == original.encode(), "R3_GIT_BLOB_DIFFERS_FROM_CHECKOUT")
+    workspace = workspace.resolve()
+    frozen = load_task(workspace/"frozen-task.json")
+    need(frozen == task, "R3_FROZEN_WORKSPACE_TASK_MISMATCH")
+    receipt_path = workspace/"proposal-receipt.json"
+    need(receipt_path.is_file() and not receipt_path.is_symlink() and
+         receipt_path.stat().st_size <= MAX_RESPONSE, "R3_LOCAL_RECEIPT_INVALID")
+    receipt = parse(receipt_path.read_bytes())
+    candidate = workspace/"candidate"/path
+    need(candidate.is_file() and candidate.stat().st_size <= MAX_FILE and
+         not any(part.is_symlink() for part in [candidate, *candidate.parents]),
+         "R3_CANDIDATE_UNSAFE")
+    after = candidate.read_bytes().decode("utf-8", errors="strict")
+    need(isinstance(receipt, dict) and isinstance(receipt.get("model"), str) and
+         MODEL_RE.fullmatch(receipt["model"]), "R3_LOCAL_RECEIPT_INVALID")
+    expected = proposal(task, original, {"content": after, "summary": receipt.get("summary")},
+                        receipt["model"])
+    expected.update(state="REVIEW_READY_NOT_AUTHORIZED",
+                    checks=[{"name": "web-build", "exit_code": 0,
+                             "network_disabled": True, "containerized": True}])
+    need(canonical(expected) == canonical(receipt) and
+         approved_patch == expected["patch_sha256"], "R3_REVIEWED_PATCH_DIGEST_REQUIRED")
+    now = now or datetime.now(timezone.utc)
+    spec = {"schema": r1.SCHEMA, "task_id": task["task_id"], "repository": r1.REPO,
+            "repository_id": r1.REPO_ID, "target_branch": "main", "source_sha": task["source_sha"],
+            "created_utc": now.isoformat(), "expires_utc": (now+timedelta(hours=4)).isoformat(),
+            "acceptance": task["acceptance"], "human_scope": task["instruction"],
+            "allowed_paths": [path], "max_files": 1, "max_changed_lines": task["max_changed_lines"],
+            "max_patch_bytes": task["max_patch_bytes"], "merge_policy": "draft-review",
+            "tests": ["web-build"], "max_repairs": 0, "repairs": [],
+            "phimada_request_sha256": digest(canonical(receipt)),
+            "edits": [{"path": path, "before_sha256": task["before_sha256"], "old": original, "new": after}]}
+    r1.validate(spec, now=now)
+    r1.proposal(spec, {path: original}, 0)
+    return spec
 
 
 
@@ -267,7 +327,7 @@ def initialize(source, destination, target_path, instruction, task_id):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("stage", choices=("init", "plan", "run"))
+    p.add_argument("stage", choices=("init", "plan", "run", "export-r1-draft"))
     p.add_argument("spec", type=Path)
     p.add_argument("--source", type=Path, default=Path("."))
     p.add_argument("--target-path", default="web/src/components/TemplateGallery.tsx")
@@ -279,6 +339,9 @@ def main():
     p.add_argument("--port", type=int, default=11434)
     p.add_argument("--approve-spec-digest")
     p.add_argument("--i-approve-local-model", action="store_true")
+    p.add_argument("--workspace", type=Path)
+    p.add_argument("--approve-patch-digest")
+    p.add_argument("--output", type=Path)
     a = p.parse_args()
     try:
         if a.stage == "init":
@@ -288,6 +351,14 @@ def main():
                              "frozen_spec_digest": task_digest(created)}).decode())
             return 0
         task = load_task(a.spec)
+        if a.stage == "export-r1-draft":
+            need(a.workspace and a.output and a.approve_patch_digest,
+                 "R3_DRAFT_EXPORT_ARGUMENTS_REQUIRED")
+            spec = export_r1_draft(task, a.source, a.workspace, a.approve_patch_digest)
+            with a.output.open("xb") as stream:
+                stream.write(canonical(spec)+b"\n")
+            print("R1_TASK_SHA256 " + r1.task_digest(spec))
+            return 0
         # Plan performs NO model call, no Docker call and no writes.
         before = source_file(task, a.source)
         digest_value = task_digest(task)
@@ -305,8 +376,7 @@ def main():
                          "after_sha256": result["after_sha256"],
                          "eligible_for_merge": False}).decode())
         return 0
-    except (Held, KeyError, ValueError, OSError, subprocess.CalledProcessError,
-            subprocess.TimeoutExpired):
+    except (Held, KeyError, ValueError, OSError, subprocess.SubprocessError, tarfile.TarError):
         print("R3_HELD: frozen inputs, local model or isolated build not accepted",
               file=sys.stderr)
         return 1
