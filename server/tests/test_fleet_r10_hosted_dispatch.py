@@ -59,6 +59,7 @@ class FakeAPI:
         self.fail_dispatch = False
         self.fail_fence = False
         self.full_comments = False
+        self.detail_response = False
         self.token = "fake-token"
 
     def request(self, path, *, payload=None):
@@ -85,6 +86,10 @@ class FakeAPI:
             self.writes.append(("dispatch", payload))
             if self.fail_dispatch:
                 raise hosted.Held("DISPATCH_RESPONSE_UNAVAILABLE")
+            if self.detail_response:
+                return {"workflow_run_id": 12345,
+                        "run_url": hosted.API_ROOT + "/actions/runs/12345",
+                        "html_url": "https://github.com/" + hosted.REPO + "/actions/runs/12345"}
             return {"status": 204}
         raise AssertionError("Unexpected API call: " + path)
 
@@ -120,6 +125,17 @@ class HostedDispatchTests(unittest.TestCase):
         self.assertEqual(result2["issue"], 124)
         self.assertEqual(client.writes[2][0], "fence")
         self.assertEqual(len([w for w in client.writes if w[0] == "dispatch"]), 2)
+
+    def test_2026_dispatch_run_details_are_verified(self):
+        client = FakeAPI([issue()])
+        client.detail_response = True
+        result = hosted.dispatch_one(client, now=NOW, preflight=good_preflight)
+        self.assertEqual(result["state"], "FENCED_DISPATCH_ACCEPTED_RUN_IDENTIFIED")
+        self.assertEqual(result["workflow_run_id"], 12345)
+        self.assertTrue(client.writes[-1][1]["return_run_details"])
+        self.assertEqual(hosted.dispatch_one(client, now=NOW,
+                                             preflight=good_preflight)["state"],
+                         "NO_ELIGIBLE_UNFENCED_TASK")
 
     def test_ambiguous_dispatch_never_repeats(self):
         client = FakeAPI([issue()])
