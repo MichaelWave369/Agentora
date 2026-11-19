@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from urllib import request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
@@ -150,6 +151,77 @@ class ProbeTests(unittest.TestCase):
         obs, event = probe.find_owned_event(probe.store_get_json(fake), now=NOW)
         self.assertIsNone(event)
         self.assertEqual(obs["public_repo_count"], 2)
+
+    def test_authenticated_public_get_to_owner_only(self):
+        calls = []
+        sentinel = object()
+
+        def transport(req, *, timeout):
+            calls.append((req.full_url, req.get_method(),
+                          req.get_header("Authorization"), timeout,
+                          list(req.unredirected_hdrs)))
+            return sentinel
+
+        opener = probe.authenticated_public_opener(
+            "token-read-only-123", transport=transport)
+        url = ("https://api.github.com/users/MichaelWave369/repos?"
+               "per_page=100&page=1&type=owner&sort=full_name&direction=asc")
+        req = request.Request(url, method="GET")
+        self.assertIs(opener(req, timeout=10), sentinel)
+        self.assertEqual(calls[0][0], url)
+        self.assertEqual(calls[0][1], "GET")
+        self.assertEqual(calls[0][2], "Bearer token-read-only-123")
+        self.assertEqual(calls[0][3], 10)
+        self.assertIn("Authorization", calls[0][4])
+
+    def test_authenticated_public_client_rejects_privilege_escalation(self):
+        calls = []
+        opener = probe.authenticated_public_opener(
+            "token-read-only-123",
+            transport=lambda *args, **kwargs: calls.append((args, kwargs)))
+        good_query = "per_page=100&page=2&type=owner&sort=full_name&direction=asc"
+        rejected = (
+            "https://api.github.com/user/repos?" + good_query,
+            "https://api.github.com/users/Another/repos?" + good_query,
+            "https://evil.example/users/MichaelWave369/repos?" + good_query,
+            "http://api.github.com/users/MichaelWave369/repos?" + good_query,
+            "https://api.github.com:443/users/MichaelWave369/repos?" + good_query,
+            "https://api.github.com/users/MichaelWave369/repos?per_page=100&page=2",
+            "https://api.github.com/users/MichaelWave369/repos?" +
+                good_query + "&visibility=all",
+            "https://api.github.com/users/MichaelWave369/repos?" +
+                good_query.replace("page=2", "page=1000"),
+            "https://api.github.com/users/MichaelWave369/repos?" +
+                good_query.replace("page=2", "page=2&page=3"),
+            "https://api.github.com/users/MichaelWave369/repos?" +
+                good_query.replace("type=owner", "type=all"),
+        )
+        for url in rejected:
+            with self.subTest(url=url), self.assertRaises(probe.ProbeHeld):
+                opener(request.Request(url, method="GET"), timeout=10)
+        with self.assertRaisesRegex(probe.ProbeHeld, "METHOD_REJECTED"):
+            opener(request.Request(
+                "https://api.github.com/users/MichaelWave369/repos?" +
+                good_query, data=b"danger", method="POST"), timeout=10)
+        self.assertEqual(calls, [])
+
+    def test_no_token_no_public_fetch_and_secret_not_logged(self):
+        for token in (None, "", "short", "12345678\\nOHNO", "abcd1234 xyz"):
+            with self.subTest(token=token), self.assertRaises(
+                probe.ProbeHeld) as held:
+                probe.authenticated_public_opener(token)
+            self.assertNotIn(str(token), str(held.exception))
+        for source, reason in (
+            ("GitHub returned HTTP 403", "REPONERVE_PUBLIC_HTTP_403"),
+            ("GitHub returned HTTP 429", "REPONERVE_PUBLIC_HTTP_429"),
+            ("GitHub inventory request failed: URLError",
+             "REPONERVE_PUBLIC_TRANSPORT_UNAVAILABLE"),
+            ("GitHub returned HTTP 403 secret-token-value",
+             "REPONERVE_PUBLIC_INVENTORY_UNAVAILABLE"),
+        ):
+            self.assertEqual(probe.inventory_error_reason(ValueError(source)), reason)
+            self.assertNotIn("secret-token-value",
+                             probe.inventory_error_reason(ValueError(source)))
 
     def test_source_sha_pinned_to_const_not_dynamic(self):
         self.assertEqual(probe.NERVE_SHA,
