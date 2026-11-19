@@ -25,12 +25,15 @@ from app.services.fleet_stewards import (StewardRegistry, StewardHeld,
 import fleet_r04_leases as leases
 import fleet_r3_steward_claim as stewardship
 import fleet_r06_pilot as pilot
+import autonomous_turn_contract as r1
 
 SCHEMA = "agentora.fleet.mission-control.v0.9"
 KIND_AUDIT = "PUBLIC_STANDALONE_READINESS_AUDIT"
 KIND_TEST = "PHIMADA_FIXED_TEST"
 KIND_PROPOSAL = "PHIMADA_MODEL_PROPOSAL_REVIEW"
+KIND_R1 = "AGENTORA_R1_DOCS"
 KINDS = {KIND_AUDIT, KIND_TEST, KIND_PROPOSAL}
+R1_POLICY = "R1_EXACT_OWNER_REVIEW_REQUIRED"
 CONFIRM = "ENQUEUE_PUBLIC_REVIEW_MISSION"
 ARCHIVE_CONFIRM = "ARCHIVE_HELD_WITHOUT_APPROVAL"
 IDENT = re.compile(r"[A-Za-z0-9_.-]{1,80}\Z")
@@ -60,6 +63,10 @@ def _now(now=None):
 
 
 def _policy(kind, info):
+    if kind == KIND_R1:
+        need(info["repository"] == r1.REPO and info["repository_id"] == r1.REPO_ID,
+             "R1_REPOSITORY_NOT_ALLOWLISTED")
+        return R1_POLICY
     need(type(kind) is str and kind in KINDS, "MISSION_KIND_NOT_ALLOWLISTED")
     if kind != KIND_AUDIT:
         need(info["repository"] == pilot.REPOSITORY
@@ -104,6 +111,16 @@ class MissionControl:
                 source_payload_digest TEXT NOT NULL,
                 event_type TEXT NOT NULL
             )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS r10_r1_turns (
+                mission_id TEXT PRIMARY KEY REFERENCES r9_missions(mission_id),
+                task_id TEXT NOT NULL UNIQUE, task_json TEXT NOT NULL,
+                expires_utc TEXT NOT NULL, state TEXT NOT NULL,
+                origin TEXT, run_id INTEGER UNIQUE, pr_number INTEGER UNIQUE,
+                tested_sha TEXT, merge_sha TEXT, reason TEXT, active_job TEXT,
+                ci_status TEXT NOT NULL DEFAULT 'NOT_OBSERVED', ci_runs TEXT NOT NULL DEFAULT '[]',
+                run_terminal INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 0
+            )""")
             db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS
                 r9_one_active_mission_per_repo ON r9_missions(github_id)
                 WHERE state IN (
@@ -113,13 +130,20 @@ class MissionControl:
                 )""")
 
     def enqueue(self, mission_id, kind, intake, *, confirmation, now=None,
-                now_ms=None, event_binding=None):
+                now_ms=None, event_binding=None, r1_task=None):
         need(type(mission_id) is str and IDENT.fullmatch(mission_id) is not None,
              "MISSION_ID_INVALID")
         need(confirmation == CONFIRM, "OPERATOR_ENQUEUE_CONFIRMATION_REQUIRED")
         info = leases.validate_intake(intake)
         policy = _policy(kind, info)
         now = _now(now)
+        need((kind == KIND_R1) == (r1_task is not None), "R1_TASK_BINDING_REQUIRED")
+        if r1_task is not None:
+            r1.validate(r1_task, now=now)
+            need(event_binding is not None and r1_task["merge_policy"] == "docs" and
+                 len(r1_task["allowed_paths"]) == 1 and r1_task["max_files"] == 1 and
+                 r1_task["max_repairs"] == 0 and r1_task["source_sha"] == info["source_sha"] and
+                 r1.task_digest(r1_task) == info["request_sha256"], "R1_TASK_OUT_OF_SCOPE")
         identity = stewardship.eligible(self.registry, intake, now=now)
         need(identity["github_id"] == info["repository_id"], "STEWARD_MISMATCH")
         if event_binding is not None:
@@ -181,6 +205,14 @@ class MissionControl:
                     (event_binding["event_id"], mission_id, info["repository_id"],
                      event_binding["source_scan_id"], event_binding["payload_digest"],
                      event_binding["event_type"]))
+            if r1_task is not None:
+                need(db.execute("SELECT 1 FROM r10_r1_turns WHERE task_id=?",
+                                (r1_task["task_id"],)).fetchone() is None,
+                     "R1_TASK_ID_ALREADY_USED")
+                db.execute("""INSERT INTO r10_r1_turns
+                    (mission_id,task_id,task_json,expires_utc,state)
+                    VALUES (?,?,?,?,'REQUESTED')""", (mission_id, r1_task["task_id"],
+                    r1.canonical(r1_task).decode(), r1_task["expires_utc"]))
         return {"schema": SCHEMA, "state": "QUEUED_LOCAL_ONLY",
                 "mission_id": mission_id, "steward_key": identity["steward_key"],
                 "source_scan_id": identity["source_scan_id"],
@@ -188,13 +220,8 @@ class MissionControl:
                 "dispatch_authorized": False, "merge_authorized": False}
 
     def enqueue_observed(self, observation, event_id, intake, *,
-                         confirmation, now=None, now_ms=None):
-        """Bind one already-ingested RepoNerve event to R9's review-only queue.
-
-        This cross-system handoff cannot dispatch jobs. The exact observation
-        must already be present in the local steward registry. Its fingerprint
-        is a consistency check against the local store, not source authentication.
-        """
+                         confirmation, now=None, now_ms=None, r1_task=None):
+        """Bind a current RepoNerve event to a queued mission without dispatch."""
         now = _now(now)
         need(type(observation) is dict and
              len(json.dumps(observation).encode("utf-8")) <= MAX_INPUT_BYTES,
@@ -222,8 +249,9 @@ class MissionControl:
              "SOURCE_EVENT_INTAKE_IDENTITY_MISMATCH")
         need(confirmation == CONFIRM, "OPERATOR_ENQUEUE_CONFIRMATION_REQUIRED")
         mission_id = f"r10-e{event_id}-gh{info['repository_id']}"
-        result = self.enqueue(mission_id, KIND_AUDIT, intake,
+        result = self.enqueue(mission_id, KIND_AUDIT if r1_task is None else KIND_R1, intake,
             confirmation=confirmation, now=now, now_ms=now_ms,
+            r1_task=r1_task,
             event_binding={"event_id": event_id,
                            "source_scan_id": validated["scan_id"],
                            "payload_digest": fingerprint,
@@ -296,6 +324,7 @@ class MissionControl:
             need(busy < self.capacity, "WORKER_SLOT_CAPACITY_REACHED")
             need(bool(available), "NO_ELIGIBLE_MISSIONS")
             row = available[0]
+            need(row["kind"] != KIND_R1, "R1_MISSION_REQUIRES_R1_DISPATCHER")
             need(row["github_id"] == info["repository_id"]
                  and row["repository"] == info["repository"]
                  and row["source_sha"] == info["source_sha"]
@@ -353,6 +382,7 @@ class MissionControl:
                              (mission_id,)).fetchone()
             need(row is not None and row["state"] == "ASSIGNED_IMPLEMENT",
                  "IMPLEMENTATION_NOT_ASSIGNED")
+            need(row["kind"] != KIND_R1, "R1_MISSION_REQUIRES_GITHUB_RECONCILIATION")
             active = self.leases._check_owned(db, capability, moment)
             need(active["repository_id"] == row["github_id"]
                  and active["source_sha"] == row["source_sha"]
@@ -420,6 +450,12 @@ class MissionControl:
                              (mission_id,)).fetchone()
             need(row is not None and row["state"] in ("QA_HELD","HELD_RECONCILE"),
                  "ONLY_HELD_MISSIONS_CAN_BE_ARCHIVED")
+            if row["kind"] == KIND_R1:
+                turn = db.execute("SELECT origin,run_terminal,expires_utc FROM r10_r1_turns WHERE mission_id=?",
+                                  (mission_id,)).fetchone()
+                need(turn["origin"] is None or turn["run_terminal"] == 1 or
+                     r1.instant(turn["expires_utc"]).timestamp() * 1000 <= moment,
+                     "R1_LIVE_OR_UNCONFIRMED_RUN_REQUIRES_RECONCILIATION")
             active = db.execute(
                 "SELECT state,expires_ms FROM reservations WHERE repository=?",
                 (row["repository"],)).fetchone()
@@ -429,6 +465,9 @@ class MissionControl:
             db.execute("""UPDATE r9_missions
                 SET state='ARCHIVED_NOT_APPROVED',updated_ms=?
                 WHERE mission_id=?""",(moment,mission_id))
+            if row["kind"] == KIND_R1:
+                db.execute("""UPDATE r10_r1_turns SET state='ARCHIVED',version=version+1
+                    WHERE mission_id=?""", (mission_id,))
         return {"schema": SCHEMA, "mission_id": mission_id,
                 "state": "ARCHIVED_NOT_APPROVED",
                 "verified_complete": False, "merge_authorized": False,
@@ -440,6 +479,8 @@ class MissionControl:
             rows = db.execute("""SELECT mission_id,github_id,repository,
                 kind,state,worker,reviewer,source_sha FROM r9_missions
                 ORDER BY created_ms,mission_id""").fetchall()
+            dispatched = (db.execute("SELECT COUNT(*) FROM r10_r1_turns WHERE run_id IS NOT NULL")
+                          .fetchone()[0] if visible.get(r1.REPO_ID) == r1.REPO else 0)
         redacted = [
             {"mission_id": r["mission_id"], "github_id": r["github_id"],
              "repository": r["repository"], "kind": r["kind"],
@@ -449,7 +490,7 @@ class MissionControl:
         ]
         return {"schema": SCHEMA, "scope": "public_only",
                 "source_scan_id": scan, "missions": redacted,
-                "actual_jobs_dispatched": 0, "merge_authorized": False,
+                "actual_jobs_dispatched": dispatched, "merge_authorized": False,
                 "verified_complete": False}
 
 
@@ -524,7 +565,7 @@ def main(argv=None):
             result=control.status()
         print(json.dumps(result,indent=2))
         return 0
-    except (MissionHeld,leases.LeaseHeld,stewardship.HandoffHeld,
+    except (MissionHeld,r1.Held,leases.LeaseHeld,stewardship.HandoffHeld,
             StewardHeld,sqlite3.IntegrityError,OSError,ValueError) as exc:
         print("FLEET_R9_HELD " + str(exc),file=sys.stderr)
         return 3
