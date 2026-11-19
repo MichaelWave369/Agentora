@@ -40,3 +40,16 @@ jobs:
             echo 'R10 hosted dispatch disabled by default; observational probe only.'
             python3 scripts/fleet_r10_hosted_dispatch.py --dry-run
           fi
+
+      - name: Independently reconcile completed hosted R1 turns
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          R10_CLOSE_VERIFIED: ${{ vars.AGENTORA_R10_HOSTED_RECONCILE_CLOSE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$R10_CLOSE_VERIFIED" = "true" ]; then
+            PYTHONPATH=scripts:server python3 scripts/fleet_r10_hosted_reconcile.py --close-verified
+          else
+            PYTHONPATH=scripts:server python3 scripts/fleet_r10_hosted_reconcile.py
+          fi

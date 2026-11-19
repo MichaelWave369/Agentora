@@ -128,3 +128,45 @@ https://docs.github.com/en/actions/concepts/security/github_token
 
 GitHub schedule behavior:
 https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+
+## R10 hosted readback and optional verified issue completion
+
+After a 2026 dispatch response provides the original R1 run ID, the
+dispatcher writes a **second, bot-authored run-link comment** with the exact
+task digest, original run ID and GitHub Actions URL. The *first* dispatch
+fence is never removed, altered or retried. If dispatch succeeded but the
+run-link comment cannot be confirmed, the workflow reports a HOLD; an
+operator must reconcile the original run rather than repeat the dispatch.
+
+The existing scheduled workflow also runs
+`scripts/fleet_r10_hosted_reconcile.py`. It defaults to **observation
+only**. It can inspect completed tasks from the durable GitHub issue
+record; it does not use a parallel SQLite database or invent a mission
+state. For each original fence/link pair, it:
+
+- Requires the original owner-authored docs task, exact task digest,
+  genuine bot-authored fence and bot-authored run link.
+- Re-reads the actual original R1 run, validates the fixed workflow and
+  trusted actors, all required jobs and exact protected-environment
+  owner approval within the original task window.
+- Downloads and digest-verifies the **original frozen task artifact**.
+- Reuses the existing R9→R1 independent result verifier: publisher
+  identity, exact source tree/PR file scope, required CI on both push
+  and pull-request events, true GitHub merge record and full merged tree.
+- Reports `AWAITING_R1_COMPLETION`, `HELD`, or `VERIFIED_MERGED`;
+  a green job or linked PR alone is never completion.
+
+**Separate activation gate:** Only after privileged-workflow review and
+a real read-only field qualification, deliberately set the repository
+Actions variable `AGENTORA_R10_HOSTED_RECONCILE_CLOSE=true`.
+Only then may a later scheduled run add a deduplicated verified-completion
+comment and close the matching docs task issue as `completed`. Before
+writing it re-reads the issue body, original fence and run link, and
+refuses ambiguous/drifting records. A lost close response remains
+reconcilable; it must never dispatch the task again.
+
+This applies only to the narrowly allowlisted Agentora docs task lane.
+It grants no unattended owner approvals, general model coding, R9 event
+ingestion, multi-repository execution, deployment, or broader issue
+management. The hosted R9 mission-ledger migration and RepoNerve intake
+are still open under #124.
