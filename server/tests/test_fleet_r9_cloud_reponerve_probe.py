@@ -206,7 +206,7 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(calls, [])
 
     def test_no_token_no_public_fetch_and_secret_not_logged(self):
-        for token in (None, "", "short", "12345678\\nOHNO", "abcd1234 xyz"):
+        for token in (None, "", "short", "12345678\nOHNO", "abcd1234 xyz"):
             with self.subTest(token=token), self.assertRaises(
                 probe.ProbeHeld) as held:
                 probe.authenticated_public_opener(token)
