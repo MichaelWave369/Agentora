@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import fcntl
 import json
+from contextlib import closing
 import os
 from pathlib import Path
 import re
@@ -22,6 +23,7 @@ REPO_ID = 1167870912
 DB_NAMES = ("reponerve.sqlite3", "r9-stewards.sqlite3", "r9-leases.sqlite3")
 MARKER = ".r9-state-manifest.json"
 LOCK = ".r9-single-writer.lock"
+INFLIGHT = ".r9-inflight-writer.json"
 
 
 class VolumeHeld(ValueError):
@@ -45,8 +47,9 @@ def _integrity(dbpath):
     _regular_private(dbpath)
     # Read-only integrity verification; do not manufacture a missing DB.
     try:
-        with sqlite3.connect("file:" + quote(str(dbpath), safe="/") + "?mode=ro",
-                             uri=True, timeout=3) as connection:
+        with closing(sqlite3.connect(
+                "file:" + quote(str(dbpath), safe="/") + "?mode=ro",
+                uri=True, timeout=3)) as connection:
             result = connection.execute("PRAGMA integrity_check").fetchall()
         need(result == [("ok",)], "R9_VOLUME_DB_CORRUPT")
     except sqlite3.DatabaseError:
@@ -79,6 +82,7 @@ class VolumeState:
         self.is_new = None
         self._lock_fd = None
         self._old_umask = None
+        self._inflight = False
 
     def __enter__(self):
         try:
@@ -100,9 +104,12 @@ class VolumeState:
                 raise VolumeHeld("R9_VOLUME_WRITER_ACTIVE") from None
             active = self.root / "active"
             if active.exists() or active.is_symlink():
+                need(not (self.root / INFLIGHT).exists(),
+                     "R9_VOLUME_UNFINISHED_WRITER")
                 self.working = active
                 self.is_new = False
                 self.verify()
+                self._make_inflight()
             else:
                 need(set(p.name for p in self.root.iterdir()) == {LOCK},
                      "R9_VOLUME_ORPHANED_SEED_OR_UNEXPECTED_FILES")
@@ -113,6 +120,21 @@ class VolumeState:
         except BaseException:
             self.__exit__(None, None, None)
             raise
+
+    def _make_inflight(self):
+        guard = self.root / INFLIGHT
+        need(not guard.exists() and not guard.is_symlink(),
+             "R9_VOLUME_UNFINISHED_WRITER")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(guard, flags, 0o600)
+        try:
+            os.write(fd, SCHEMA.encode("ascii"))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        self._inflight = True
 
     def verify(self):
         need(self.working is not None and self.working.is_dir() and
@@ -160,6 +182,14 @@ class VolumeState:
             finally:
                 os.close(fd)
         self.verify()
+        if self._inflight:
+            (self.root / INFLIGHT).unlink()
+            fd = os.open(self.root, os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            self._inflight = False
 
     def __exit__(self, *_):
         if self._old_umask is not None:
