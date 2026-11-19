@@ -3,7 +3,7 @@
 Status: implementation candidate. A passing implementation PR is not a completed
 autonomous turn. Hosted qualification requires an actual owner review, isolated
 worker run, App-published PR, exact-SHA CI, trusted merge and independently read
-GitHub merge record. No such run is claimed by this document.
+GitHub merge record. The earlier docs-only R1 merge is recorded in PR #90. A new trial is required after changes to the controller or authorization path.
 
 ## The bounded vertical slice
 
