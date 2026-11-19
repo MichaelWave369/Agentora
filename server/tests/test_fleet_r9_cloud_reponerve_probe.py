@@ -378,6 +378,22 @@ class ProbeTests(unittest.TestCase):
                 recovered.commit()
 
     @unittest.skipUnless(os.name == "posix", "durable volume requires POSIX")
+    @unittest.skipUnless(os.name == "posix", "durable volume requires POSIX")
+    def test_new_event_holds_behind_original_queued_mission(self):
+        item = observation()
+        with tempfile.TemporaryDirectory() as base:
+            mount = Path(base) / "private-state"
+            with VolumeState(mount) as seed:
+                self._seed_reponerve_schema(seed.working)
+                first = probe.qualify_observation(
+                    item, item["recent_events"][0], SHA, seed.working, now=NOW)
+                seed.commit()
+            with VolumeState(mount) as recovered:
+                blocker = probe.unresolved_durable_mission(recovered.working)
+                self.assertEqual(blocker["mission_id"], first["mission_id"])
+                self.assertEqual(blocker["state"], "QUEUED")
+                recovered.commit()
+
     def test_durable_event_lineage_corruption_holds(self):
         item = observation()
         with tempfile.TemporaryDirectory() as base:
