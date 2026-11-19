@@ -1,6 +1,6 @@
 # Fleet R10: GitHub-hosted docs dispatch pilot (no local Agentora installation)
 
-**Status: hosted dispatcher merged; live dispatch qualification required.**
+**Status: live hosted R10 dispatch qualified; automated issue reconciliation remains unqualified.**
 Canonical project mission: [Agentora #124](https://github.com/MichaelWave369/Agentora/issues/124).
 
 ## Why this exists
