@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
+from urllib import parse, request
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "server"))
@@ -53,6 +54,51 @@ def rev_parse(path):
             stderr=subprocess.DEVNULL, timeout=8, text=True).strip()
     except (OSError, subprocess.SubprocessError):
         raise ProbeHeld("GIT_REVISION_UNAVAILABLE") from None
+
+
+def authenticated_public_opener(token, *, transport=None):
+    """Authenticate ONLY the fixed public owner inventory API, never /user/repos.
+
+    RepoNerve's existing GitHubClient must be instantiated with token=""
+    so it continues to select /users/MichaelWave369/repos. Auth is added
+    *after* the destination and GET query have been strictly validated.
+    A non-redirectable header prevents forwarding the token on redirects.
+    """
+    need(type(token) is str and 8 <= len(token) <= 4096 and
+         not any(c in token for c in "\\r\\n\\x00 "),
+         "REPONERVE_READ_TOKEN_MISSING_OR_UNSAFE")
+    transport = transport or request.urlopen
+
+    def public_only(req, *, timeout):
+        need(isinstance(req, request.Request) and req.get_method() == "GET",
+             "REPONERVE_PUBLIC_METHOD_REJECTED")
+        uri = parse.urlsplit(req.full_url)
+        need(uri.scheme == "https" and uri.netloc == "api.github.com" and
+             uri.path == f"/users/{OWNER}/repos" and not uri.fragment,
+             "REPONERVE_PUBLIC_ENDPOINT_REJECTED")
+        params = parse.parse_qs(uri.query, keep_blank_values=True)
+        need(set(params) == {"per_page", "page", "type", "sort", "direction"} and
+             params["per_page"] == ["100"] and
+             params["type"] == ["owner"] and
+             params["sort"] == ["full_name"] and
+             params["direction"] == ["asc"] and
+             len(params["page"]) == 1 and
+             re.fullmatch(r"[1-9][0-9]{0,2}", params["page"][0]),
+             "REPONERVE_PUBLIC_QUERY_REJECTED")
+        req.add_unredirected_header("Authorization", "Bearer " + token)
+        return transport(req, timeout=timeout)
+
+    return public_only
+
+
+def inventory_error_reason(exc):
+    """Stable diagnostic category, with no token, URL, or remote body."""
+    code = re.fullmatch(r"GitHub returned HTTP ([1-5][0-9]{2})", str(exc))
+    if code:
+        return "REPONERVE_PUBLIC_HTTP_" + code.group(1)
+    if str(exc).startswith("GitHub inventory request failed:"):
+        return "REPONERVE_PUBLIC_TRANSPORT_UNAVAILABLE"
+    return "REPONERVE_PUBLIC_INVENTORY_UNAVAILABLE"
 
 
 def store_get_json(store):
@@ -195,12 +241,16 @@ def cloud_probe(nerve_path, *, expected_action_sha, expected_repo_id,
     with TemporaryDirectory(prefix="r9-cloud-observe-") as path:
         root = Path(path)
         source_db = root / "reponerve.sqlite3"
-        # Force public, anonymous inventory; avoid GitHub App credentials or
-        # private owner-affiliated /user/repos enumeration.
+        # A GitHub runner's anonymous API pool may be exhausted. The scoped
+        # Actions token is permitted ONLY for the fixed public GET endpoint.
+        # RepoNerve still chooses /users/{owner}/repos because token="".
+        public_opener = authenticated_public_opener(os.getenv("GITHUB_TOKEN"))
         try:
-            scan = scan_once(OWNER, source_db, client=GitHubClient(token=""))
-        except InventoryError:
-            raise ProbeHeld("REPONERVE_PUBLIC_INVENTORY_UNAVAILABLE") from None
+            scan = scan_once(
+                OWNER, source_db,
+                client=GitHubClient(token="", opener=public_opener))
+        except InventoryError as exc:
+            raise ProbeHeld(inventory_error_reason(exc)) from None
         need(scan["status"] == "complete" and scan["repo_count"] > 0,
              "REPONERVE_SCAN_NOT_COMPLETE")
         get_json = store_get_json(FleetStore(source_db))
