@@ -7,12 +7,14 @@ replay inside one runner for cross-run durable state.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import sqlite3
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
@@ -28,6 +30,7 @@ from app.integrations.phireponerve_client import (
 from app.services.fleet_stewards import StewardRegistry, StewardHeld
 import fleet_r04_leases as leases
 import fleet_r9_mission_control as r9
+from fleet_r9_cloud_state import VolumeState, VolumeHeld
 
 SCHEMA = "agentora.fleet.r9-cloud-reponerve-probe.v1"
 REPO = "MichaelWave369/Agentora"
@@ -220,8 +223,74 @@ def qualify_observation(observation, event, source_sha, root, *, now=None):
     }
 
 
+@contextmanager
+def state_root(state_dir):
+    if state_dir is None:
+        with TemporaryDirectory(prefix="r9-cloud-observe-") as temporary:
+            yield Path(temporary), None
+    else:
+        with VolumeState(state_dir) as volume:
+            yield volume.working, volume
+
+
+def recorded_durable_event(root, observation, event):
+    """Verify both independent SQLite histories before deduplicating a replay.
+
+    Existing R9 event IDs are bound to the ORIGINAL RepoNerve scan lineage.
+    A later scan or newer checked-out source SHA must not rewrite that record.
+    """
+    with sqlite3.connect(str(root / "r9-leases.sqlite3")) as db:
+        db.row_factory = sqlite3.Row
+        row = db.execute("""SELECT e.mission_id,e.github_id,e.source_scan_id,
+                                    e.event_type,e.source_payload_digest,
+                                    m.repository,m.source_sha,m.intake_digest,
+                                    m.kind,m.state
+                             FROM r10_event_links e JOIN r9_missions m
+                               ON e.mission_id=m.mission_id
+                             WHERE e.source_event_id=?""", (event["id"],)).fetchone()
+    if row is None:
+        return None
+    old = dict(row)
+    with sqlite3.connect(str(root / "reponerve.sqlite3")) as db:
+        db.row_factory = sqlite3.Row
+        historic = db.execute("""SELECT scan_id,github_id,full_name,event_type
+                                 FROM events WHERE id=?""",
+                              (event["id"],)).fetchone()
+    need(historic is not None and
+         historic["scan_id"] == old["source_scan_id"] and
+         historic["github_id"] == event["github_id"] and
+         historic["full_name"] == event["full_name"] and
+         historic["event_type"] == event["event_type"] and
+         old["github_id"] == REPO_ID and old["repository"] == REPO and
+         old["event_type"] == event["event_type"] and
+         old["kind"] == r9.KIND_AUDIT and
+         GIT_SHA.fullmatch(old["source_sha"]) and
+         re.fullmatch(r"[0-9a-f]{64}", old["source_payload_digest"]) and
+         re.fullmatch(r"[0-9a-f]{64}", old["intake_digest"]) and
+         old["state"] in ("QUEUED", "QA_HELD", "HELD_RECONCILE", "ARCHIVED_HELD",
+                          "COMPLETED", "MERGED"),
+         "R9_DURABLE_EVENT_HISTORY_CONFLICT")
+    need(observation["source_scan_id"] >= old["source_scan_id"],
+         "R9_DURABLE_SOURCE_SCAN_ROLLBACK")
+    return {"schema": SCHEMA,
+            "state": "DURABLE_REPLAY_VERIFIED",
+            "repository_id": REPO_ID,
+            "repo": REPO,
+            "source_scan_id": observation["source_scan_id"],
+            "event_id": event["id"],
+            "event_type": event["event_type"],
+            "mission_id": old["mission_id"],
+            "original_source_sha": old["source_sha"],
+            "r9_rows": 1,
+            "dedupe_verified": True,
+            "persisted_across_runs": True,
+            "dispatch_authorized": False,
+            "merge_authorized": False,
+            "product_verified_complete": False}
+
+
 def cloud_probe(nerve_path, *, expected_action_sha, expected_repo_id,
-                get_now=None):
+                get_now=None, state_dir=None):
     need(expected_repo_id == str(REPO_ID), "ACTIONS_REPO_IDENTITY_INVALID")
     need(type(expected_action_sha) is str and
          GIT_SHA.fullmatch(expected_action_sha) and
@@ -238,8 +307,7 @@ def cloud_probe(nerve_path, *, expected_action_sha, expected_repo_id,
     from phireponerve.github import GitHubClient, InventoryError
     from phireponerve.store import FleetStore
 
-    with TemporaryDirectory(prefix="r9-cloud-observe-") as path:
-        root = Path(path)
+    with state_root(state_dir) as (root, volume):
         source_db = root / "reponerve.sqlite3"
         # A GitHub runner's anonymous API pool may be exhausted. The scoped
         # Actions token is permitted ONLY for the fixed public GET endpoint.
@@ -260,32 +328,58 @@ def cloud_probe(nerve_path, *, expected_action_sha, expected_repo_id,
                  for row in observation["repositories"]),
              "AGENTORA_NOT_IN_PUBLIC_SCAN")
         if event is None:
+            if volume is not None:
+                registry = StewardRegistry(root / "r9-stewards.sqlite3")
+                ledger = leases.LeaseLedger(root / "r9-leases.sqlite3")
+                r9.MissionControl(registry, ledger)
+                registry.ingest(observation, now=now)
+                volume.commit()
             return {
                 "schema": SCHEMA, "state": "NO_ELIGIBLE_AGENTORA_EVENT",
                 "source_scan_id": observation["source_scan_id"],
                 "public_repo_count": observation["public_repo_count"],
-                "persisted_across_runs": False,
+                "persisted_across_runs": volume is not None,
                 "dispatch_authorized": False,
                 "merge_authorized": False,
             }
-        return qualify_observation(observation, event, expected_action_sha,
-                                   root, now=now)
+        if volume is not None and not volume.is_new:
+            historical = recorded_durable_event(root, observation, event)
+            if historical is not None:
+                StewardRegistry(root / "r9-stewards.sqlite3").ingest(
+                    observation, now=now)
+                volume.commit()
+                return historical
+        result = qualify_observation(observation, event, expected_action_sha,
+                                     root, now=now)
+        if volume is not None:
+            volume.commit()
+            result = {**result,
+                      "state": "DURABLE_FIRST_ADMISSION_QUALIFIED",
+                      "persisted_across_runs": True}
+        return result
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reponerve-path", type=Path, required=True)
+    parser.add_argument("--state-dir", type=Path,
+                        help="private mounted volume, requires explicit opt-in")
     args = parser.parse_args(argv)
     try:
+        if args.state_dir is not None:
+            need(os.getenv("AGENTORA_R9_DURABLE_ENABLED") == "true",
+                 "R9_DURABLE_MODE_NOT_ENABLED")
         result = cloud_probe(
             args.reponerve_path,
             expected_action_sha=os.getenv("GITHUB_SHA"),
             expected_repo_id=os.getenv("GITHUB_REPOSITORY_ID"),
+            state_dir=args.state_dir,
         )
         print(json.dumps(result, sort_keys=True))
         return 0
     except (ProbeHeld, RepoNerveUnavailable, StewardHeld, r9.MissionHeld,
-            leases.LeaseHeld, OSError, KeyError, TypeError, ValueError) as exc:
+            leases.LeaseHeld, VolumeHeld, sqlite3.DatabaseError, OSError,
+            KeyError, TypeError, ValueError) as exc:
         reason = re.sub(r"[^A-Z0-9_]", "_", str(exc))[:100]
         print("R9_CLOUD_PROBE_HELD " + reason, file=sys.stderr)
         return 3
