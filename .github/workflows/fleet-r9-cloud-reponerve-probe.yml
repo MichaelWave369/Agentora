@@ -32,9 +32,9 @@ jobs:
       - name: Qualify public-only observation to existing R9 queue
         shell: bash
         env:
-          # Force PhiRepoNerve's /users/{owner}/repos public-only path,
-          # NEVER a private inventory via /user/repos.
-          GITHUB_TOKEN: ''
+          # Scoped read token is only attached to the strictly validated
+          # /users/MichaelWave369/repos public GET. NEVER /user/repos.
+          GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ''
         run: |
           set -euo pipefail
