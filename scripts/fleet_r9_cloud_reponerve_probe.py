@@ -189,7 +189,7 @@ def cloud_probe(nerve_path, *, expected_action_sha, expected_repo_id,
     # The pinned *read-only observer* is checked out as source, never from
     # an untrusted PR branch or dynamic package index.
     from phireponerve.cli import scan_once
-    from phireponerve.github import GitHubClient
+    from phireponerve.github import GitHubClient, InventoryError
     from phireponerve.store import FleetStore
 
     with TemporaryDirectory(prefix="r9-cloud-observe-") as path:
@@ -197,7 +197,10 @@ def cloud_probe(nerve_path, *, expected_action_sha, expected_repo_id,
         source_db = root / "reponerve.sqlite3"
         # Force public, anonymous inventory; avoid GitHub App credentials or
         # private owner-affiliated /user/repos enumeration.
-        scan = scan_once(OWNER, source_db, client=GitHubClient(token=""))
+        try:
+            scan = scan_once(OWNER, source_db, client=GitHubClient(token=""))
+        except InventoryError:
+            raise ProbeHeld("REPONERVE_PUBLIC_INVENTORY_UNAVAILABLE") from None
         need(scan["status"] == "complete" and scan["repo_count"] > 0,
              "REPONERVE_SCAN_NOT_COMPLETE")
         get_json = store_get_json(FleetStore(source_db))
