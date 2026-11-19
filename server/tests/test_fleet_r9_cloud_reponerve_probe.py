@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from urllib import request
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
@@ -231,6 +232,21 @@ class ProbeTests(unittest.TestCase):
             self.assertNotIn("secret-token-value",
                              probe.inventory_error_reason(ValueError(source)))
 
+    def test_mount_gate_never_claims_ephemeral_runner_is_durable(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(probe.ProbeHeld, "MOUNT_NOT_QUALIFIED"):
+                probe.require_mounted_volume(Path("/tmp/r9-state"))
+        with patch.dict(os.environ, {
+                "AGENTORA_R9_VOLUME_MOUNT": "/data",
+                "AGENTORA_R9_DURABLE_ENABLED": "true"}):
+            with patch.object(probe.os.path, "ismount", return_value=False):
+                with self.assertRaisesRegex(probe.ProbeHeld, "MOUNT_NOT_QUALIFIED"):
+                    probe.require_mounted_volume(Path("/data/r9-state"))
+            with patch.object(probe.os.path, "ismount", return_value=True):
+                with self.assertRaisesRegex(probe.ProbeHeld, "OUTSIDE_MOUNT"):
+                    probe.require_mounted_volume(Path("/tmp/pretend-data/r9"))
+                probe.require_mounted_volume(Path("/data/r9-state"))
+
     def test_source_sha_pinned_to_const_not_dynamic(self):
         self.assertEqual(probe.NERVE_SHA,
                          "a625e8ac34831420ab52f2372bf4ec9079258c4a")
@@ -261,6 +277,7 @@ class ProbeTests(unittest.TestCase):
         ledger = leases.LeaseLedger(root / "r9-leases.sqlite3")
         r9.MissionControl(registry, ledger)
 
+    @unittest.skipUnless(os.name == "posix", "durable volume requires POSIX")
     def test_durable_volume_seeds_and_restarts_same_three_databases(self):
         with tempfile.TemporaryDirectory() as base:
             mount = Path(base) / "private-state"
@@ -278,6 +295,7 @@ class ProbeTests(unittest.TestCase):
                 recovered.commit()
             self.assertFalse((mount / ".r9-inflight-writer.json").exists())
 
+    @unittest.skipUnless(os.name == "posix", "durable volume requires POSIX")
     def test_durable_volume_interrupted_active_writer_holds_on_restart(self):
         with tempfile.TemporaryDirectory() as base:
             mount = Path(base) / "private-state"
@@ -290,6 +308,7 @@ class ProbeTests(unittest.TestCase):
                 with VolumeState(mount):
                     pass
 
+    @unittest.skipUnless(os.name == "posix", "durable volume requires POSIX")
     def test_durable_volume_crashed_first_seed_never_resets(self):
         with tempfile.TemporaryDirectory() as base:
             mount = Path(base) / "private-state"
@@ -299,6 +318,7 @@ class ProbeTests(unittest.TestCase):
                 with VolumeState(mount):
                     pass
 
+    @unittest.skipUnless(os.name == "posix", "durable volume requires POSIX")
     def test_durable_volume_rejects_two_simultaneous_writers(self):
         with tempfile.TemporaryDirectory() as base:
             mount = Path(base) / "private-state"
@@ -309,6 +329,7 @@ class ProbeTests(unittest.TestCase):
                 self._seed_all_databases(first.working)
                 first.commit()
 
+    @unittest.skipUnless(os.name == "posix", "durable volume requires POSIX")
     def test_durable_volume_corruption_holds_instead_of_reinitializing(self):
         with tempfile.TemporaryDirectory() as base:
             mount = Path(base) / "private-state"
@@ -320,6 +341,7 @@ class ProbeTests(unittest.TestCase):
                 with VolumeState(mount):
                     pass
 
+    @unittest.skipUnless(os.name == "posix", "durable volume requires POSIX")
     def test_durable_volume_rejects_untrusted_root_symlink(self):
         with tempfile.TemporaryDirectory() as base:
             mount = Path(base) / "private-state"
@@ -329,6 +351,7 @@ class ProbeTests(unittest.TestCase):
             with self.assertRaisesRegex(VolumeHeld, "SYMLINK"):
                 VolumeState(mount)
 
+    @unittest.skipUnless(os.name == "posix", "durable volume requires POSIX")
     def test_durable_known_event_replays_from_original_source_lineage(self):
         item = observation()
         with tempfile.TemporaryDirectory() as base:
@@ -354,6 +377,7 @@ class ProbeTests(unittest.TestCase):
                         "SELECT COUNT(*) FROM r9_missions").fetchone()[0], 1)
                 recovered.commit()
 
+    @unittest.skipUnless(os.name == "posix", "durable volume requires POSIX")
     def test_durable_event_lineage_corruption_holds(self):
         item = observation()
         with tempfile.TemporaryDirectory() as base:
