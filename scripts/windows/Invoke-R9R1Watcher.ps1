@@ -27,7 +27,7 @@ function Test-TrustedCheckout([object] $config) {
     if (-not (Test-Path -LiteralPath $config.python -PathType Leaf)) { throw 'R9_R1_PYTHON_NOT_FOUND' }
     $head = (& git -C $repo rev-parse HEAD 2>$null)
     if ($LASTEXITCODE -ne 0 -or $head -ne $config.sha) { throw 'R9_R1_HEAD_CHANGED_REINSTALL_AFTER_REVIEW' }
-    $dirty = @(& git -C $repo status --porcelain --untracked-files=no 2>$null)
+    $dirty = @(& git -C $repo status --porcelain --untracked-files=all 2>$null)
     if ($LASTEXITCODE -ne 0 -or $dirty.Count -gt 0) { throw 'R9_R1_CHECKOUT_NOT_CLEAN' }
 }
 function Convert-Secret([System.Security.SecureString] $value) {
@@ -55,7 +55,7 @@ switch ($Mode) {
 
         $head = (& git -C $repo rev-parse HEAD 2>$null)
         if ($LASTEXITCODE -ne 0 -or $head -notmatch '^[0-9a-f]{40}$') { throw 'R9_R1_GIT_HEAD_UNAVAILABLE' }
-        if (@(& git -C $repo status --porcelain --untracked-files=no).Count -gt 0) { throw 'R9_R1_CHECKOUT_NOT_CLEAN' }
+        if (@(& git -C $repo status --porcelain --untracked-files=all).Count -gt 0) { throw 'R9_R1_CHECKOUT_NOT_CLEAN' }
         New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
         if (-not $SnapshotPath) { $SnapshotPath = Join-Path $stateDir 'r9-turns.json' }
         $SnapshotPath = [IO.Path]::GetFullPath($SnapshotPath)
@@ -90,8 +90,8 @@ switch ($Mode) {
         if (-not (Test-Path -LiteralPath $secretFile -PathType Leaf)) { throw 'R9_R1_CREDENTIALS_MISSING' }
         $secrets = Import-Clixml -LiteralPath $secretFile
         if (-not ($secrets.Dispatch -is [System.Security.SecureString]) -or -not ($secrets.Read -is [System.Security.SecureString])) { throw 'R9_R1_CREDENTIALS_INVALID' }
-        $env:AGENTORA_R1_DISPATCH_TOKEN = Convert-Secret $secrets.Dispatch
         $env:AGENTORA_R1_READ_TOKEN = Convert-Secret $secrets.Read
+        if ($Mode -eq 'Run') { $env:AGENTORA_R1_DISPATCH_TOKEN = Convert-Secret $secrets.Dispatch }
         try {
             Push-Location $repo
             try {
