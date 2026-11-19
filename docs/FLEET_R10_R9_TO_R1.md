@@ -26,13 +26,15 @@ intake carry no merge authority.
    repository read permissions needed for Actions, Contents, Pull requests
    and Checks. Artifact ZIP downloads need authenticated Actions read. R1's
    existing owner-only environment and App key stay on GitHub.
-5. Schedule the following command once per minute on that host, using the
-   reviewed checkout and the configured environment. Run the cockpit
+5. Run the existing R9 watcher on that host under its service manager, using
+   the reviewed checkout and configured environment. It takes one tick per
+   minute by default and restarts from the same SQLite paths. Deploy either
+   the watcher or an OS-scheduled one-shot `tick` on that host. Run the cockpit
    locally on loopback to see the snapshot without importing it each time.
    Save the snapshot under the PhiMada checkout's ignored development path.
 
    ```bash
-   python scripts/fleet_r10_r1.py tick --dispatch \
+   python scripts/fleet_r10_r1.py watch --dispatch \
      --snapshot /path/to/PhiMadaPrime/public/fleet/r9-turns.json
    ```
 
@@ -40,6 +42,12 @@ intake carry no merge authority.
    Board. Alternatively, import a redacted snapshot from the R9 adapter
    into the Mission Board's queue panel. The browser performs GETs to verify
    linked GitHub results. It receives no credentials, task text or edits.
+
+   An observation-only smoke run uses `watch --cycles 2` without
+   `--dispatch`. An active watcher requires both credentials at startup.
+   Missing credentials leave queued missions intact. Three consecutive
+   failed cycles exit with status 3 and emit a bounded reason for the
+   service manager. A restart reloads the same mission and submission fence.
 
 ## Submit the next turn
 
@@ -90,9 +98,11 @@ reason per mission. It serializes admission and submission with R9's existing
 fair selection and one-unresolved-mission-per-repository rule. A local slot
 reserves dispatch. The hosted GitHub job owns the execution lifecycle.
 
-A lost dispatch response permits one bounded read-only search for a successful
-original plan containing the exact task. A new POST is never used to resolve
-an unknown result. A later operator can attach a known original run via
+A lost dispatch response permits up to three bounded read-only searches,
+spaced at least one minute apart, for a successful original plan containing
+the exact task. The private ledger spends a read slot even if a process
+crashes during the lookup. A new POST is never used to resolve an unknown
+result. A later operator can attach a known original run via
 `attach --mission-id MISSION --run-id RUN_ID`. This also supports manual
 owner issue intake when Actions write is unavailable. It verifies GitHub's
 artifact ZIP digest and exact frozen task before binding any run ID. A hold
