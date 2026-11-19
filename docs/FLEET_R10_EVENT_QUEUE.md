@@ -28,7 +28,7 @@ python scripts/fleet_stewards_r2.py ingest --input ./public-observations.json
 Choose an event ID from the `recent_events` array and have one existing held,
 non-authorizing R0.3 `verification-intake.json` for **that exact public repo
 identity**. The public observations do not carry a trusted GitHub HEAD; the
-R0.3 intake SHA is an unverified claim until rechecked at a later action gate.
+R0.3 intake SHA is a source claim. Re-read GitHub's default-branch SHA at the action gate before treating it as current.
 
 Queue a review, not execution:
 
