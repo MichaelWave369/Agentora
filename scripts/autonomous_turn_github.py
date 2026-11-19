@@ -152,9 +152,20 @@ def owner_environment(api):
 
 def owner_review(api, task, run_id, control_sha):
     env = owner_environment(api)
+    return original_owner_review(api, task, run_id, control_sha, environment_id=env["id"])
+
+
+def original_owner_review(api, task, run_id, control_sha, *, environment_id=None):
+    """Read the original review after the trusted authorization job passed."""
     reviews = api(BASE+f"/actions/runs/{run_id}/approvals")
     need(isinstance(reviews, list) and 0 < len(reviews) < 100, "ENVIRONMENT_REVIEW_REQUIRED")
-    relevant = [r for r in reviews if any(e.get("id") == env["id"] and
+    if environment_id is None:
+        ids = [e.get("id") for r in reviews for e in r.get("environments", [])
+               if e.get("name") == ENVIRONMENT]
+        need(ids and all(type(n) is int and n > 0 and n == ids[0] for n in ids),
+             "ORIGINAL_REVIEW_ENVIRONMENT_AMBIGUOUS")
+        environment_id = ids[0]
+    relevant = [r for r in reviews if any(e.get("id") == environment_id and
                 e.get("name") == ENVIRONMENT for e in r.get("environments", []))]
     need(relevant and not any(r.get("state") != "approved" for r in relevant), "ENVIRONMENT_REJECTED")
     approvals = [r for r in relevant if r.get("user", {}).get("id") == OWNER_ID and
@@ -163,7 +174,7 @@ def owner_review(api, task, run_id, control_sha):
     need(len(approvals) == 1, "EXACT_TASK_OWNER_APPROVAL_REQUIRED")
     # The review evidence is fetched fresh by every privileged stage. This hash
     # identifies GitHub's record; it is not a fabricated approval certificate.
-    return {"run_id": run_id, "environment_id": env["id"], "owner_id": OWNER_ID,
+    return {"run_id": run_id, "environment_id": environment_id, "owner_id": OWNER_ID,
             "task_sha256": task_digest(task), "control_sha": control_sha,
             "github_review_sha256": digest(canonical(approvals[0]))}
 

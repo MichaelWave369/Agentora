@@ -402,7 +402,10 @@ class TurnLane:
             approved_at = contract.instant(jobs["owner-authorization"].get("completed_at"))
             need(contract.instant(task["created_utc"]) <= approved_at <
                  contract.instant(task["expires_utc"]), "R1_OWNER_JOB_OUTSIDE_TASK_WINDOW")
-            github.owner_review(self.api, task, run_id, task["source_sha"])
+            # The trusted job validated the environment at authorization time.
+            # Historical readback uses the original review record even after
+            # the repository's current environment configuration changes.
+            github.original_owner_review(self.api, task, run_id, task["source_sha"])
             if active == "attempt-0 / worker":
                 state, reason = "RUNNING", None
             elif "attempt-0 / publish" not in jobs:

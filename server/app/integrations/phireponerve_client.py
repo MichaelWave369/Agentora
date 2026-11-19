@@ -10,6 +10,8 @@ SCHEMA = "phireponerve.agentora.public-observations.v1"
 OWNER = "MichaelWave369"
 MAX_REPOS = 10000
 PAGE_SIZE = 500
+EVENT_PAGE_SIZE = 200
+MAX_EVENT_OFFSET = 10_000
 MAX_RESPONSE_BYTES = 1024 * 1024
 ALLOWED_EVENTS = {
     "first_observed", "visible_again", "renamed", "archival_changed",
@@ -28,7 +30,10 @@ class _NoRedirect(HTTPRedirectHandler):
 
 def _local_json(path: str):
     """Fixed loopback endpoint only; proxy, redirects and oversized replies disabled."""
-    if path not in ("/api/summary", "/api/events?limit=200&offset=0") and not (
+    event_path = path.removeprefix(f"/api/events?limit={EVENT_PAGE_SIZE}&offset=")
+    valid_events = (event_path != path and event_path.isascii() and event_path.isdigit() and
+                    len(event_path) <= 5 and int(event_path) <= MAX_EVENT_OFFSET)
+    if path != "/api/summary" and not valid_events and not (
         path.startswith("/api/repos?limit=500&offset=")
         and path.removeprefix("/api/repos?limit=500&offset=").isdigit()
     ):
@@ -67,7 +72,7 @@ def _age_ok(timestamp, now):
         return False
 
 
-def collect_public_observations(get_json=None, *, now=None):
+def collect_public_observations(get_json=None, *, now=None, event_offset=0):
     """Return ONLY public metadata and redacted event kinds from a complete local scan.
 
     Caller-provided get_json permits offline tests. This return value is data,
@@ -75,6 +80,9 @@ def collect_public_observations(get_json=None, *, now=None):
     """
     get_json = get_json or _local_json
     now = now or datetime.now(timezone.utc)
+    if (type(event_offset) is not int or not 0 <= event_offset <= MAX_EVENT_OFFSET or
+            event_offset % EVENT_PAGE_SIZE):
+        raise RepoNerveUnavailable("REPONERVE_EVENT_OFFSET_INVALID")
     summary = get_json("/api/summary")
     if not isinstance(summary, dict):
         raise RepoNerveUnavailable("REPONERVE_SUMMARY_INVALID")
@@ -130,9 +138,9 @@ def collect_public_observations(get_json=None, *, now=None):
         public.append(item)
         public_by_id[repo_id] = full
 
-    response = get_json("/api/events?limit=200&offset=0")
+    response = get_json(f"/api/events?limit={EVENT_PAGE_SIZE}&offset={event_offset}")
     event_rows = response.get("items") if isinstance(response, dict) else None
-    if not isinstance(event_rows, list) or len(event_rows) > 200:
+    if not isinstance(event_rows, list) or len(event_rows) > EVENT_PAGE_SIZE:
         raise RepoNerveUnavailable("REPONERVE_EVENTS_INVALID")
     recent = []
     for e in event_rows:

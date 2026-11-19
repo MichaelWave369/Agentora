@@ -48,6 +48,9 @@ intake carry no merge authority.
    to find an eligible Agentora event ID in `recent_events`. R9 accepts
    current visible `first_observed`, `visible_again` and
    `push_activity_observed` events and rejects replays or stale bytes.
+   A large scan can fill the newest 200-event page. Use
+   `--event-offset 200` on the export command to select the next page.
+   Ingest one chosen projection per scan ID so the source digest stays stable.
 2. Prepare a task locally from a clean exact-main checkout. The **before**
    text must be unique in an existing allowed docs file. The worker applies
    one literal change and runs the fixed docs check. Choose a new task ID

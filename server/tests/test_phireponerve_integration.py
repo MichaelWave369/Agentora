@@ -40,6 +40,20 @@ def fixture(rows=None, attempts=None, event_rows=None):
 
 
 class AdapterTests(unittest.TestCase):
+    def test_bounded_event_pagination_preserves_the_redaction_contract(self):
+        base = fixture()
+        def selected(path):
+            self.assertNotEqual(path, "/api/events?limit=200&offset=0")
+            if path == "/api/events?limit=200&offset=200":
+                return {"items": EVENTS}
+            return base(path)
+        page = collect_public_observations(selected, now=NOW, event_offset=200)
+        self.assertEqual([row["id"] for row in page["recent_events"]], [1])
+        self.assertNotIn("Secret", str(page))
+        for offset in (-1, 1, 10001, True):
+            with self.subTest(offset=offset), self.assertRaisesRegex(RepoNerveUnavailable, "OFFSET"):
+                collect_public_observations(selected, now=NOW, event_offset=offset)
+
     def test_public_only_and_no_authority(self):
         result = collect_public_observations(fixture(), now=NOW)
         self.assertEqual(result["public_repo_count"], 1)
