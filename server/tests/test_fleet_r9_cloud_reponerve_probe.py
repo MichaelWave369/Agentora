@@ -1,6 +1,8 @@
 """Adversarial cloud RepoNerve -> existing Agentora R9 queue probe tests."""
 from datetime import datetime, timezone
 import json
+import os
+import sqlite3
 from pathlib import Path
 import sys
 import tempfile
@@ -11,6 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import fleet_r9_cloud_reponerve_probe as probe
 import fleet_r9_mission_control as r9
+import fleet_r04_leases as leases
+from fleet_r9_cloud_state import VolumeState, VolumeHeld
+from app.services.fleet_stewards import StewardRegistry
 from app.services.fleet_stewards import StewardHeld
 
 NOW = datetime(2026, 11, 19, 20, 0, tzinfo=timezone.utc)
@@ -231,6 +236,144 @@ class ProbeTests(unittest.TestCase):
                          "a625e8ac34831420ab52f2372bf4ec9079258c4a")
         self.assertEqual(probe.REPO_ID, 1167870912)
         self.assertEqual(probe.REPO, "MichaelWave369/Agentora")
+
+    @staticmethod
+    def _seed_reponerve_schema(root):
+        with sqlite3.connect(str(root / "reponerve.sqlite3")) as db:
+            db.executescript("""
+                CREATE TABLE scans (id INTEGER PRIMARY KEY, owner TEXT);
+                CREATE TABLE repos (github_id INTEGER PRIMARY KEY, full_name TEXT);
+                CREATE TABLE events (
+                  id INTEGER PRIMARY KEY, scan_id INTEGER NOT NULL,
+                  github_id INTEGER NOT NULL, full_name TEXT NOT NULL,
+                  event_type TEXT NOT NULL);
+            """)
+            db.execute("INSERT INTO scans VALUES (12,?)", (probe.OWNER,))
+            db.execute("INSERT INTO repos VALUES (?,?)",
+                       (probe.REPO_ID, probe.REPO))
+            db.execute("INSERT INTO events VALUES (51,12,?,?,?)",
+                       (probe.REPO_ID, probe.REPO, "first_observed"))
+
+    @classmethod
+    def _seed_all_databases(cls, root):
+        cls._seed_reponerve_schema(root)
+        registry = StewardRegistry(root / "r9-stewards.sqlite3")
+        ledger = leases.LeaseLedger(root / "r9-leases.sqlite3")
+        r9.MissionControl(registry, ledger)
+
+    def test_durable_volume_seeds_and_restarts_same_three_databases(self):
+        with tempfile.TemporaryDirectory() as base:
+            mount = Path(base) / "private-state"
+            with VolumeState(mount) as volume:
+                self.assertTrue(volume.is_new)
+                self._seed_all_databases(volume.working)
+                volume.commit()
+                self.assertFalse(volume.is_new)
+            with VolumeState(mount) as recovered:
+                self.assertFalse(recovered.is_new)
+                self.assertEqual(
+                    sorted(p.name for p in recovered.working.glob("*.sqlite3")),
+                    sorted(("reponerve.sqlite3", "r9-stewards.sqlite3",
+                            "r9-leases.sqlite3")))
+                recovered.commit()
+            self.assertFalse((mount / ".r9-inflight-writer.json").exists())
+
+    def test_durable_volume_interrupted_active_writer_holds_on_restart(self):
+        with tempfile.TemporaryDirectory() as base:
+            mount = Path(base) / "private-state"
+            with VolumeState(mount) as seed:
+                self._seed_all_databases(seed.working)
+                seed.commit()
+            with VolumeState(mount):
+                pass  # Simulate a process crash before commit
+            with self.assertRaisesRegex(VolumeHeld, "UNFINISHED_WRITER"):
+                with VolumeState(mount):
+                    pass
+
+    def test_durable_volume_crashed_first_seed_never_resets(self):
+        with tempfile.TemporaryDirectory() as base:
+            mount = Path(base) / "private-state"
+            with VolumeState(mount):
+                pass  # Uncommitted initial seed stays available for forensics
+            with self.assertRaisesRegex(VolumeHeld, "ORPHANED_SEED"):
+                with VolumeState(mount):
+                    pass
+
+    def test_durable_volume_rejects_two_simultaneous_writers(self):
+        with tempfile.TemporaryDirectory() as base:
+            mount = Path(base) / "private-state"
+            with VolumeState(mount) as first:
+                with self.assertRaisesRegex(VolumeHeld, "WRITER_ACTIVE"):
+                    with VolumeState(mount):
+                        pass
+                self._seed_all_databases(first.working)
+                first.commit()
+
+    def test_durable_volume_corruption_holds_instead_of_reinitializing(self):
+        with tempfile.TemporaryDirectory() as base:
+            mount = Path(base) / "private-state"
+            with VolumeState(mount) as seed:
+                self._seed_all_databases(seed.working)
+                seed.commit()
+            (mount / "active" / "reponerve.sqlite3").write_bytes(b"not sqlite")
+            with self.assertRaisesRegex(VolumeHeld, "DB_UNREADABLE"):
+                with VolumeState(mount):
+                    pass
+
+    def test_durable_volume_rejects_untrusted_root_symlink(self):
+        with tempfile.TemporaryDirectory() as base:
+            mount = Path(base) / "private-state"
+            target = Path(base) / "other-dir"
+            target.mkdir()
+            mount.symlink_to(target, target_is_directory=True)
+            with self.assertRaisesRegex(VolumeHeld, "SYMLINK"):
+                VolumeState(mount)
+
+    def test_durable_known_event_replays_from_original_source_lineage(self):
+        item = observation()
+        with tempfile.TemporaryDirectory() as base:
+            mount = Path(base) / "private-state"
+            with VolumeState(mount) as seed:
+                self._seed_reponerve_schema(seed.working)
+                first = probe.qualify_observation(
+                    item, item["recent_events"][0], SHA,
+                    seed.working, now=NOW)
+                self.assertEqual(first["state"], "EPHEMERAL_ADMISSION_REPLAY_QUALIFIED")
+                seed.commit()
+            with VolumeState(mount) as recovered:
+                newer = observation()
+                newer["source_scan_id"] = 13
+                result = probe.recorded_durable_event(
+                    recovered.working, newer, newer["recent_events"][0])
+                self.assertEqual(result["state"], "DURABLE_REPLAY_VERIFIED")
+                self.assertEqual(result["mission_id"], first["mission_id"])
+                self.assertTrue(result["persisted_across_runs"])
+                with sqlite3.connect(
+                        str(recovered.working / "r9-leases.sqlite3")) as db:
+                    self.assertEqual(db.execute(
+                        "SELECT COUNT(*) FROM r9_missions").fetchone()[0], 1)
+                recovered.commit()
+
+    def test_durable_event_lineage_corruption_holds(self):
+        item = observation()
+        with tempfile.TemporaryDirectory() as base:
+            mount = Path(base) / "private-state"
+            with VolumeState(mount) as seed:
+                self._seed_reponerve_schema(seed.working)
+                probe.qualify_observation(
+                    item, item["recent_events"][0], SHA, seed.working, now=NOW)
+                seed.commit()
+            with VolumeState(mount) as recovered:
+                with sqlite3.connect(
+                        str(recovered.working / "reponerve.sqlite3")) as db:
+                    db.execute("UPDATE events SET scan_id=999 WHERE id=51")
+                with self.assertRaisesRegex(probe.ProbeHeld, "EVENT_HISTORY_CONFLICT"):
+                    probe.recorded_durable_event(
+                        recovered.working, item, item["recent_events"][0])
+                # Deliberately not committing the corrupted record.
+            with self.assertRaisesRegex(VolumeHeld, "UNFINISHED_WRITER"):
+                with VolumeState(mount):
+                    pass
 
     def test_replay_across_same_sqlite_db_must_hold_second_new_event(self):
         item = observation()
