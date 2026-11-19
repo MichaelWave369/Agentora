@@ -121,7 +121,7 @@ def validate(task, now=None):
     need(isinstance(paths, list) and 1 <= len(paths) <= 10 and
          all(safe_path(p) for p in paths) and len(set(paths)) == len(paths), "PATH_ALLOWLIST")
     policy = task["merge_policy"]
-    need(policy in ("docs", "reviewed-code", "publish-only"), "MERGE_POLICY")
+    need(policy in ("docs", "reviewed-code", "publish-only", "draft-review"), "MERGE_POLICY")
     need(all(is_doc(p) for p in paths) if policy == "docs" else
          all(p in LOW_RISK_UI for p in paths), "POLICY_PATH")
     for key, ceiling in (("max_files", 10), ("max_changed_lines", 100),
@@ -133,6 +133,10 @@ def validate(task, now=None):
     need(type(task["max_repairs"]) is int and 0 <= task["max_repairs"] <= 2 and
          isinstance(task["repairs"], list) and len(task["repairs"]) <= task["max_repairs"],
          "REPAIR_BUDGET")
+    if policy == "draft-review":
+        need(len(paths) == task["max_files"] == 1 and task["max_repairs"] == 0 and
+             task["max_changed_lines"] <= 40 and task["max_patch_bytes"] <= 8000 and
+             isinstance(task["phimada_request_sha256"], str), "DRAFT_REVIEW_SCOPE")
     need(isinstance(task["acceptance"], list) and 1 <= len(task["acceptance"]) <= 10 and
          all(isinstance(s, str) and 1 <= len(s) <= 500 for s in task["acceptance"]), "ACCEPTANCE")
     need(isinstance(task["human_scope"], str) and 1 <= len(task["human_scope"]) <= 2000, "HUMAN_SCOPE")

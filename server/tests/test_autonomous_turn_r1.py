@@ -152,7 +152,7 @@ class SyntheticGitHub:
             return {"object": {"sha": payload["sha"]}}
         if s.startswith("/pulls?state=all"): return [self.pr] if self.pr else []
         if s == "/pulls" and payload:
-            self.pr = {"number": 99, "state": "open", "draft": False, "merged": False,
+            self.pr = {"number": 99, "state": "open", "draft": payload.get("draft", False), "merged": False,
                 "merged_at": None, "merge_commit_sha": None, "changed_files": len(self.task["allowed_paths"]),
                 "base": {"ref": "main", "sha": SOURCE, "repo": self.repo},
                 "head": {"ref": payload["head"], "sha": self.branches[payload["head"]], "repo": self.repo},
@@ -190,6 +190,20 @@ class SyntheticGitHub:
 
     def log_tail(self, job_id):
         return self.logs
+
+
+def test_model_draft_runs_through_r1_publisher_but_never_calls_merge():
+    spec = task("code")
+    spec.update(merge_policy="draft-review", phimada_request_sha256="1"*64)
+    api = SyntheticGitHub(spec)
+    changes = value_for(spec)
+    checks = isolated(spec, changes)
+    opened = g.publish(api, spec, changes, checks, 11, CONTROL)
+    assert api.pr["draft"]
+    returned = g.finish(api, spec, opened, changes, checks, 11, CONTROL)
+    assert returned["state"] == "AUTOMATED_CHECKS_PASSED"
+    assert returned["merge_decision"] == "DRAFT_READY_FOR_HUMAN_REVIEW"
+    assert not any(path.endswith("/merge") for path, _, _ in api.calls)
 
 
 class AutonomousContractTests(unittest.TestCase):

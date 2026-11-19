@@ -87,7 +87,8 @@ boundary. A Docker container is not a hardened hostile-kernel proof.
 | Constrain | Validate single file and bounded diff | Refuse broad output |
 | Test | Build in R1's no-network Docker recipe | Local, credential-free result |
 | Receipt | Store immutable hashes and status for inspection | `eligible_for_merge=false` |
-| Publish/merge | **Not implemented in this pilot** | None |
+| Export reviewed draft | Freeze the precise source and tested model patch into a new R1 task | Requires the separate GitHub owner review |
+| Hosted draft | R1 retests the exact bytes and the scoped App opens a draft | Human code review and merge remain separate |
 
 The target allowlist is reused from R2: Nav.tsx or TemplateGallery.tsx.
 No scripts, workflow files, dependencies, configuration, authentication,
@@ -109,17 +110,32 @@ unit tests. It does **not** connect to your actual Ollama instance or
 field-qualify a generated patch. CI separately runs the actual normal Agentora
 backend/frontend checks, not the R3-generated candidate.
 
-## Next rung after local field proof
+## Send one reviewed candidate to the existing R1 draft lane
 
-1. Verify an actual local Ollama candidate and capture a redacted receipt.
-2. Add an independently verifying intake of the proposed artifact to a
-   **separate draft-PR** publisher. The authenticated owner must approve
-   source SHA, exact patch SHA, permitted path and test plan before a write.
-3. Have the trusted publisher reproduce the exact candidate bytes, check full
-   Git tree and compare live required CI on the resulting immutable commit.
-4. Keep R2 exact-head independent collaborator review and trusted merge policy.
-   No model-originated label, self-review, API token or branch-protection bypass.
-5. Qualify the full loop with a hosted, independently observed real PR before
-   claiming "AI writes and merges code autonomously."
+The local model receives only the frozen objective, acceptance criteria and
+one approved component. The Docker build uses a tracked Git archive. Ignored
+files such as local `.env` files and Git credentials are outside the build.
+
+After a real local Ollama run and Docker build, read the **whole diff** in
+`proposal-receipt.json`. The spec, source checkout and unmodified workspace
+must still match. Export using the receipt's full `patch_sha256`:
+
+```powershell
+$draft = Join-Path $env:TEMP 'agentora-r1-draft-task.json'
+python scripts/autonomous_r3_local_patch.py export-r1-draft $spec --source . --workspace '<workspace-from-run>' --approve-patch-digest '<patch_sha256>' --output $draft
+```
+
+Inspect the entire exported task. Use the existing [R1 intake and protected
+environment review](AUTONOMOUS_TURN_R1.md), with that JSON as data. Keep its
+contents appropriate for a public repository. The digest binds the exact
+one-file replacement and local receipt, the isolated R1 worker retests it,
+and the R1 publisher creates a draft PR. A draft can carry CI evidence
+while it waits for a separate human code review and the normal repository
+merge process. R1's draft-review policy has no merge action and no retries.
+The R9 docs queue does not submit model drafts.
+
+This handoff still needs an actual Ollama model, Docker and a hosted draft
+qualification. CI tests the transport, path/digest fences and publisher
+behavior with fixtures.
 
 **Ledger Above Ego: proposal ≠ verification ≠ authority ≠ merge.**
