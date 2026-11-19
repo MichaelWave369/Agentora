@@ -58,6 +58,7 @@ class FakeAPI:
         self.writes = []
         self.fail_dispatch = False
         self.fail_fence = False
+        self.fail_link = False
         self.full_comments = False
         self.detail_response = False
         self.token = "fake-token"
@@ -73,10 +74,11 @@ class FakeAPI:
                 return [{"body": "unrelated", "user": {"id": 1}}] * 100
             return self.comments.get(num, [])
         if path.endswith("/comments") and payload is not None:
-            if self.fail_fence:
-                raise hosted.Held("FENCE_WRITE_UNCERTAIN")
+            is_link = payload["body"].startswith(hosted.RUN_LINK_PREFIX)
+            if self.fail_fence or (is_link and self.fail_link):
+                raise hosted.Held("LINK_WRITE_UNCERTAIN" if is_link else "FENCE_WRITE_UNCERTAIN")
             num = int(path.split("/")[2])
-            self.writes.append(("fence", num))
+            self.writes.append(("link" if is_link else "fence", num))
             self.comments.setdefault(num, []).append({
                 "id": 99, "body": payload["body"],
                 "user": {"id": hosted.BOT_ID, "login": "github-actions[bot]"},
@@ -162,7 +164,20 @@ class HostedDispatchTests(unittest.TestCase):
         result = hosted.dispatch_one(client, now=NOW, preflight=good_preflight)
         self.assertEqual(result["state"], "FENCED_DISPATCH_ACCEPTED_RUN_IDENTIFIED")
         self.assertEqual(result["workflow_run_id"], 12345)
-        self.assertTrue(client.writes[-1][1]["return_run_details"])
+        self.assertTrue(client.writes[-2][1]["return_run_details"])
+        self.assertEqual(client.writes[-1][0], "link")
+        self.assertIn("R1 run ID: 12345", client.comments[123][-1]["body"])
+        self.assertEqual(hosted.dispatch_one(client, now=NOW,
+                                             preflight=good_preflight)["state"],
+                         "NO_ELIGIBLE_UNFENCED_TASK")
+
+    def test_lost_run_link_write_still_preserves_original_one_shot_fence(self):
+        client = FakeAPI([issue()])
+        client.detail_response = True
+        client.fail_link = True
+        with self.assertRaisesRegex(hosted.Held, "LINK_WRITE_UNCERTAIN"):
+            hosted.dispatch_one(client, now=NOW, preflight=good_preflight)
+        self.assertEqual([w[0] for w in client.writes], ["fence", "dispatch"])
         self.assertEqual(hosted.dispatch_one(client, now=NOW,
                                              preflight=good_preflight)["state"],
                          "NO_ELIGIBLE_UNFENCED_TASK")
