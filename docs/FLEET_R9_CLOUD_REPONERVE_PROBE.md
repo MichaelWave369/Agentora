@@ -11,10 +11,16 @@ is a manually dispatched, **contents-read-only**, serialized GitHub Actions
 workflow. It checks out Agentora's protected `main` and a pinned reviewable
 public PhiRepoNerve revision, `a625e8ac34831420ab52f2372bf4ec9079258c4a`.
 
-1. The real RepoNerve scanner runs with **no GitHub credentials**. It uses
-   GitHub's public repository inventory endpoint, performs a complete scan,
-   and records a temporary local RepoNerve SQLite snapshot. It cannot read
-   private owner-affiliated repositories or use the Agentora Actions token.
+1. The real RepoNerve scanner uses GitHub's **public owner inventory**
+   endpoint, `GET /users/MichaelWave369/repos`. The original anonymous scan
+   was blocked in a hosted runner (the first log hid the HTTP error). The
+   scoped contents-read GitHub Actions token now authenticates **only this
+   fixed public endpoint**, through a destination- and query-validating opener.
+   RepoNerve itself is still constructed with `token=""`, preserving its
+   public inventory selection and refusing the private `/user/repos` route.
+   The authorization header is nonredirectable; credentials are neither
+   printed nor included in result artifacts. Public inventory is collected
+   in a temporary local RepoNerve SQLite snapshot.
 2. Agentora's existing `collect_public_observations` validates the complete
    public inventory plus bounded, paginated events from RepoNerve's existing
    read-only local data interface. The Python adapter accepts only the fixed
@@ -49,8 +55,10 @@ source identity, or R9 admission is ambiguous, it fails closed.
 - **No effect privileges.** No Actions write, issues write, PR permissions,
   owner approvals, worker dispatch, merge or deployment. The held intake
   explicitly denies execution and head revalidation.
-- The public GitHub API can rate-limit anonymous inventory scans. A
-  rate-limit error means HOLD; no fallback to private scanning or skipped pages.
+- GitHub's public inventory API can still rate-limit or fail authenticated
+  requests. The diagnostic reports only an allowlisted HTTP status category
+  or a transport HOLD, never API response bodies or token material. No
+  fallback to private enumeration, skipped pages or silent retries.
 
 ## Next engineering step
 
