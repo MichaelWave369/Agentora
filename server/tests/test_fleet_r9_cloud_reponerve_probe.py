@@ -159,14 +159,15 @@ class ProbeTests(unittest.TestCase):
 
     def test_replay_across_same_sqlite_db_must_hold_second_new_event(self):
         item = observation()
+        next_event = dict(item["recent_events"][0], id=52)
+        item["recent_events"].append(next_event)
         with tempfile.TemporaryDirectory() as root:
             probe.qualify_observation(item, item["recent_events"][0], SHA,
                                       root, now=NOW)
-            changed = observation(event_id=52)
             with self.assertRaisesRegex(r9.MissionHeld,
                                         "REPOSITORY_HAS_UNRESOLVED_MISSION"):
-                probe.qualify_observation(changed, changed["recent_events"][0],
-                                          SHA, root, now=NOW)
+                probe.qualify_observation(item, next_event, SHA,
+                                          root, now=NOW)
 
 
 if __name__ == "__main__":
