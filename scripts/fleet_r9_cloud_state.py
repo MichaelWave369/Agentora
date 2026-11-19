@@ -21,6 +21,12 @@ OWNER = "MichaelWave369"
 REPO = "MichaelWave369/Agentora"
 REPO_ID = 1167870912
 DB_NAMES = ("reponerve.sqlite3", "r9-stewards.sqlite3", "r9-leases.sqlite3")
+DB_TABLES = {
+    "reponerve.sqlite3": {"scans", "repos", "events"},
+    "r9-stewards.sqlite3": {"source_state", "stewards", "rotation_turns"},
+    "r9-leases.sqlite3": {"reservations", "lease_events", "r9_missions",
+                          "r10_event_links", "r10_r1_turns"},
+}
 MARKER = ".r9-state-manifest.json"
 LOCK = ".r9-single-writer.lock"
 INFLIGHT = ".r9-inflight-writer.json"
@@ -51,7 +57,11 @@ def _integrity(dbpath):
                 "file:" + quote(str(dbpath), safe="/") + "?mode=ro",
                 uri=True, timeout=3)) as connection:
             result = connection.execute("PRAGMA integrity_check").fetchall()
+            tables = {r[0] for r in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'")}
         need(result == [("ok",)], "R9_VOLUME_DB_CORRUPT")
+        need(DB_TABLES[dbpath.name].issubset(tables),
+             "R9_VOLUME_SCHEMA_MISSING")
     except sqlite3.DatabaseError:
         raise VolumeHeld("R9_VOLUME_DB_UNREADABLE") from None
 
