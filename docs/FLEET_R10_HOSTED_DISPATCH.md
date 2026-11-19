@@ -90,6 +90,15 @@ user PAT, or desktop process is required by this transport pilot.
 - Expired, changed-source, malformed, private or unauthorized tasks
   cannot dispatch. The source, accepted task bytes, rules and
   protected review are checked again by Autonomous R1.
+- R1's existing GitHub run-identity code originally accepted only
+  owner-triggered runs. The pilot separately recognizes the fixed
+  `github-actions[bot]` numeric identity **only** for a new,
+  first-attempt `workflow_dispatch` against trusted `main`.
+  A bot-authored issue, mixed actor, replayed run or wrong workflow is
+  rejected. This does **not** make the bot an owner or approve any task:
+  the protected environment still requires the real owner to submit
+  `APPROVE <task-sha256>`, independently checked by the trusted
+  publisher and merge gate.
 - `GITHUB_TOKEN` writes do not ordinarily trigger new workflows,
   but GitHub documents an exception for explicit
   `workflow_dispatch` and `repository_dispatch` calls. This pilot
