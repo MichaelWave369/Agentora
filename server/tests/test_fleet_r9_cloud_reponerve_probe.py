@@ -210,7 +210,10 @@ class ProbeTests(unittest.TestCase):
             with self.subTest(token=token), self.assertRaises(
                 probe.ProbeHeld) as held:
                 probe.authenticated_public_opener(token)
-            self.assertNotIn(str(token), str(held.exception))
+            if token:
+                self.assertNotIn(str(token), str(held.exception))
+            self.assertEqual(str(held.exception),
+                             "REPONERVE_READ_TOKEN_MISSING_OR_UNSAFE")
         for source, reason in (
             ("GitHub returned HTTP 403", "REPONERVE_PUBLIC_HTTP_403"),
             ("GitHub returned HTTP 429", "REPONERVE_PUBLIC_HTTP_429"),
