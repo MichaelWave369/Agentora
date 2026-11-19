@@ -25,6 +25,7 @@ OWNER_ID = 247459237
 BOT_ID = 41898282
 TITLE_PREFIX = "Fleet R10 docs request:"
 FENCE_PREFIX = "<!-- agentora-r10-hosted-dispatch-v1 issue="
+RUN_LINK_PREFIX = "<!-- agentora-r10-hosted-run-v1 issue="
 API_ROOT = "https://api.github.com/repos/" + REPO
 DISPATCH = "/actions/workflows/autonomous-turn-r1.yml/dispatches"
 MAX_PAGES = 5
@@ -187,9 +188,20 @@ def dispatch_one(client, *, dry_run=False, now=None, preflight=preflight_task):
                  response.get("run_url") ==
                  f"{API_ROOT}/actions/runs/{run_id}",
                  "R10_HOSTED_RUN_IDENTITY_INVALID")
+            # The original fence remains the one-shot authority against replay.
+            # This second bot-authored link is a durable INDEX, never approval.
+            # If the link response is lost, do not retry the original dispatch.
+            link = (RUN_LINK_PREFIX + str(issue_no) + " -->\n"
+                    "Task SHA-256: " + digest + "\n"
+                    "R1 run ID: " + str(run_id) + "\n"
+                    "Run URL: " + response["html_url"])
+            linked = client.request(f"/issues/{issue_no}/comments",
+                                    payload={"body": link})
+            need(isinstance(linked, dict) and type(linked.get("id")) is int
+                 and linked["id"] > 0, "R10_HOSTED_RUN_LINK_UNCONFIRMED")
             return {"state": "FENCED_DISPATCH_ACCEPTED_RUN_IDENTIFIED",
                     "issue": issue_no, "task_sha256": digest,
-                    "workflow_run_id": run_id,
+                    "workflow_run_id": run_id, "run_link_comment_id": linked["id"],
                     "run_url": response["html_url"], "owner_review_required": True}
         need(response.get("status") == 204, "R10_HOSTED_DISPATCH_UNCONFIRMED")
         return {"state": "FENCED_DISPATCH_ACCEPTED_RUN_UNCONFIRMED",
