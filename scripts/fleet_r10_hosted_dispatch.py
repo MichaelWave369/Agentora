@@ -57,13 +57,13 @@ class GitHubAPI:
                       headers={"Authorization": "Bearer " + self.token,
                                "Accept": "application/vnd.github+json",
                                "Content-Type": "application/json",
-                               "X-GitHub-Api-Version": "2022-11-28",
+                               "X-GitHub-Api-Version": "2026-03-10",
                                "User-Agent": "Agentora-R10-Hosted"})
         try:
             with build_opener(github.NoRedirect()).open(req, timeout=20) as response:
                 if response.status == 204:
                     return {"status": 204}
-                expected = 200 if data is None else 201
+                expected = 200 if data is None or path == DISPATCH else 201
                 need(response.status == expected, "R10_HOSTED_GITHUB_HTTP_UNEXPECTED")
                 raw = response.read(512000 + 1)
                 need(len(raw) <= 512000, "R10_HOSTED_GITHUB_RESPONSE_TOO_LARGE")
@@ -177,9 +177,20 @@ def dispatch_one(client, *, dry_run=False, now=None, preflight=preflight_task):
         need(isinstance(result, dict) and type(result.get("id")) is int,
              "R10_HOSTED_FENCE_CONFIRMATION_MISSING")
         # From here on, NO automatic retry of the POST is permitted.
-        payload = {"ref": "main",
+        payload = {"ref": "main", "return_run_details": True,
                    "inputs": {"task_json": contract.canonical(task).decode("utf-8")}}
         response = client.request(DISPATCH, payload=payload)
+        run_id = response.get("workflow_run_id")
+        if type(run_id) is int and run_id > 0:
+            need(response.get("html_url") ==
+                 f"https://github.com/{REPO}/actions/runs/{run_id}" and
+                 response.get("run_url") ==
+                 f"{API_ROOT}/actions/runs/{run_id}",
+                 "R10_HOSTED_RUN_IDENTITY_INVALID")
+            return {"state": "FENCED_DISPATCH_ACCEPTED_RUN_IDENTIFIED",
+                    "issue": issue_no, "task_sha256": digest,
+                    "workflow_run_id": run_id,
+                    "run_url": response["html_url"], "owner_review_required": True}
         need(response.get("status") == 204, "R10_HOSTED_DISPATCH_UNCONFIRMED")
         return {"state": "FENCED_DISPATCH_ACCEPTED_RUN_UNCONFIRMED",
                 "issue": issue_no, "task_sha256": digest,
