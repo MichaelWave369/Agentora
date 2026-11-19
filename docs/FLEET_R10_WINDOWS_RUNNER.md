@@ -63,7 +63,9 @@ via **Windows DPAPI user-bound CLIXML** into:
 
 It stores the trusted Agentora checkout path, Python executable path,
 snapshot path, and **exact Git HEAD SHA** in runner.json. The scheduled task
-argument contains only the local .ps1 path and Mode Run, never a token.
+runs a copy of the reviewed PowerShell launcher from the user's AppData folder,
+not a possibly changed script inside the Git checkout. Its command-line
+argument contains only that local .ps1 path and Mode Run, never a token.
 
 It creates Phi369-Agentora-R9R1, configured to start **at user logon**,
 without elevation, ignoring duplicate task starts and restarting on limited
