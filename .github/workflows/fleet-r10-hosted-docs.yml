@@ -1,0 +1,42 @@
+name: Fleet R10 Hosted Docs Dispatch (qualification pilot)
+
+# This workflow reuses Autonomous R1; it never approves an owner review.
+# Scheduled runs remain dry-run until the owner enables the repository variable.
+on:
+  schedule:
+    - cron: '13,43 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+  checks: read
+  pull-requests: read
+
+concurrency:
+  group: agentora-r10-hosted-docs-dispatch
+  cancel-in-progress: false
+
+jobs:
+  hosted-docs:
+    if: github.repository == 'MichaelWave369/Agentora' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Scan owner-authored public R10 docs requests
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          R10_HOSTED_ENABLED: ${{ vars.AGENTORA_R10_HOSTED_ENABLED }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$R10_HOSTED_ENABLED" = "true" ]; then
+            python3 scripts/fleet_r10_hosted_dispatch.py
+          else
+            echo 'R10 hosted dispatch disabled by default; observational probe only.'
+            python3 scripts/fleet_r10_hosted_dispatch.py --dry-run
+          fi
