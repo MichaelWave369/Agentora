@@ -6,6 +6,21 @@ event admits one mission. GitHub's original protected-environment review is
 the authorization for each turn. The local queue, its replay fence and issue
 intake carry no merge authority.
 
+## Hosted without installing Agentora
+
+Owners who do not run local Agentora or RepoNerve on their PC can inspect the
+[GitHub-hosted docs dispatch pilot](FLEET_R10_HOSTED_DISPATCH.md). It schedules
+one bounded, owner-authored public docs task at a time through the **existing
+Autonomous R1** approval and merge workflow, using a GitHub issue fence and
+GitHub's built-in Actions credentials. No local software or personal token is
+needed for this narrow hosted transport.
+
+**This is not the full R9 migration:** the canonical SQLite queue, fleet
+mission scheduling, RepoNerve event ingestion and product release workflows
+have **not** yet been ported to durable hosted storage. The local procedures
+below continue to describe the existing R9 lane, not a required installation
+for owners using the hosted pilot.
+
 ## One-time setup
 
 1. Have the queue and cockpit PRs reviewed and merged through normal GitHub

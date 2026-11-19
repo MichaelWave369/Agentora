@@ -131,13 +131,24 @@ def main_head(api):
 def run_identity(run, task, run_id, control_sha):
     need(type(run_id) is int and run_id > 0 and HEX40.fullmatch(control_sha) and
          control_sha == task["source_sha"], "RUN_IDENTITY")
+    # The owner may dispatch R1 directly, as before. A fixed GitHub Actions
+    # controller is also eligible to REQUEST a run, but only for an explicit
+    # workflow_dispatch. This is never authority to execute or merge: the
+    # original protected environment still requires the human owner's exact
+    # APPROVE <task-sha256> review, read independently by every privileged stage.
+    owner_actor = all(run.get(k, {}).get("id") == OWNER_ID and
+                      run.get(k, {}).get("type") == "User"
+                      for k in ("actor", "triggering_actor"))
+    hosted_actor = run.get("event") == "workflow_dispatch" and all(
+        run.get(k, {}).get("id") == 41898282 and
+        run.get(k, {}).get("type") == "Bot" and
+        run.get(k, {}).get("login") == "github-actions[bot]"
+        for k in ("actor", "triggering_actor"))
     need(run.get("id") == run_id and run.get("repository", {}).get("id") == REPO_ID and
          run.get("head_sha") == control_sha and run.get("head_branch") == "main" and
          run.get("event") in ("workflow_dispatch", "issues") and run.get("run_attempt") == 1 and
          run.get("path", "").split("@")[0] == WORKFLOW and
-         all(run.get(k, {}).get("id") == OWNER_ID and
-             run.get(k, {}).get("type") == "User" for k in ("actor", "triggering_actor")),
-         "RUN_NOT_OWNER_DISPATCHED_TRUSTED_MAIN")
+         (owner_actor or hosted_actor), "RUN_NOT_OWNER_DISPATCHED_TRUSTED_MAIN")
 
 
 def owner_environment(api):
