@@ -7,7 +7,7 @@ replay inside one runner for cross-run durable state.
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -259,7 +259,7 @@ def recorded_durable_event(root, observation, event):
     Existing R9 event IDs are bound to the ORIGINAL RepoNerve scan lineage.
     A later scan or newer checked-out source SHA must not rewrite that record.
     """
-    with sqlite3.connect(str(root / "r9-leases.sqlite3")) as db:
+    with closing(sqlite3.connect(str(root / "r9-leases.sqlite3"))) as db:
         db.row_factory = sqlite3.Row
         row = db.execute("""SELECT e.mission_id,e.github_id,e.source_scan_id,
                                     e.event_type,e.source_payload_digest,
@@ -271,7 +271,7 @@ def recorded_durable_event(root, observation, event):
     if row is None:
         return None
     old = dict(row)
-    with sqlite3.connect(str(root / "reponerve.sqlite3")) as db:
+    with closing(sqlite3.connect(str(root / "reponerve.sqlite3"))) as db:
         db.row_factory = sqlite3.Row
         historic = db.execute("""SELECT scan_id,github_id,full_name,event_type
                                  FROM events WHERE id=?""",
@@ -307,6 +307,20 @@ def recorded_durable_event(root, observation, event):
             "dispatch_authorized": False,
             "merge_authorized": False,
             "product_verified_complete": False}
+
+
+def unresolved_durable_mission(root):
+    """Return only the existing R9 queue blocker, never create a new lane."""
+    with closing(sqlite3.connect(str(root / "r9-leases.sqlite3"))) as db:
+        db.row_factory = sqlite3.Row
+        row = db.execute("""SELECT mission_id,state FROM r9_missions
+                            WHERE github_id=?
+                            AND state IN (
+                             'QUEUED','CLAIMING_IMPLEMENT','ASSIGNED_IMPLEMENT',
+                             'HANDOFF_IN_PROGRESS','QA_QUEUED','CLAIMING_QA',
+                             'ASSIGNED_QA','QA_HELD','HELD_RECONCILE')""",
+                         (REPO_ID,)).fetchone()
+    return dict(row) if row is not None else None
 
 
 def cloud_probe(nerve_path, *, expected_action_sha, expected_repo_id,
@@ -371,6 +385,19 @@ def cloud_probe(nerve_path, *, expected_action_sha, expected_repo_id,
                     observation, now=now)
                 volume.commit()
                 return historical
+        if volume is not None and not volume.is_new:
+            blocker = unresolved_durable_mission(root)
+            if blocker is not None:
+                StewardRegistry(root / "r9-stewards.sqlite3").ingest(
+                    observation, now=now)
+                volume.commit()
+                return {"schema": SCHEMA, "state": "HELD_UNRESOLVED_R9_MISSION",
+                        "repo": REPO, "repository_id": REPO_ID,
+                        "event_id": event["id"], "source_scan_id": observation["source_scan_id"],
+                        "blocked_by_mission_id": blocker["mission_id"],
+                        "persisted_across_runs": True,
+                        "dispatch_authorized": False, "merge_authorized": False,
+                        "product_verified_complete": False}
         result = qualify_observation(observation, event, expected_action_sha,
                                      root, now=now)
         if volume is not None:
