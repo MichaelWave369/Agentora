@@ -223,6 +223,26 @@ def qualify_observation(observation, event, source_sha, root, *, now=None):
     }
 
 
+def require_mounted_volume(state_dir):
+    """Never label a throwaway runner directory as durable cloud state."""
+    mount_raw = os.getenv("AGENTORA_R9_VOLUME_MOUNT")
+    need(type(mount_raw) is str and mount_raw.startswith("/") and
+         os.path.ismount(mount_raw) and
+         os.getenv("AGENTORA_R9_DURABLE_ENABLED") == "true",
+         "R9_DURABLE_MOUNT_NOT_QUALIFIED")
+    mount = Path(mount_raw)
+    destination = Path(state_dir)
+    need(destination.is_absolute() and not destination.is_symlink() and
+         ".." not in destination.parts, "R9_DURABLE_STATE_PATH_INVALID")
+    try:
+        relative = destination.relative_to(mount)
+    except ValueError:
+        raise ProbeHeld("R9_DURABLE_STATE_OUTSIDE_MOUNT") from None
+    need(relative.parts and
+         len(relative.parts) <= 3,
+         "R9_DURABLE_STATE_PATH_INVALID")
+
+
 @contextmanager
 def state_root(state_dir):
     if state_dir is None:
@@ -291,6 +311,8 @@ def recorded_durable_event(root, observation, event):
 
 def cloud_probe(nerve_path, *, expected_action_sha, expected_repo_id,
                 get_now=None, state_dir=None):
+    if state_dir is not None:
+        require_mounted_volume(state_dir)
     need(expected_repo_id == str(REPO_ID), "ACTIONS_REPO_IDENTITY_INVALID")
     need(type(expected_action_sha) is str and
          GIT_SHA.fullmatch(expected_action_sha) and
