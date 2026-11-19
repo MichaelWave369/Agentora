@@ -11,8 +11,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'R9_R1_WINDOWS_ONLY' }
 $taskName = 'Phi369-Agentora-R9R1'
-$repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$repo = if ($Mode -eq 'Install') { (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path } else { '' }
 $stateDir = Join-Path $env:LOCALAPPDATA 'Phi369\AgentoraR9R1'
+$installedFile = Join-Path $stateDir 'Invoke-R9R1Watcher.ps1'
 $configFile = Join-Path $stateDir 'runner.json'
 $secretFile = Join-Path $stateDir 'credentials.clixml'
 
@@ -70,9 +71,11 @@ switch ($Mode) {
         [pscustomobject]@{ Dispatch = $dispatch; Read = $reader } | Export-Clixml -LiteralPath $secretFile
         [pscustomobject]@{ schema = 1; repo = $repo; sha = $head; python = $PythonExe; snapshot = $SnapshotPath } | ConvertTo-Json | Set-Content -LiteralPath $configFile -Encoding UTF8
 
-        if ($PSCommandPath.Contains('"')) { throw 'R9_R1_SCRIPT_PATH_INVALID' }
+        # Task Scheduler runs this reviewed local copy, not a mutable source checkout.
+        if ($installedFile.Contains('"')) { throw 'R9_R1_SCRIPT_PATH_INVALID' }
+        Copy-Item -LiteralPath $PSCommandPath -Destination $installedFile -Force
         $powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-        $taskArgs = '-NoLogo -NoProfile -NonInteractive -File "' + $PSCommandPath + '" -Mode Run'
+        $taskArgs = '-NoLogo -NoProfile -NonInteractive -File "' + $installedFile + '" -Mode Run'
         $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
         $action = New-ScheduledTaskAction -Execute $powershell -Argument $taskArgs -WorkingDirectory $repo
         $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity
@@ -86,6 +89,7 @@ switch ($Mode) {
     }
     { $_ -eq 'Run' -or $_ -eq 'Probe' } {
         $config = Read-Config
+        $repo = $config.repo
         Test-TrustedCheckout $config
         if (-not (Test-Path -LiteralPath $secretFile -PathType Leaf)) { throw 'R9_R1_CREDENTIALS_MISSING' }
         $secrets = Import-Clixml -LiteralPath $secretFile
@@ -129,6 +133,7 @@ switch ($Mode) {
         }
         Remove-Item -LiteralPath $secretFile -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $configFile -ErrorAction SilentlyContinue
-        Write-Host 'REMOVED scheduled task and local credentials'
+        Remove-Item -LiteralPath $installedFile -ErrorAction SilentlyContinue
+        Write-Host 'REMOVED scheduled task, installed launcher copy and local credentials'
     }
 }
