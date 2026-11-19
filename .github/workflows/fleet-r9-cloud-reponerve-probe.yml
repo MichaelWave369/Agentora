@@ -1,0 +1,42 @@
+name: Fleet R9 Cloud RepoNerve Public Intake Probe
+
+# Read-only qualification of existing R9 enqueue_observed on a cloud runner.
+# This DOES NOT persist SQLite state across runs or authorize worker dispatch.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agentora-r9-cloud-intake-probe
+  cancel-in-progress: false
+
+jobs:
+  public-r9-intake:
+    if: github.repository == 'MichaelWave369/Agentora' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout trusted Agentora main
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout pinned PhiRepoNerve public observer
+        uses: actions/checkout@v4
+        with:
+          repository: MichaelWave369/PhiRepoNerve
+          ref: a625e8ac34831420ab52f2372bf4ec9079258c4a
+          path: .cloud-reponerve
+          persist-credentials: false
+      - name: Qualify public-only observation to existing R9 queue
+        shell: bash
+        env:
+          # Force PhiRepoNerve's /users/{owner}/repos public-only path,
+          # NEVER a private inventory via /user/repos.
+          GITHUB_TOKEN: ''
+          GH_TOKEN: ''
+        run: |
+          set -euo pipefail
+          PYTHONPATH=scripts:server python3 scripts/fleet_r9_cloud_reponerve_probe.py \
+            --reponerve-path .cloud-reponerve
