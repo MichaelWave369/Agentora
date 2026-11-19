@@ -60,9 +60,13 @@ reconciles the full R9 ledger or independently certifies merges.
    `autonomous-turn-owner` environment. R1 independently runs its
    own worker, tests, publisher, observer and merge gate. The hosted
    dispatcher cannot perform the environment approval.
-8. Independently verify the resulting PR, both push and PR CI events,
-   actual merge SHA and result artifact. The dispatcher's
-   `FENCED_DISPATCH_ACCEPTED_RUN_UNCONFIRMED` output does NOT verify
+8. GitHub's 2026 dispatch API can return the exact new
+   `workflow_run_id` and `html_url` when requested. The dispatcher
+   checks that returned identity and reports it when available; a
+   legacy 204 response remains `FENCED_DISPATCH_ACCEPTED_RUN_UNCONFIRMED`.
+   In either case, independently verify the actual run's frozen task,
+   the resulting PR, both push and PR CI events, actual merge SHA and
+   result artifact. A successful dispatch response does NOT verify
    a run or merge. Reconciliation to the canonical R9 queue remains
    additional work.
 
