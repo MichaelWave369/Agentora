@@ -18,7 +18,7 @@ from app.integrations.mappers import (
     normalize_job_status,
     outcome_fingerprint,
 )
-from app.integrations.phios_client import IntegrationClientError, PhiOSClient
+from app.integrations.phios_client import IntegrationClientError, IntegrationDeliveryUncertain, PhiOSClient
 from app.integrations.schemas import (
     AgentExecutionOutcome,
     BranchPortfolioSummary,
@@ -37,6 +37,7 @@ from app.models import AlertEvent, IntegrationRun, MissionPatternMemory, Operato
 
 ACTIVE_STATUSES = {'preparing_launch', 'launched', 'running', 'queued'}
 TERMINAL_STATUSES = {'completed', 'failed', 'cancelled', 'error'}
+WRITEBACK_HELD_STATUSES = frozenset({'dispatching', 'needs_reconciliation'})
 IMPORTANT_EVENT_TYPES = {'launched', 'terminal-state-reached', 'writeback-succeeded', 'writeback-failed', 'watched', 'unwatched'}
 BRANCH_STRATEGY_PRESETS = {
     'conservative_fix': {'objective_suffix': 'prioritize safety and minimal scope drift', 'fork_reason': 'conservative risk-reduced fix path', 'provenance_note': 'Preset conservative_fix applied for low-risk stabilization.'},
@@ -320,7 +321,7 @@ class IntegrationOrchestrator:
             score += 15
         if row.writeback_status == 'written':
             score += settings.agentora_missions_score_writeback_success_bonus
-        if row.writeback_status == 'failed':
+        if row.writeback_status in {'failed', 'needs_reconciliation'}:
             score -= settings.agentora_missions_score_failure_penalty // 2
         score = max(0, min(100, score))
         row.mission_score = score
@@ -339,6 +340,8 @@ class IntegrationOrchestrator:
             risk_points += 2
         if row.writeback_status == 'failed':
             risk_points += 1
+        elif row.writeback_status == 'needs_reconciliation':
+            risk_points += 2
         if row.refresh_count >= 8 and row.status not in TERMINAL_STATUSES:
             risk_points += 1
         if row.confidence_level == 'low':
@@ -547,6 +550,10 @@ class IntegrationOrchestrator:
             return
         if not is_terminal_or_milestone(outcome) or not is_meaningful_outcome(outcome):
             return
+        # A prior request may have reached PhiOS. Time-based retries cannot
+        # resolve ambiguous delivery and risk adding duplicate memory.
+        if row.writeback_status in WRITEBACK_HELD_STATUSES:
+            return
         now = datetime.utcnow()
         if row.last_writeback_attempt_at and now - row.last_writeback_attempt_at < timedelta(seconds=settings.agentora_missions_writeback_debounce_seconds):
             self._log_event('writeback-skipped-debounce', run_id=row.id, status=row.status)
@@ -560,34 +567,54 @@ class IntegrationOrchestrator:
             pass
 
     def _perform_writeback(self, row: IntegrationRun, outcome: AgentExecutionOutcome, operator_notes: str, tags: list[str] | None) -> dict:
+        # Fail closed across watcher, manual API, and MCP writeback callers.
+        # A request left in "dispatching" by a process crash is also held.
+        if row.writeback_status in WRITEBACK_HELD_STATUSES:
+            raise IntegrationClientError(
+                f'PhiOS writeback {row.writeback_status}: verify remote delivery and reconcile before retrying'
+            )
+        outcome_hash = outcome_fingerprint(outcome)
+        if row.writeback_status == 'written' and row.last_writeback_hash == outcome_hash:
+            self._log_event('writeback-skipped-duplicate-hash', run_id=row.id, status=row.status)
+            return {'ok': True, 'skipped': True, 'reason': 'already-written', 'result': {'status': 'already-written'}}
+
         payload = map_outcome_to_writeback_payload(session_id=row.phios_session_id, task_id=row.agentception_job_id or f'run-{row.id}', repo=row.repo, objective=row.objective, outcome=outcome, tags=tags, operator_notes=operator_notes)
         row.last_writeback_attempt_at = datetime.utcnow()
+        # Persist the in-flight state before contacting PhiOS: an interrupted
+        # process must not silently make the same write eligible for retry.
+        row.writeback_status = 'dispatching'
         self.session.add(row)
         self.session.commit()
         self._log_event('writeback-attempted', run_id=row.id, status=row.status)
         try:
             result = self.phios.write_mission_result(payload)
-            row.writeback_status = 'written'
-            row.writeback_at = datetime.utcnow()
-            row.writeback_error = ''
-            row.last_writeback_hash = outcome_fingerprint(outcome)
-            self._evaluate_run(row, outcome)
-            self._persist_snapshot(row)
-            self.session.add(row)
-            self.session.commit()
-            self._log_event('writeback-succeeded', run_id=row.id, status=row.status)
-            return {'ok': True, 'result': result}
         except Exception as exc:
-            row.writeback_status = 'failed'
+            # Unexpected client exceptions are also conservatively ambiguous.
+            uncertain = isinstance(exc, IntegrationDeliveryUncertain) or not isinstance(exc, IntegrationClientError)
+            row.writeback_status = 'needs_reconciliation' if uncertain else 'failed'
             row.writeback_at = datetime.utcnow()
             row.writeback_error = str(exc)
             self._evaluate_run(row, outcome)
             self._persist_snapshot(row)
             self.session.add(row)
             self.session.commit()
-            self._log_event('writeback-failed', run_id=row.id, status=row.status, detail={'error': str(exc)})
-            self._maybe_send_alert(row, 'writeback_failed', 'high', {'error': str(exc)})
+            event = 'writeback-needs-reconciliation' if uncertain else 'writeback-failed'
+            self._log_event(event, run_id=row.id, status=row.status, detail={'error': str(exc)})
+            self._maybe_send_alert(row, 'writeback_failed', 'high', {'error': str(exc), 'needs_reconciliation': uncertain})
             raise
+
+        # Commit failures after remote success are *not* classified as remote
+        # rejection. The pre-dispatch state remains the conservative fallback.
+        row.writeback_status = 'written'
+        row.writeback_at = datetime.utcnow()
+        row.writeback_error = ''
+        row.last_writeback_hash = outcome_hash
+        self._evaluate_run(row, outcome)
+        self._persist_snapshot(row)
+        self.session.add(row)
+        self.session.commit()
+        self._log_event('writeback-succeeded', run_id=row.id, status=row.status)
+        return {'ok': True, 'result': result}
 
     def writeback_run(self, run_id: int, operator_notes: str = '', tags: list[str] | None = None) -> dict:
         row = self.session.get(IntegrationRun, run_id)

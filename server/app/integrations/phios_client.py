@@ -22,6 +22,10 @@ class IntegrationClientError(RuntimeError):
     pass
 
 
+class IntegrationDeliveryUncertain(IntegrationClientError):
+    """A POST may have been applied despite a missing/invalid acknowledgement."""
+
+
 class PhiOSClient:
     endpoint_candidates = {
         'context_pack': ['/mission/context-pack', '/context/pack'],
@@ -103,17 +107,19 @@ class PhiOSClient:
                 response = httpx.post(f'{self.base_url}{path}', json=payload, headers=self._headers(), timeout=self.timeout_seconds)
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
-                if exc.response.status_code in (404, 405) and index < len(paths) - 1:
+                status = exc.response.status_code
+                if status in (404, 405) and index < len(paths) - 1:
                     continue
-                raise IntegrationClientError(f'PhiOS endpoint call failed: HTTP {exc.response.status_code}') from exc
+                error_type = IntegrationDeliveryUncertain if status in (408, 425) or status >= 500 else IntegrationClientError
+                raise error_type(f'PhiOS endpoint call failed: HTTP {status}') from exc
             except httpx.RequestError as exc:
-                raise IntegrationClientError(f'PhiOS endpoint call failed: transport error ({type(exc).__name__})') from exc
+                raise IntegrationDeliveryUncertain(f'PhiOS endpoint call failed: transport error ({type(exc).__name__})') from exc
             try:
                 data = response.json()
             except ValueError as exc:
-                raise IntegrationClientError('PhiOS endpoint call failed: invalid JSON response') from exc
+                raise IntegrationDeliveryUncertain('PhiOS endpoint call failed: invalid JSON response') from exc
             if not isinstance(data, dict):
-                raise IntegrationClientError('PhiOS endpoint call failed: response must be a JSON object')
+                raise IntegrationDeliveryUncertain('PhiOS endpoint call failed: response must be a JSON object')
             return data
         raise IntegrationClientError('PhiOS endpoint call failed: no compatible endpoint')
 
