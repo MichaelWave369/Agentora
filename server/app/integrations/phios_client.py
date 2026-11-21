@@ -91,15 +91,31 @@ class PhiOSClient:
         )
 
     def _post_first_success(self, paths: list[str], payload: dict) -> dict:
-        last_exc: Exception | None = None
-        for path in paths:
+        """Try alternate routes only when the selected route is unsupported.
+
+        Never send the same write to another route after a timeout, server
+        error, or malformed success response: delivery may be ambiguous.
+        """
+        if not paths:
+            raise IntegrationClientError('PhiOS endpoint call failed: no endpoints configured')
+        for index, path in enumerate(paths):
             try:
                 response = httpx.post(f'{self.base_url}{path}', json=payload, headers=self._headers(), timeout=self.timeout_seconds)
                 response.raise_for_status()
-                return response.json()
-            except Exception as exc:
-                last_exc = exc
-        raise IntegrationClientError(f'PhiOS endpoint call failed: {last_exc}')
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (404, 405) and index < len(paths) - 1:
+                    continue
+                raise IntegrationClientError(f'PhiOS endpoint call failed: HTTP {exc.response.status_code}') from exc
+            except httpx.RequestError as exc:
+                raise IntegrationClientError(f'PhiOS endpoint call failed: transport error ({type(exc).__name__})') from exc
+            try:
+                data = response.json()
+            except ValueError as exc:
+                raise IntegrationClientError('PhiOS endpoint call failed: invalid JSON response') from exc
+            if not isinstance(data, dict):
+                raise IntegrationClientError('PhiOS endpoint call failed: response must be a JSON object')
+            return data
+        raise IntegrationClientError('PhiOS endpoint call failed: no compatible endpoint')
 
     def get_persona(self, persona_id: str) -> PersonaSummary:
         self._guard_enabled()
