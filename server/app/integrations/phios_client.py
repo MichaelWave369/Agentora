@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
+
+from app.integrations.writeback_idempotency import PROTOCOL, canonical_envelope, operation_id
 
 import httpx
 
@@ -175,6 +178,108 @@ class PhiOSClient:
         if self.mock_mode:
             return {'ok': True, 'mode': 'mock', 'writeback_id': 'phios-mock-writeback-001'}
         return self._post_first_success(self.endpoint_candidates['writeback'], payload.model_dump(mode='json'))
+
+    def _r4c_guard(self) -> str:
+        """Only an explicitly configured local, authenticated R4b endpoint."""
+        if not self.enabled or self.mock_mode or not settings.agentora_phios_writeback_v1_enabled:
+            raise IntegrationClientError('PhiOS R4c writeback is not enabled')
+        parsed = urlsplit(self.base_url)
+        if (parsed.scheme != 'http' or parsed.hostname != '127.0.0.1'
+                or parsed.username or parsed.password or parsed.path or parsed.query
+                or parsed.fragment or parsed.port is None):
+            raise IntegrationClientError('R4c requires an explicit 127.0.0.1 HTTP endpoint')
+        if not self.api_key or len(self.api_key) < 32:
+            raise IntegrationClientError('R4c requires a configured 32+ character API key')
+        return self.base_url + '/api/v1/agentora/writeback'
+
+    @staticmethod
+    def _verified_receipt(data: object, expected: str, *, published: bool) -> dict:
+        if not isinstance(data, dict) or data.get('operation_id') != expected:
+            raise IntegrationDeliveryUncertain('PhiOS receipt operation identity mismatch')
+        if published:
+            if (data.get('ok') is not True or data.get('state') != 'published'
+                    or not isinstance(data.get('receipt_id'), str) or not data['receipt_id']
+                    or not isinstance(data.get('record_id'), str) or not data['record_id']):
+                raise IntegrationDeliveryUncertain('PhiOS writeback lacks published receipt proof')
+        elif data.get('state') not in {'pending', 'not_found', 'published'}:
+            raise IntegrationClientError('PhiOS returned an invalid receipt state')
+        return data
+
+    def write_mission_result_v1(self, envelope: dict) -> dict:
+        """Single POST, no alternate endpoint or implicit retry; require published proof."""
+        endpoint = self._r4c_guard()
+        if not isinstance(envelope, dict) or set(envelope) != {
+                'protocol_version', 'operation_id', 'created_at_utc', 'payload'}:
+            raise IntegrationClientError('R4c requires the complete persisted envelope')
+        try:
+            payload = envelope['payload']
+            expected_id = operation_id(payload)
+            canonical = canonical_envelope(payload, created_at_utc=envelope['created_at_utc'])
+        except (ValueError, TypeError) as exc:
+            raise IntegrationClientError('R4c envelope is invalid') from exc
+        if (envelope['protocol_version'] != PROTOCOL
+                or envelope['operation_id'] != expected_id
+                or not isinstance(envelope['operation_id'], str)):
+            raise IntegrationClientError('R4c operation identity mismatch')
+        # Canonicalization is validated before any network call. The exactly
+        # persisted outer envelope is dispatched, not rebuilt with a new time.
+        if len(canonical.encode('utf-8')) > 32 * 1024:
+            raise IntegrationClientError('R4c envelope exceeds protocol limit')
+        try:
+            response = httpx.post(
+                endpoint, json=envelope,
+                headers={'X-API-Key': self.api_key, 'Content-Type': 'application/json'},
+                timeout=self.timeout_seconds,
+            )
+        except httpx.RequestError as exc:
+            raise IntegrationDeliveryUncertain(
+                f'PhiOS R4c transport uncertain ({type(exc).__name__})'
+            ) from exc
+        if response.status_code == 202:
+            raise IntegrationDeliveryUncertain('PhiOS R4c receipt is pending')
+        if response.status_code != 200:
+            if response.status_code in (408, 425) or response.status_code >= 500:
+                raise IntegrationDeliveryUncertain(
+                    f'PhiOS R4c acknowledgement uncertain: HTTP {response.status_code}'
+                )
+            raise IntegrationClientError(f'PhiOS R4c rejected writeback: HTTP {response.status_code}')
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise IntegrationDeliveryUncertain('PhiOS R4c returned malformed success JSON') from exc
+        return self._verified_receipt(data, expected_id, published=True)
+
+    def writeback_receipt_status_v1(self, expected_id: str) -> dict:
+        """GET-only reconciliation; never infer that 404 permits a POST retry."""
+        endpoint = self._r4c_guard()
+        if (not isinstance(expected_id, str) or len(expected_id) != 64
+                or any(char not in '0123456789abcdef' for char in expected_id)):
+            raise IntegrationClientError('R4c receipt status requires lowercase SHA-256 ID')
+        try:
+            response = httpx.get(
+                f'{endpoint}/{expected_id}',
+                headers={'X-API-Key': self.api_key},
+                timeout=self.timeout_seconds,
+            )
+        except httpx.RequestError as exc:
+            raise IntegrationClientError(
+                f'PhiOS R4c receipt lookup failed ({type(exc).__name__})'
+            ) from exc
+        if response.status_code not in {200, 202, 404}:
+            raise IntegrationClientError(
+                f'PhiOS R4c receipt lookup failed: HTTP {response.status_code}'
+            )
+        try:
+            data = response.json()
+        except ValueError as exc:
+            raise IntegrationClientError('PhiOS R4c receipt lookup returned invalid JSON') from exc
+        if response.status_code == 200:
+            return self._verified_receipt(data, expected_id, published=True)
+        result = self._verified_receipt(data, expected_id, published=False)
+        expected_state = 'pending' if response.status_code == 202 else 'not_found'
+        if result.get('state') != expected_state:
+            raise IntegrationClientError('PhiOS R4c receipt lookup state disagrees with HTTP')
+        return result
 
     def healthcheck(self) -> dict:
         if self.mock_mode:
