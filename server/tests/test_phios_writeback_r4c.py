@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from unittest.mock import Mock
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -171,6 +172,25 @@ class StubSession:
     def commit(self):
         self.committed.append(self.row.writeback_status)
         self.envelopes.append(self.row.writeback_request_json)
+
+    def exec(self, statement):
+        # Simulate the atomic conditional update only in the old in-memory
+        # orchestrator unit tests. SQLite race tests separately exercise SQL.
+        params = statement.compile().params
+        if self.row.writeback_status in {'dispatching', 'needs_reconciliation'}:
+            return SimpleNamespace(rowcount=0)
+        for name in ('writeback_status', 'writeback_request_json',
+                     'writeback_operation_id', 'writeback_outcome_hash',
+                     'last_writeback_attempt_at', 'writeback_error'):
+            if name in params:
+                setattr(self.row, name, params[name])
+        return SimpleNamespace(rowcount=1)
+
+    def rollback(self):
+        pass
+
+    def refresh(self, obj):
+        assert obj is self.row
 
     def get(self, model, ident):
         assert model is IntegrationRun and ident == self.row.id

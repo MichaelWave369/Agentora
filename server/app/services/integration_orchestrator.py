@@ -20,6 +20,7 @@ from app.integrations.mappers import (
 )
 from app.integrations.phios_client import IntegrationClientError, IntegrationDeliveryUncertain, PhiOSClient
 from app.integrations.writeback_idempotency import PROTOCOL, canonical_envelope, operation_id
+from app.integrations.writeback_claim_r4d import claim_writeback_v1, reconcile_published_v1
 from app.integrations.schemas import (
     AgentExecutionOutcome,
     BranchPortfolioSummary,
@@ -580,27 +581,41 @@ class IntegrationOrchestrator:
             return {'ok': True, 'skipped': True, 'reason': 'already-written', 'result': {'status': 'already-written'}}
 
         payload = map_outcome_to_writeback_payload(session_id=row.phios_session_id, task_id=row.agentception_job_id or f'run-{row.id}', repo=row.repo, objective=row.objective, outcome=outcome, tags=tags, operator_notes=operator_notes)
-        # R4c persists the *whole* canonical envelope and its identity before
-        # making a network request. Even if a crash happens after this commit,
-        # the next operator can reconcile by GET without rebuilding the body.
+        # The R4d database UPDATE is the admission decision for R4c.
+        # Never derive permission to POST solely from this possibly stale row.
         envelope = None
+        attempt_at = datetime.utcnow()
         if settings.agentora_phios_writeback_v1_enabled:
             payload_dict = payload.model_dump(mode='json')
-            timestamp = datetime.now().astimezone().isoformat()
-            canonical = canonical_envelope(payload_dict, created_at_utc=timestamp)
+            canonical = canonical_envelope(
+                payload_dict, created_at_utc=attempt_at.isoformat() + '+00:00'
+            )
             envelope = json.loads(canonical)
             envelope['operation_id'] = operation_id(payload_dict)
-            row.writeback_request_json = json.dumps(
+            saved_json = json.dumps(
                 envelope, sort_keys=True, separators=(',', ':'), ensure_ascii=False
             )
-            row.writeback_operation_id = envelope['operation_id']
-            row.writeback_outcome_hash = outcome_hash
-        row.last_writeback_attempt_at = datetime.utcnow()
-        # Persist the in-flight state before contacting PhiOS: an interrupted
-        # process must not silently make the same write eligible for retry.
-        row.writeback_status = 'dispatching'
-        self.session.add(row)
-        self.session.commit()
+            claimed = claim_writeback_v1(
+                self.session,
+                run_id=row.id,
+                envelope_json=saved_json,
+                operation_id=envelope['operation_id'],
+                outcome_hash=outcome_hash,
+                attempted_at=attempt_at,
+            )
+            if not claimed:
+                # A different worker may already have sent the write.
+                # No post, retry, or automatic release of any held state.
+                raise IntegrationClientError(
+                    'PhiOS writeback claim lost: verify remote delivery and reconcile before retrying'
+                )
+            self.session.refresh(row)
+        else:
+            # Legacy mode is unchanged and remains disabled by default.
+            row.last_writeback_attempt_at = attempt_at
+            row.writeback_status = 'dispatching'
+            self.session.add(row)
+            self.session.commit()
         self._log_event('writeback-attempted', run_id=row.id, status=row.status)
         try:
             if envelope is None:
@@ -668,12 +683,21 @@ class IntegrationOrchestrator:
                     'operation_id': op}
         if receipt.get('operation_id') != op:
             raise IntegrationClientError('R4c receipt identity mismatch')
-        row.writeback_status = 'written'
-        row.writeback_at = datetime.utcnow()
-        row.writeback_error = ''
-        row.last_writeback_hash = row.writeback_outcome_hash
-        self.session.add(row)
-        self.session.commit()
+        # Guard against a second reconciler or an intervening state change:
+        # a verified remote receipt alone cannot overwrite a newer run state.
+        claimed = reconcile_published_v1(
+            self.session,
+            run_id=row.id,
+            operation_id=op,
+            envelope_json=row.writeback_request_json,
+            outcome_hash=row.writeback_outcome_hash,
+            reconciled_at=datetime.utcnow(),
+        )
+        if not claimed:
+            raise IntegrationClientError(
+                'R4d receipt reconciliation lost its held-state claim; reload run'
+            )
+        self.session.refresh(row)
         self._log_event('writeback-reconciled', run_id=row.id, status=row.status)
         return {'ok': True, 'reconciled': True, 'operation_id': op, 'result': receipt}
 
