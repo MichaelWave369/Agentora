@@ -177,11 +177,19 @@ class StubSession:
         # Simulate the atomic conditional update only in the old in-memory
         # orchestrator unit tests. SQLite race tests separately exercise SQL.
         params = statement.compile().params
-        if self.row.writeback_status in {'dispatching', 'needs_reconciliation'}:
+        target = params.get('writeback_status')
+        held = self.row.writeback_status in {'dispatching', 'needs_reconciliation'}
+        # The initial dispatch claim requires an eligible state; published
+        # reconciliation requires the opposite. The production SQL is tested
+        # separately with two real concurrent SQLite sessions.
+        if target == 'dispatching' and held:
+            return SimpleNamespace(rowcount=0)
+        if target == 'written' and not held:
             return SimpleNamespace(rowcount=0)
         for name in ('writeback_status', 'writeback_request_json',
                      'writeback_operation_id', 'writeback_outcome_hash',
-                     'last_writeback_attempt_at', 'writeback_error'):
+                     'last_writeback_attempt_at', 'writeback_at',
+                     'last_writeback_hash', 'writeback_error'):
             if name in params:
                 setattr(self.row, name, params[name])
         return SimpleNamespace(rowcount=1)
