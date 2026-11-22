@@ -19,6 +19,7 @@ from app.integrations.mappers import (
     outcome_fingerprint,
 )
 from app.integrations.phios_client import IntegrationClientError, IntegrationDeliveryUncertain, PhiOSClient
+from app.integrations.writeback_idempotency import PROTOCOL, canonical_envelope, operation_id
 from app.integrations.schemas import (
     AgentExecutionOutcome,
     BranchPortfolioSummary,
@@ -579,6 +580,21 @@ class IntegrationOrchestrator:
             return {'ok': True, 'skipped': True, 'reason': 'already-written', 'result': {'status': 'already-written'}}
 
         payload = map_outcome_to_writeback_payload(session_id=row.phios_session_id, task_id=row.agentception_job_id or f'run-{row.id}', repo=row.repo, objective=row.objective, outcome=outcome, tags=tags, operator_notes=operator_notes)
+        # R4c persists the *whole* canonical envelope and its identity before
+        # making a network request. Even if a crash happens after this commit,
+        # the next operator can reconcile by GET without rebuilding the body.
+        envelope = None
+        if settings.agentora_phios_writeback_v1_enabled:
+            payload_dict = payload.model_dump(mode='json')
+            timestamp = datetime.now().astimezone().isoformat()
+            canonical = canonical_envelope(payload_dict, created_at_utc=timestamp)
+            envelope = json.loads(canonical)
+            envelope['operation_id'] = operation_id(payload_dict)
+            row.writeback_request_json = json.dumps(
+                envelope, sort_keys=True, separators=(',', ':'), ensure_ascii=False
+            )
+            row.writeback_operation_id = envelope['operation_id']
+            row.writeback_outcome_hash = outcome_hash
         row.last_writeback_attempt_at = datetime.utcnow()
         # Persist the in-flight state before contacting PhiOS: an interrupted
         # process must not silently make the same write eligible for retry.
@@ -587,7 +603,10 @@ class IntegrationOrchestrator:
         self.session.commit()
         self._log_event('writeback-attempted', run_id=row.id, status=row.status)
         try:
-            result = self.phios.write_mission_result(payload)
+            if envelope is None:
+                result = self.phios.write_mission_result(payload)
+            else:
+                result = self.phios.write_mission_result_v1(envelope)
         except Exception as exc:
             # Unexpected client exceptions are also conservatively ambiguous.
             uncertain = isinstance(exc, IntegrationDeliveryUncertain) or not isinstance(exc, IntegrationClientError)
@@ -615,6 +634,48 @@ class IntegrationOrchestrator:
         self.session.commit()
         self._log_event('writeback-succeeded', run_id=row.id, status=row.status)
         return {'ok': True, 'result': result}
+
+    def reconcile_writeback_v1(self, run_id: int) -> dict:
+        """Operator-triggered GET-only receipt resolution. Never re-POST uncertain writes."""
+        if not settings.agentora_phios_writeback_v1_enabled:
+            raise IntegrationClientError('PhiOS R4c reconciliation is disabled')
+        row = self.session.get(IntegrationRun, run_id)
+        if row is None:
+            raise IntegrationClientError(f'Run {run_id} not found')
+        if row.writeback_status not in WRITEBACK_HELD_STATUSES:
+            raise IntegrationClientError('R4c reconciliation requires a held writeback')
+        try:
+            envelope = json.loads(row.writeback_request_json)
+            if not isinstance(envelope, dict):
+                raise ValueError('request is not an object')
+            payload = envelope['payload']
+            op = operation_id(payload)
+            canonical = canonical_envelope(payload, created_at_utc=envelope['created_at_utc'])
+            if (envelope.get('protocol_version') != PROTOCOL
+                    or envelope.get('operation_id') != op
+                    or row.writeback_operation_id != op
+                    or not isinstance(canonical, str)):
+                raise ValueError('operation identity mismatch')
+        except (ValueError, TypeError, KeyError) as exc:
+            raise IntegrationClientError(
+                'R4c held request lacks a valid immutable persisted envelope'
+            ) from exc
+        # On 404 or 202, remain HELD: missing/pending receipt cannot prove
+        # that a prior POST was not accepted.
+        receipt = self.phios.writeback_receipt_status_v1(op)
+        if receipt['state'] != 'published':
+            return {'ok': False, 'held': True, 'status': receipt['state'],
+                    'operation_id': op}
+        if receipt.get('operation_id') != op:
+            raise IntegrationClientError('R4c receipt identity mismatch')
+        row.writeback_status = 'written'
+        row.writeback_at = datetime.utcnow()
+        row.writeback_error = ''
+        row.last_writeback_hash = row.writeback_outcome_hash
+        self.session.add(row)
+        self.session.commit()
+        self._log_event('writeback-reconciled', run_id=row.id, status=row.status)
+        return {'ok': True, 'reconciled': True, 'operation_id': op, 'result': receipt}
 
     def writeback_run(self, run_id: int, operator_notes: str = '', tags: list[str] | None = None) -> dict:
         row = self.session.get(IntegrationRun, run_id)
