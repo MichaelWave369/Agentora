@@ -93,6 +93,7 @@ class Settings(BaseSettings):
     agentora_phios_enabled: bool = Field(default=False, alias='AGENTORA_PHIOS_ENABLED')
     agentora_phios_url: str = Field(default='http://127.0.0.1:8090', alias='AGENTORA_PHIOS_URL')
     agentora_phios_api_key: str = Field(default='', alias='AGENTORA_PHIOS_API_KEY')
+    agentora_phios_writeback_v1_enabled: bool = Field(default=False, alias='AGENTORA_PHIOS_WRITEBACK_V1_ENABLED')
     agentora_phios_timeout_seconds: int = Field(default=20, alias='AGENTORA_PHIOS_TIMEOUT_SECONDS')
 
     agentora_agentception_enabled: bool = Field(default=False, alias='AGENTORA_AGENTCEPTION_ENABLED')
