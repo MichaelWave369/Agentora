@@ -1,0 +1,41 @@
+name: Convergence R4 causal DAG comparison
+on:
+  pull_request:
+    paths:
+      - 'scripts/causal_convergence_r4*'
+      - '.github/workflows/convergence-r4-causal.yml'
+      - 'docs/CONVERGENCE_R4_CAUSAL.md'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/causal_convergence_r4*'
+      - '.github/workflows/convergence-r4-causal.yml'
+      - 'docs/CONVERGENCE_R4_CAUSAL.md'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: agentora
+      - uses: actions/checkout@v4
+        with:
+          repository: MichaelWave369/Altermath
+          ref: acac3a4ea792f2b979b11f8dcccc1b298596ea0e
+          persist-credentials: false
+          path: altermath
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compare real pinned implementation and independent baseline
+        working-directory: agentora
+        env:
+          ALTERMATH_CHECKOUT: ${{ github.workspace }}/altermath
+        run: |
+          node --test scripts/causal_convergence_r4.test.mjs
+          node scripts/causal_convergence_r4.mjs "$ALTERMATH_CHECKOUT"
