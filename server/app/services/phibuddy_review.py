@@ -109,7 +109,7 @@ async def provider_review(request, transport=None):
                 if response.status_code != 200 or response.headers.get("content-encoding", "identity") != "identity":
                     raise ValueError("provider status or encoding")
                 raw = bytearray()
-                async for chunk in response.aiter_raw():
+                async for chunk in response.aiter_bytes():
                     if len(raw) + len(chunk) > MAX_PROVIDER:
                         raise ValueError("provider response limit")
                     raw.extend(chunk)
