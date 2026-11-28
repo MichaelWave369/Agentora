@@ -1,0 +1,33 @@
+name: ANCHOR R5 operator integration
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  simulation:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: MichaelWave369/ANC
+          ref: 0174bec5e87ba97768727efc88c1f1efa68edfac
+          path: .anchor-anc
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install -r .anchor-anc/requirements-r4.txt
+      # -P prevents root app.py from shadowing the backend app package.
+      - name: Verify backend and pinned ANC import origins
+        run: |
+          PYTHONPATH=server:.anchor-anc python -P -c "import pathlib, app, anc; root = pathlib.Path.cwd(); assert pathlib.Path(app.__file__).resolve() == root / 'server/app/__init__.py'; assert pathlib.Path(anc.__file__).resolve() == root / '.anchor-anc/anc/__init__.py'"
+      - run: PYTHONPATH=server:.anchor-anc python -P -m unittest discover -s tests -p test_anchor_operator_r5.py -v
