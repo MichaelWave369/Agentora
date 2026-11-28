@@ -26,4 +26,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install -r .anchor-anc/requirements-r4.txt
-      - run: PYTHONPATH=server:.anchor-anc python -m unittest discover -s tests -p test_anchor_operator_r5.py -v
+      # -P prevents root app.py from shadowing the backend app package.
+      - name: Verify backend and pinned ANC import origins
+        run: |
+          PYTHONPATH=server:.anchor-anc python -P -c "import pathlib, app, anc; root = pathlib.Path.cwd(); assert pathlib.Path(app.__file__).resolve() == root / 'server/app/__init__.py'; assert pathlib.Path(anc.__file__).resolve() == root / '.anchor-anc/anc/__init__.py'"
+      - run: PYTHONPATH=server:.anchor-anc python -P -m unittest discover -s tests -p test_anchor_operator_r5.py -v

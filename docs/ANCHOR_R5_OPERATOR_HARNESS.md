@@ -11,9 +11,13 @@ local checkout and its requirements-r4.txt. From Agentora root with ANC
 checked out at ../ANC:
 
     python -m pip install -r ../ANC/requirements-r4.txt
-    PYTHONPATH=server:../ANC python -m unittest discover -s tests -p test_anchor_operator_r5.py -v
+    PYTHONPATH=server:../ANC python -P -m unittest discover -s tests -p test_anchor_operator_r5.py -v
 
-On Windows use a semicolon path separator.
+Use Python 3.12 or 3.13. The -P safe-path option is required from the
+repository root so the root app.py cannot shadow server/app. CI asserts
+the import origins of both backend app and the pinned ANC package before
+running the tests. On Windows PowerShell, set $env:PYTHONPATH to
+'server;../ANC' and run the same python -P -m unittest command separately.
 
 ## Lifecycle
 
